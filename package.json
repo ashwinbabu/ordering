@@ -15,14 +15,9 @@
     "start": "bash scripts/use-project-node.sh npm run start --workspace @a2/admin",
     "test": "npm run build && npm run test --workspace @a2/admin",
     "validate:artifact": "bash scripts/validate-artifact.sh",
-    "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
-  },
-  "dependencies": {
-    "drizzle-orm": "0.45.2"
+    "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next"
   },
   "devDependencies": {
-    "drizzle-kit": "0.31.10",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "typescript": "5.9.3"
