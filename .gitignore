@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/apps/*/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -16,6 +17,9 @@
 # next.js
 /.next/
 /out/
+/apps/*/.next/
+/apps/*/dist/
+/apps/*/.wrangler/
 
 # misc
 .DS_Store
