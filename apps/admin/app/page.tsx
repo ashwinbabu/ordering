@@ -4,12 +4,9 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowUp,
-  CalendarDays,
-  Check,
   ChevronDown,
   ChevronRight,
   CircleAlert,
-  Clipboard,
   Clock3,
   Copy,
   Edit3,
@@ -20,9 +17,7 @@ import {
   MoreVertical,
   Phone,
   Plus,
-  Printer,
   Search,
-  ShoppingBag,
   Store,
   Truck,
   Trash2,
@@ -34,51 +29,14 @@ import { AppShell, type AdminView as View } from "@/components/layout/app-shell"
 import { Modal } from "@/components/ui/modal";
 import { Toast, type ToastTone } from "@/components/ui/toast";
 import { Toggle } from "@/components/ui/toggle";
-
-type OrderStatus =
-  | "New"
-  | "Preparing"
-  | "Out for delivery"
-  | "Delivered"
-  | "Cancelled";
-type FoodType = "Veg" | "Non-veg" | "Egg";
-type ScheduleMode = "restaurant" | "same" | "different";
-
-interface OrderItem {
-  name: string;
-  qty: number;
-  variants?: string[];
-  instructions?: string;
-}
-
-interface TimelineItem {
-  label: string;
-  time: string;
-  complete: boolean;
-}
-
-interface Order {
-  id: string;
-  status: OrderStatus;
-  customer: string;
-  phone: string;
-  shortAddress: string;
-  fullAddress: string;
-  deliveryInstructions: string;
-  received: string;
-  age: string;
-  subtotal: number;
-  discount: number;
-  deliveryFee: number;
-  tax: number;
-  rounding: number;
-  total: number;
-  paid: boolean;
-  items: OrderItem[];
-  instructions?: string;
-  timeline: TimelineItem[];
-  cancellationReason?: string;
-}
+import {
+  formatMoney as money,
+  INITIAL_ORDERS,
+  nextOrderStatus as nextStatus,
+  type Order,
+  type OrderStatus,
+} from "@/features/orders/order-model";
+import { KotView, OrderDetails, OrdersPage } from "@/features/orders/orders-screen";
 
 interface VariantOption {
   id: string;
@@ -137,181 +95,6 @@ type CategoryDialog =
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-const INITIAL_ORDERS: Order[] = [
-  {
-    id: "1049",
-    status: "New",
-    customer: "Nikhil Rao",
-    phone: "+91 98765 12048",
-    shortAddress: "Mandrem Beach Road",
-    fullAddress: "Casa Sol, House 22, Mandrem Beach Road, near the football ground, Mandrem, Goa 403527",
-    deliveryInstructions: "Please bring the order to the reception desk.",
-    received: "3:48 PM",
-    age: "2 min",
-    subtotal: 3450,
-    discount: 250,
-    deliveryFee: 50,
-    tax: 290,
-    rounding: 0,
-    total: 3540,
-    paid: true,
-    items: [
-      { name: "Chicken Cafreal Burger", qty: 2, variants: ["Classic", "Cheese"] },
-      { name: "Paneer Tikka Wrap", qty: 2, variants: ["Extra cheese"] },
-      { name: "Mushroom Melt Burger", qty: 1 },
-      { name: "Chicken Cafreal Rice Bowl", qty: 2, variants: ["Extra cafreal sauce"] },
-      { name: "Peri Peri Fries", qty: 3 },
-      { name: "Rose Milk", qty: 2, variants: ["Less ice"] },
-      { name: "Fresh Lime Soda", qty: 2, variants: ["Sweet & salted"] },
-      { name: "Cold Coffee", qty: 2 },
-      { name: "Masala Lemonade", qty: 2 },
-      { name: "Crispy Chicken Bites", qty: 1, instructions: "Mild spice" },
-      { name: "Loaded Nachos", qty: 1 },
-      { name: "Garlic Butter Corn", qty: 2 },
-      { name: "Chocolate Brownie", qty: 2 },
-      { name: "Vanilla Ice Cream", qty: 2 },
-      { name: "Sparkling Water", qty: 3 },
-    ],
-    instructions: "Please label the vegetarian items separately.",
-    timeline: [
-      { label: "Order received", time: "3:48 PM", complete: true },
-      { label: "Accepted", time: "—", complete: false },
-      { label: "Out for delivery", time: "—", complete: false },
-      { label: "Delivered", time: "—", complete: false },
-    ],
-  },
-  {
-    id: "1048",
-    status: "New",
-    customer: "Priya Menon",
-    phone: "+91 98210 44821",
-    shortAddress: "Ashvem Road, Mandrem",
-    fullAddress:
-      "House 14, Palm Grove Lane, near Vaayu Waterman’s Village, Ashvem Road, Mandrem, Goa 403527",
-    deliveryInstructions: "Blue gate. Please call once outside.",
-    received: "3:42 PM",
-    age: "6 min",
-    subtotal: 510,
-    discount: 50,
-    deliveryFee: 35,
-    tax: 45,
-    rounding: 0,
-    total: 540,
-    paid: true,
-    items: [
-      {
-        name: "Paneer Tikka Wrap",
-        qty: 1,
-        variants: ["Regular", "Extra cheese"],
-        instructions: "No onions",
-      },
-      { name: "Rose Milk", qty: 2, variants: ["Less ice"] },
-    ],
-    instructions: "Pack cutlery for one person.",
-    timeline: [
-      { label: "Order received", time: "3:42 PM", complete: true },
-      { label: "Accepted", time: "—", complete: false },
-      { label: "Out for delivery", time: "—", complete: false },
-      { label: "Delivered", time: "—", complete: false },
-    ],
-  },
-  {
-    id: "1047",
-    status: "Preparing",
-    customer: "Rohit Shenoy",
-    phone: "+91 99161 27541",
-    shortAddress: "Junas Waddo, Mandrem",
-    fullAddress:
-      "Villa 3, Casa Mira, Junas Waddo, opposite Mandrem Garden, Mandrem, Goa 403527",
-    deliveryInstructions: "Leave with the security guard if unreachable.",
-    received: "3:31 PM",
-    age: "17 min",
-    subtotal: 640,
-    discount: 0,
-    deliveryFee: 40,
-    tax: 40,
-    rounding: 0,
-    total: 720,
-    paid: false,
-    items: [
-      {
-        name: "Chicken Cafreal Burger",
-        qty: 2,
-        variants: ["Classic bun", "Cheese"],
-      },
-      { name: "Peri Peri Fries", qty: 1 },
-    ],
-    timeline: [
-      { label: "Order received", time: "3:31 PM", complete: true },
-      { label: "Accepted", time: "3:34 PM", complete: true },
-      { label: "Out for delivery", time: "—", complete: false },
-      { label: "Delivered", time: "—", complete: false },
-    ],
-  },
-  {
-    id: "1042",
-    status: "Out for delivery",
-    customer: "Aisha Khan",
-    phone: "+91 97644 70812",
-    shortAddress: "Dandos Waddo, Arambol",
-    fullAddress:
-      "Flat 2B, Marigold Apartments, Dandos Waddo, behind Double Dutch, Arambol, Goa 403524",
-    deliveryInstructions: "Second floor; lift is working.",
-    received: "2:58 PM",
-    age: "50 min",
-    subtotal: 540,
-    discount: 0,
-    deliveryFee: 30,
-    tax: 40,
-    rounding: 0,
-    total: 610,
-    paid: true,
-    items: [
-      {
-        name: "Chicken Cafreal Rice Bowl",
-        qty: 1,
-        variants: ["Extra cafreal sauce"],
-      },
-      { name: "Fresh Lime Soda", qty: 2, variants: ["Sweet & salted"] },
-    ],
-    instructions: "Keep the lime sodas upright.",
-    timeline: [
-      { label: "Order received", time: "2:58 PM", complete: true },
-      { label: "Accepted", time: "3:01 PM", complete: true },
-      { label: "Out for delivery", time: "3:29 PM", complete: true },
-      { label: "Delivered", time: "—", complete: false },
-    ],
-  },
-  {
-    id: "1039",
-    status: "Delivered",
-    customer: "Kabir Bhat",
-    phone: "+91 98900 12572",
-    shortAddress: "Mandrem Beach Road",
-    fullAddress:
-      "Room 8, The Banyan House, Mandrem Beach Road, Mandrem, Goa 403527",
-    deliveryInstructions: "Reception can receive the order.",
-    received: "1:16 PM",
-    age: "Delivered 1:58 PM",
-    subtotal: 380,
-    discount: 40,
-    deliveryFee: 25,
-    tax: 31,
-    rounding: -1,
-    total: 395,
-    paid: true,
-    items: [
-      { name: "Mushroom Melt Burger", qty: 1, variants: ["Whole-wheat bun"] },
-      { name: "Cold Coffee", qty: 1 },
-    ],
-    timeline: [
-      { label: "Order received", time: "1:16 PM", complete: true },
-      { label: "Accepted", time: "1:19 PM", complete: true },
-      { label: "Out for delivery", time: "1:42 PM", complete: true },
-      { label: "Delivered", time: "1:58 PM", complete: true },
-    ],
-  },
-];
 
 const burgerVariants: VariantGroup[] = [
   {
@@ -524,10 +307,6 @@ const INITIAL_CATEGORIES: Category[] = [
   },
 ];
 
-function money(value: number) {
-  return `₹${value.toLocaleString("en-IN")}`;
-}
-
 function cloneCategories(categories: Category[]) {
   return JSON.parse(JSON.stringify(categories)) as Category[];
 }
@@ -535,20 +314,6 @@ function cloneCategories(categories: Category[]) {
 function priceFromInput(value: string) {
   const amount = Number(value);
   return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
-}
-
-function nextAction(status: OrderStatus) {
-  if (status === "New") return "Accept order";
-  if (status === "Preparing") return "Mark out for delivery";
-  if (status === "Out for delivery") return "Mark delivered";
-  return null;
-}
-
-function nextStatus(status: OrderStatus): OrderStatus | null {
-  if (status === "New") return "Preparing";
-  if (status === "Preparing") return "Out for delivery";
-  if (status === "Out for delivery") return "Delivered";
-  return null;
 }
 
 function effectiveProductState(category: Category, product: Product) {
@@ -575,9 +340,6 @@ function scheduleSummaryFor(product: Product) {
   return `${days}, ${format(start)}–${format(end)}`;
 }
 
-function StatusBadge({ status }: { status: OrderStatus }) {
-  return <span className={`status-badge status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
-}
 
 function FoodMarker({ type }: { type: FoodType }) {
   return (
@@ -758,224 +520,6 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
         )}
       </section>
     </main>
-  );
-}
-
-function OrderCard({
-  order,
-  busy,
-  onProgress,
-  onOpen,
-  onCopy,
-  onKOT,
-  onCancel,
-}: {
-  order: Order;
-  busy: boolean;
-  onProgress: () => void;
-  onOpen: () => void;
-  onCopy: () => void;
-  onKOT: () => void;
-  onCancel: () => void;
-}) {
-  const action = nextAction(order.status);
-  const cancellable = !["Delivered", "Cancelled"].includes(order.status);
-
-  return (
-    <article className={`order-card ${order.status === "New" ? "new-order" : ""}`}>
-      <section className="order-zone order-context-zone">
-        <div className="order-zone-head">
-          <span className="fulfilment-label">Delivery</span>
-          <StatusBadge status={order.status} />
-        </div>
-        <button className="order-title-button" onClick={onOpen} aria-label={`Open order ${order.id}`}>
-          <strong>Order #{order.id}</strong>
-          <ChevronRight size={17} />
-        </button>
-        <div className="order-time-row">
-          <span>Received {order.received}</span>
-          <strong>{order.age}</strong>
-        </div>
-        <div className="customer-block">
-          <strong>{order.customer}</strong>
-          <a href={`tel:${order.phone.replaceAll(" ", "")}`} onClick={(event) => event.stopPropagation()}>
-            <Phone size={15} /> Call
-          </a>
-          <span>{order.phone}</span>
-          <p><MapPin size={15} />{order.shortAddress}</p>
-        </div>
-        <div className="quiet-actions">
-          <button onClick={onCopy}><Clipboard size={15} />Copy order</button>
-          <button onClick={onKOT}><Printer size={15} />KOT</button>
-        </div>
-      </section>
-
-      <section className="order-zone order-items-zone">
-        <div className="item-list">
-          {order.items.map((item) => (
-            <div className="order-item" key={item.name}>
-              <strong>{item.qty} × {item.name}</strong>
-              {item.variants?.map((variant) => <span key={variant}>{variant}</span>)}
-              {item.instructions && <em>“{item.instructions}”</em>}
-            </div>
-          ))}
-        </div>
-        {order.instructions && (
-          <div className="instruction-note">
-            <CircleAlert size={15} />
-            <span><strong>Order instruction</strong>{order.instructions}</span>
-          </div>
-        )}
-        <div className="bill-row">
-          <span>Total <small className={order.paid ? "paid" : "cod"}>{order.paid ? "Paid" : "Cash on delivery"}</small></span>
-          <strong>{money(order.total)}</strong>
-        </div>
-        {action ? (
-          <button className="primary-button order-main-action" onClick={onProgress} disabled={busy}>
-            {busy && <LoaderCircle className="spin" size={17} />}
-            {action}
-          </button>
-        ) : (
-          <div className="completed-action"><Check size={17} />No action required</div>
-        )}
-      </section>
-
-      <section className="order-zone delivery-zone">
-        <div className="zone-title-row">
-          <span>Delivery details</span>
-          <button onClick={() => navigator.clipboard?.writeText(order.fullAddress)} aria-label="Copy delivery address">
-            <Copy size={15} /> Copy address
-          </button>
-        </div>
-        <p className="full-address">{order.fullAddress}</p>
-        <div className="delivery-instruction">
-          <strong>Delivery instruction</strong>
-          <span>{order.deliveryInstructions}</span>
-        </div>
-        <div className="order-operational-status">
-          <Clock3 size={16} />
-          <span>
-            <strong>{order.status === "New" ? "Waiting for acceptance" : order.status}</strong>
-            {order.status === "Preparing" ? "Accepted at 3:34 PM" : `Received ${order.received}`}
-          </span>
-        </div>
-        <div className="delivery-actions">
-          <button className="secondary-button" onClick={onOpen}>View details</button>
-          {cancellable && <button className="destructive-link" onClick={onCancel}>Cancel order</button>}
-        </div>
-      </section>
-    </article>
-  );
-}
-
-function OrdersPage({
-  orders,
-  orderingOpen,
-  onOrderingToggle,
-  statusFilter,
-  setStatusFilter,
-  busyOrderId,
-  onProgress,
-  onOpen,
-  onCopy,
-  onKOT,
-  onCancel,
-}: {
-  orders: Order[];
-  orderingOpen: boolean;
-  onOrderingToggle: () => void;
-  statusFilter: "All" | OrderStatus;
-  setStatusFilter: (status: "All" | OrderStatus) => void;
-  busyOrderId: string;
-  onProgress: (order: Order) => void;
-  onOpen: (order: Order) => void;
-  onCopy: (order: Order) => void;
-  onKOT: (order: Order) => void;
-  onCancel: (order: Order) => void;
-}) {
-  const [cartsOpen, setCartsOpen] = useState(false);
-  const [search, setSearch] = useState("");
-  const tabs: ("All" | OrderStatus)[] = ["All", "New", "Preparing", "Out for delivery", "Delivered", "Cancelled"];
-  const visible = orders.filter((order) => {
-    const filterMatch = statusFilter === "All" || order.status === statusFilter;
-    const searchMatch = !search || order.id.includes(search) || order.customer.toLowerCase().includes(search.toLowerCase());
-    return filterMatch && searchMatch;
-  });
-  const newCount = orders.filter((order) => order.status === "New").length;
-  const activeCount = orders.filter((order) => ["New", "Preparing", "Out for delivery"].includes(order.status)).length;
-  const delivered = orders.filter((order) => order.status === "Delivered");
-
-  return (
-    <div className="page orders-page">
-      <div className="orders-command-row">
-        <div className="date-control"><CalendarDays size={17} />11–12 Aug 2026<ChevronDown size={15} /></div>
-        <div className={`ordering-control ${orderingOpen ? "open" : "paused"}`}>
-          <span className="ordering-control-status"><Store size={16} />{orderingOpen ? "Accepting orders" : "Orders paused"}</span>
-          <div className="ordering-toggle-wrap">
-            <span>{orderingOpen ? "On" : "Off"}</span>
-            <Toggle checked={orderingOpen} onChange={onOrderingToggle} label="Toggle restaurant ordering" />
-          </div>
-        </div>
-      </div>
-
-      <section className="snapshot-strip" aria-label="Today’s snapshot">
-        <div><span>New</span><strong>{newCount}</strong></div>
-        <div><span>Open orders</span><strong>{activeCount}</strong></div>
-        <div><span>Completed today</span><strong>{delivered.length}</strong></div>
-        <div><span>Today’s sales</span><strong>{money(orders.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + order.total, 0))}</strong></div>
-      </section>
-
-      <div className="queue-toolbar">
-        <div className="status-tabs" role="tablist" aria-label="Order status">
-          {tabs.map((tab) => {
-            const count = orders.filter((order) => tab === "All" || order.status === tab).length;
-            return (
-              <button key={tab} role="tab" aria-selected={statusFilter === tab} className={statusFilter === tab ? "active" : ""} onClick={() => setStatusFilter(tab)}>
-                {tab}{(tab === "New" || tab === "Preparing") && count > 0 ? <span>{count}</span> : null}
-              </button>
-            );
-          })}
-        </div>
-        <label className="search-field order-search">
-          <Search size={17} />
-          <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Order or customer" />
-        </label>
-      </div>
-
-      <div className="order-list">
-        {visible.length ? visible.map((order) => (
-          <OrderCard
-            key={order.id}
-            order={order}
-            busy={busyOrderId === order.id}
-            onProgress={() => onProgress(order)}
-            onOpen={() => onOpen(order)}
-            onCopy={() => onCopy(order)}
-            onKOT={() => onKOT(order)}
-            onCancel={() => onCancel(order)}
-          />
-        )) : (
-          <div className="empty-state compact-empty">
-            <ShoppingBag size={28} />
-            <h3>No matching orders</h3>
-            <p>Try another status or search.</p>
-          </div>
-        )}
-      </div>
-
-      <section className="active-carts">
-        <button className="active-carts-head" onClick={() => setCartsOpen((open) => !open)} aria-expanded={cartsOpen}>
-          <span><ShoppingBag size={17} /><strong>Active carts</strong><small>2 carts · last activity 3 min ago</small></span>
-          <ChevronDown size={18} className={cartsOpen ? "rotate" : ""} />
-        </button>
-        {cartsOpen && (
-          <div className="cart-awareness-list">
-            <div><strong>Guest · ending 2084</strong><span>2 items · {money(420)}</span><small>Last active 3 min ago</small></div>
-            <div><strong>Meera S.</strong><span>1 item · {money(280)}</span><small>Last active 8 min ago</small></div>
-          </div>
-        )}
-      </section>
-    </div>
   );
 }
 
@@ -1473,95 +1017,6 @@ function ProductEditorOverlay({
   );
 }
 
-function OrderDetails({
-  order,
-  busy,
-  onBack,
-  onProgress,
-  onCopy,
-  onKOT,
-  onCancel,
-}: {
-  order: Order;
-  busy: boolean;
-  onBack: () => void;
-  onProgress: () => void;
-  onCopy: () => void;
-  onKOT: () => void;
-  onCancel: () => void;
-}) {
-  const action = nextAction(order.status);
-  return (
-    <div className="page order-details-page">
-      <button className="back-button" onClick={onBack}><ArrowLeft size={18} />Back to orders</button>
-      <header className="order-detail-header">
-        <div>
-          <div className="detail-title-line"><h1>Order #{order.id}</h1><StatusBadge status={order.status} /></div>
-          <p>Received {order.received} · {order.age} · <strong>{order.paid ? "Paid" : "Cash on delivery"} {money(order.total)}</strong></p>
-        </div>
-        <div className="detail-actions">
-          <button className="secondary-button" onClick={onCopy}><Clipboard size={16} />Copy</button>
-          <button className="secondary-button" onClick={onKOT}><Printer size={16} />Print KOT</button>
-          {action && <button className="primary-button" onClick={onProgress} disabled={busy}>{busy && <LoaderCircle className="spin" size={16} />}{action}</button>}
-          {!['Delivered', 'Cancelled'].includes(order.status) && <button className="destructive-link" onClick={onCancel}>Cancel</button>}
-        </div>
-      </header>
-
-      <div className="order-detail-grid">
-        <div className="detail-main-column">
-          <section className="detail-section">
-            <div className="detail-section-heading"><h2>Kitchen</h2><span>{order.items.reduce((sum, item) => sum + item.qty, 0)} items</span></div>
-            <div className="detail-item-list">
-              {order.items.map((item) => (
-                <div key={item.name} className="detail-item-row">
-                  <strong>{item.qty}</strong>
-                  <span><b>{item.name}</b>{item.variants?.map((variant) => <small key={variant}>{variant}</small>)}{item.instructions && <em>Item note: {item.instructions}</em>}</span>
-                </div>
-              ))}
-            </div>
-            {order.instructions && <div className="prominent-instruction"><CircleAlert size={18} /><span><strong>Order instruction</strong>{order.instructions}</span></div>}
-          </section>
-
-          <section className="detail-section">
-            <div className="detail-section-heading"><h2>Customer & delivery</h2></div>
-            <div className="customer-detail-grid">
-              <div><span>Customer</span><strong>{order.customer}</strong><small>{order.phone}</small><div className="inline-actions"><a href={`tel:${order.phone.replaceAll(" ", "")}`}><Phone size={15} />Call</a><button onClick={() => navigator.clipboard?.writeText(order.phone)}><Copy size={15} />Copy phone</button></div></div>
-              <div><span>Address</span><strong>{order.fullAddress}</strong><small>{order.deliveryInstructions}</small><div className="inline-actions"><button onClick={() => navigator.clipboard?.writeText(order.fullAddress)}><Copy size={15} />Copy address</button></div></div>
-            </div>
-          </section>
-
-          <section className="detail-section bill-section">
-            <div className="detail-section-heading"><h2>Bill</h2><span>{order.paid ? "Payment received" : "Collect on delivery"}</span></div>
-            <dl>
-              <div><dt>Subtotal</dt><dd>{money(order.subtotal)}</dd></div>
-              {order.discount > 0 && <div className="discount-line"><dt>Coupon discount</dt><dd>−{money(order.discount)}</dd></div>}
-              <div><dt>Delivery fee</dt><dd>{money(order.deliveryFee)}</dd></div>
-              <div><dt>Tax</dt><dd>{money(order.tax)}</dd></div>
-              {order.rounding !== 0 && <div><dt>Rounding</dt><dd>{order.rounding > 0 ? "+" : "−"}{money(Math.abs(order.rounding))}</dd></div>}
-              <div className="bill-total"><dt>Total</dt><dd>{money(order.total)}</dd></div>
-            </dl>
-          </section>
-        </div>
-
-        <aside className="detail-side-column">
-          <section className="detail-section timeline-section">
-            <div className="detail-section-heading"><h2>Timeline</h2></div>
-            <ol>
-              {order.timeline.map((item) => (
-                <li key={item.label} className={item.complete ? "complete" : ""}>
-                  <span className="timeline-dot">{item.complete && <Check size={11} />}</span>
-                  <div><strong>{item.label}</strong><small>{item.time}</small></div>
-                </li>
-              ))}
-            </ol>
-            {order.cancellationReason && <div className="cancelled-reason"><strong>Cancellation reason</strong><span>{order.cancellationReason}</span><small>Manual refund responsibility recorded.</small></div>}
-          </section>
-        </aside>
-      </div>
-    </div>
-  );
-}
-
 function BusinessSettings({ activeBranch, orderingOpen, onOrderingToggle, dirty, onDirtyChange, onSaved }: { activeBranch: string; orderingOpen: boolean; onOrderingToggle: () => void; dirty: boolean; onDirtyChange: (dirty: boolean) => void; onSaved: (section: string) => void }) {
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("general");
@@ -1593,31 +1048,6 @@ function BusinessSettings({ activeBranch, orderingOpen, onOrderingToggle, dirty,
     </div>
     {dirty && <div className="settings-unsaved-bar"><span><span />Unsaved changes</span><button className="primary-button compact-button" onClick={() => save("Business")}>Save changes</button></div>}
   </div>;
-}
-
-function KotView({ order, onBack }: { order: Order; onBack: () => void }) {
-  return (
-    <main className="kot-page">
-      <div className="kot-actions no-print">
-        <button className="secondary-button" onClick={onBack}><ArrowLeft size={16} />Back</button>
-        <button className="primary-button" onClick={() => window.print()}><Printer size={16} />Print KOT</button>
-      </div>
-      <section className="kot-ticket">
-        <header><span>A2 · MANDREM</span><h1>KOT #{order.id}</h1><p>{order.received} · DELIVERY</p></header>
-        <div className="kot-meta"><span>Customer</span><strong>{order.customer}</strong></div>
-        <div className="kot-items">
-          {order.items.map((item) => (
-            <div key={item.name}>
-              <b>{item.qty}</b>
-              <span><strong>{item.name}</strong>{item.variants?.map((variant) => <small key={variant}>+ {variant}</small>)}{item.instructions && <em>NOTE: {item.instructions}</em>}</span>
-            </div>
-          ))}
-        </div>
-        {order.instructions && <div className="kot-note"><strong>ORDER NOTE</strong><span>{order.instructions}</span></div>}
-        <footer>Printed {new Date().toLocaleString("en-IN", { hour: "numeric", minute: "2-digit", day: "2-digit", month: "short" })}</footer>
-      </section>
-    </main>
-  );
 }
 
 export default function Home() {
