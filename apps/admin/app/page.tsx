@@ -16,14 +16,12 @@ import {
   GripVertical,
   ImagePlus,
   LoaderCircle,
-  LogOut,
   MapPin,
   MoreVertical,
   Phone,
   Plus,
   Printer,
   Search,
-  Settings2,
   ShoppingBag,
   Store,
   Truck,
@@ -32,8 +30,11 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { AppShell, type AdminView as View } from "@/components/layout/app-shell";
+import { Modal } from "@/components/ui/modal";
+import { Toast, type ToastTone } from "@/components/ui/toast";
+import { Toggle } from "@/components/ui/toggle";
 
-type View = "orders" | "menu" | "menu-editor" | "settings" | "order-detail" | "kot";
 type OrderStatus =
   | "New"
   | "Preparing"
@@ -42,7 +43,6 @@ type OrderStatus =
   | "Cancelled";
 type FoodType = "Veg" | "Non-veg" | "Egg";
 type ScheduleMode = "restaurant" | "same" | "different";
-type ToastTone = "success" | "error" | "info";
 
 interface OrderItem {
   name: string;
@@ -575,35 +575,6 @@ function scheduleSummaryFor(product: Product) {
   return `${days}, ${format(start)}–${format(end)}`;
 }
 
-function Toggle({
-  checked,
-  onChange,
-  label,
-  disabled = false,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  label: string;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className={`toggle ${checked ? "is-on" : ""}`}
-      role="switch"
-      aria-checked={checked}
-      aria-label={label}
-      onClick={(event) => {
-        event.stopPropagation();
-        onChange();
-      }}
-      disabled={disabled}
-    >
-      <span />
-    </button>
-  );
-}
-
 function StatusBadge({ status }: { status: OrderStatus }) {
   return <span className={`status-badge status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
 }
@@ -787,135 +758,6 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
         )}
       </section>
     </main>
-  );
-}
-
-function AppShell({
-  view,
-  onNavigate,
-  activeBranch,
-  branches,
-  onBranchChange,
-  onSignOut,
-  orderingOpen,
-  onKillSwitch,
-  children,
-}: {
-  view: View;
-  onNavigate: (view: View) => void;
-  activeBranch: string;
-  branches: string[];
-  onBranchChange: (branch: string) => void;
-  onSignOut: () => void;
-  orderingOpen: boolean;
-  onKillSwitch: () => void;
-  children: React.ReactNode;
-}) {
-  const [accountOpen, setAccountOpen] = useState(false);
-  const activeNav = view === "menu" || view === "menu-editor" ? "menu" : view === "settings" ? "settings" : "orders";
-  const pageTitle = view === "orders" ? "Orders" : view === "menu" ? "Menu availability" : view === "menu-editor" ? "Edit menu" : view === "settings" ? "Business Settings" : "Order details";
-
-  return (
-    <div className="app-shell">
-      <aside className="sidebar no-print">
-        <div className="brand-lockup shell-brand">
-          <span className="brand-mark">A2</span>
-          <span>A2</span>
-        </div>
-        <nav aria-label="Primary navigation">
-          <button className={activeNav === "orders" ? "active" : ""} onClick={() => onNavigate("orders")}>
-            <ShoppingBag size={19} />
-            Orders
-          </button>
-          <button className={activeNav === "menu" ? "active" : ""} onClick={() => onNavigate("menu")}>
-            <Utensils size={19} />
-            Menu
-          </button>
-          <button className={activeNav === "settings" ? "active" : ""} onClick={() => onNavigate("settings")}>
-            <Settings2 size={19} />
-            Settings
-          </button>
-        </nav>
-        <div className="sidebar-foot">
-          <span className="service-state"><span className={`service-dot ${orderingOpen ? "" : "offline"}`} />{orderingOpen ? "Service online" : "Orders paused"}</span>
-          <button className={`kill-switch ${orderingOpen ? "" : "is-killed"}`} onClick={onKillSwitch} aria-pressed={!orderingOpen}>
-            <span className="kill-switch-dot" />
-            {orderingOpen ? "Kill" : "Resume"}
-          </button>
-        </div>
-      </aside>
-
-      <div className="shell-content">
-        <header className="topbar no-print">
-          <div className="mobile-brand">
-            <span className="brand-mark">A2</span>
-            <span>A2</span>
-          </div>
-          <div className="topbar-context">
-            <p>{pageTitle}</p>
-          </div>
-          <div className="account-wrap">
-            <button
-              className="account-button"
-              onClick={() => setAccountOpen((open) => !open)}
-              aria-expanded={accountOpen}
-              aria-haspopup="menu"
-            >
-              <span className="avatar">AV</span>
-              <span className="account-copy">
-                <strong>{activeBranch}</strong>
-                <small>Owner</small>
-              </span>
-              <ChevronDown size={16} />
-            </button>
-            {accountOpen && (
-              <div className="account-menu" role="menu">
-                {branches.length > 1 && (
-                  <>
-                    <p className="menu-label">Switch branch</p>
-                    {branches.map((branch) => (
-                      <button
-                        key={branch}
-                        role="menuitem"
-                        className={branch === activeBranch ? "selected" : ""}
-                        onClick={() => {
-                          onBranchChange(branch);
-                          setAccountOpen(false);
-                        }}
-                      >
-                        <span><Store size={16} />{branch}</span>
-                        {branch === activeBranch && <Check size={16} />}
-                      </button>
-                    ))}
-                    <div className="menu-divider" />
-                  </>
-                )}
-                <button role="menuitem" onClick={onSignOut} className="signout-item">
-                  <span><LogOut size={16} />Sign out</span>
-                </button>
-              </div>
-            )}
-          </div>
-        </header>
-
-        <main className="workspace">{children}</main>
-
-        <nav className="mobile-nav no-print" aria-label="Mobile navigation">
-          <button className={activeNav === "orders" ? "active" : ""} onClick={() => onNavigate("orders")}>
-            <ShoppingBag size={19} />
-            <span>Orders</span>
-          </button>
-          <button className={activeNav === "menu" ? "active" : ""} onClick={() => onNavigate("menu")}>
-            <Utensils size={19} />
-            <span>Menu</span>
-          </button>
-          <button className={activeNav === "settings" ? "active" : ""} onClick={() => onNavigate("settings")}>
-            <Settings2 size={19} />
-            <span>Settings</span>
-          </button>
-        </nav>
-      </div>
-    </div>
   );
 }
 
@@ -1778,33 +1620,6 @@ function KotView({ order, onBack }: { order: Order; onBack: () => void }) {
   );
 }
 
-function Modal({
-  title,
-  children,
-  onClose,
-  footer,
-  destructive = false,
-  wide = false,
-}: {
-  title: string;
-  children: React.ReactNode;
-  onClose: () => void;
-  footer: React.ReactNode;
-  destructive?: boolean;
-  wide?: boolean;
-}) {
-  return (
-    <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <button className="modal-scrim" onClick={onClose} aria-label="Close dialog" />
-      <section className={`modal-card ${destructive ? "destructive-modal" : ""} ${wide ? "wide-modal" : ""}`}>
-        <header><h2 id="modal-title">{title}</h2><button onClick={onClose} aria-label="Close"><X size={20} /></button></header>
-        <div className="modal-body">{children}</div>
-        <footer>{footer}</footer>
-      </section>
-    </div>
-  );
-}
-
 export default function Home() {
   const [authenticated, setAuthenticated] = useState(true);
   const [view, setView] = useState<View>("orders");
@@ -2426,11 +2241,11 @@ export default function Home() {
       )}
 
       {toast && (
-        <div className={`toast toast-${toast.tone}`} role="status">
-          {toast.tone === "success" ? <Check size={18} /> : toast.tone === "error" ? <CircleAlert size={18} /> : <Clock3 size={18} />}
-          <span>{toast.message}</span>
-          <button onClick={() => setToast(null)} aria-label="Dismiss"><X size={16} /></button>
-        </div>
+        <Toast
+          tone={toast.tone}
+          message={toast.message}
+          onDismiss={() => setToast(null)}
+        />
       )}
     </>
   );
