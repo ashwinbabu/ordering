@@ -1,21 +1,47 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
-
-const branches = ["A2 · Mandrem", "A2 · Arambol"];
+import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { useAuth } from "@/features/auth/auth-context";
+import { useOutletContextQuery } from "@/features/outlet-context/outlet-context-query";
+import type { AccessibleBusiness, AccessibleLocation } from "@/features/outlet-context/outlet-context-model";
 
 interface OutletContextValue {
-  activeBranch: string;
-  branches: string[];
-  setActiveBranch: (branch: string) => void;
+  activeBusiness: AccessibleBusiness | null;
+  activeLocation: AccessibleLocation | null;
+  locations: AccessibleLocation[];
+  loading: boolean;
+  error: Error | null;
+  selectLocation: (locationId: string) => void;
+  retry: () => void;
 }
 
 const OutletContext = createContext<OutletContextValue | null>(null);
 
 export function OutletProvider({ children }: { children: ReactNode }) {
-  const [activeBranch, setActiveBranch] = useState(branches[0]);
+  const { userId } = useAuth();
+  const { data, error, isPending, refetch } = useOutletContextQuery(userId);
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const locations = data?.locations ?? [];
 
-  return <OutletContext.Provider value={{ activeBranch, branches, setActiveBranch }}>{children}</OutletContext.Provider>;
+  const activeLocation = locations.find((location) => location.id === selectedLocationId) ?? locations[0] ?? null;
+  const activeBusiness = useMemo(
+    () => data?.businesses.find((business) => business.id === activeLocation?.businessId) ?? null,
+    [activeLocation?.businessId, data?.businesses],
+  );
+
+  return (
+    <OutletContext.Provider value={{
+      activeBusiness,
+      activeLocation,
+      locations,
+      loading: Boolean(userId) && isPending,
+      error: error instanceof Error ? error : null,
+      selectLocation: setSelectedLocationId,
+      retry: () => { void refetch(); },
+    }}>
+      {children}
+    </OutletContext.Provider>
+  );
 }
 
 export function useOutletContext() {

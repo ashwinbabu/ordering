@@ -28,6 +28,11 @@ interface NavigationItem {
   view: PrimaryView;
 }
 
+export interface BranchOption {
+  id: string;
+  label: string;
+}
+
 const navigationItems: NavigationItem[] = [
   { icon: ShoppingBag, label: "Orders", view: "orders" },
   { icon: Utensils, label: "Menu", view: "menu" },
@@ -52,9 +57,9 @@ function activeNavigationView(view: AdminView): PrimaryView {
 interface AppShellProps {
   view: AdminView;
   onNavigate: (view: AdminView) => void;
-  activeBranch: string;
-  branches: string[];
-  onBranchChange: (branch: string) => void;
+  activeBranch: BranchOption;
+  branches: BranchOption[];
+  onBranchChange: (branchId: string) => void;
   onSignOut: () => void;
   orderingOpen: boolean;
   onKillSwitch: () => void;
@@ -124,7 +129,7 @@ export function AppShell({
             >
               <span className="avatar">AV</span>
               <span className="account-copy">
-                <strong>{activeBranch}</strong>
+                <strong>{activeBranch.label}</strong>
                 <small>Owner</small>
               </span>
               <ChevronDown size={16} />
@@ -136,16 +141,16 @@ export function AppShell({
                     <p className="menu-label">Switch branch</p>
                     {branches.map((branch) => (
                       <button
-                        key={branch}
+                        key={branch.id}
                         role="menuitem"
-                        className={branch === activeBranch ? "selected" : ""}
+                        className={branch.id === activeBranch.id ? "selected" : ""}
                         onClick={() => {
-                          onBranchChange(branch);
+                          onBranchChange(branch.id);
                           setAccountOpen(false);
                         }}
                       >
-                        <span><Store size={16} />{branch}</span>
-                        {branch === activeBranch && <Check size={16} />}
+                        <span><Store size={16} />{branch.label}</span>
+                        {branch.id === activeBranch.id && <Check size={16} />}
                       </button>
                     ))}
                     <div className="menu-divider" />

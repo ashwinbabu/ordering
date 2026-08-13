@@ -16,8 +16,8 @@ import { MenuAvailability, MenuEditor, ProductEditorOverlay } from "@/features/m
 import { BusinessSettings } from "@/features/business-settings/business-settings-screen";
 
 export function AdminApp() {
-  const { authenticated, signIn, signOut } = useAuth();
-  const { activeBranch, branches, setActiveBranch } = useOutletContext();
+  const { authenticated, loading: authLoading, signOut } = useAuth();
+  const { activeBusiness, activeLocation, locations, loading: outletLoading, error: outletError, selectLocation, retry: retryOutletContext } = useOutletContext();
   const { orderingOpen, pauseOrdering, resumeOrdering } = useOrderingStatus();
   const [view, setView] = useState<View>("orders");
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
@@ -440,9 +440,28 @@ export function AdminApp() {
     showToast(`${name} deleted. Save the menu to publish.`, "info");
   }
 
-  if (!authenticated) {
-    return <LoginScreen onAuthenticated={() => { signIn(); setView("orders"); }} />;
+  if (authLoading) {
+    return <main className="login-page" aria-label="Checking your session" />;
   }
+
+  if (!authenticated) {
+    return <LoginScreen />;
+  }
+
+  if (outletLoading) {
+    return <OutletContextState title="Loading your business" message="We’re confirming the business and outlet available to this account." />;
+  }
+
+  if (outletError) {
+    return <OutletContextState title="Couldn’t load your business" message={outletError.message} onRetry={retryOutletContext} onSignOut={() => { void signOut(); }} />;
+  }
+
+  if (!activeBusiness || !activeLocation) {
+    return <OutletContextState title="No active outlet available" message="This account does not have an active business membership with an active outlet." onSignOut={() => { void signOut(); }} />;
+  }
+
+  const branches = locations.map((location) => ({ id: location.id, label: `${location.businessName} · ${location.name}` }));
+  const activeBranch = branches.find((branch) => branch.id === activeLocation.id) ?? { id: activeLocation.id, label: `${activeLocation.businessName} · ${activeLocation.name}` };
 
   if (view === "kot" && selectedOrder) {
     return <KotView order={selectedOrder} onBack={() => setView("order-detail")} />;
@@ -501,7 +520,7 @@ export function AdminApp() {
       />
     );
   } else if (view === "settings") {
-    content = <BusinessSettings activeBranch={activeBranch} orderingOpen={orderingOpen} dirty={unsavedSettings} onOrderingToggle={() => orderingOpen ? setPauseConfirm(true) : (resumeOrdering(), showToast("Ordering resumed. Customers can place new orders.", "info"))} onDirtyChange={setUnsavedSettings} onSaved={(section) => showToast(`${section} settings saved.`)} />;
+    content = <BusinessSettings businessName={activeBusiness.name} locationName={activeLocation.name} orderingOpen={orderingOpen} dirty={unsavedSettings} onOrderingToggle={() => orderingOpen ? setPauseConfirm(true) : (resumeOrdering(), showToast("Ordering resumed. Customers can place new orders.", "info"))} onDirtyChange={setUnsavedSettings} onSaved={(section) => showToast(`${section} settings saved.`)} />;
   } else {
     content = (
       <OrderDetails
@@ -526,8 +545,8 @@ export function AdminApp() {
         onNavigate={navigate}
         activeBranch={activeBranch}
         branches={branches}
-        onBranchChange={(branch) => { setActiveBranch(branch); showToast(`Switched to ${branch}.`, "info"); }}
-        onSignOut={() => { signOut(); setView("orders"); }}
+        onBranchChange={(locationId) => { const branch = branches.find((item) => item.id === locationId); selectLocation(locationId); showToast(`Switched to ${branch?.label ?? "outlet"}.`, "info"); }}
+        onSignOut={() => { void signOut(); setView("orders"); }}
         orderingOpen={orderingOpen}
         onKillSwitch={() => orderingOpen ? setPauseConfirm(true) : (resumeOrdering(), showToast("Ordering resumed. Customers can place new orders.", "info"))}
       >
@@ -642,5 +661,24 @@ export function AdminApp() {
         />
       )}
     </>
+  );
+}
+
+function OutletContextState({ title, message, onRetry, onSignOut }: { title: string; message: string; onRetry?: () => void; onSignOut?: () => void }) {
+  return (
+    <main className="login-page" aria-live="polite">
+      <section className="login-card">
+        <div className="login-heading">
+          <h1>{title}</h1>
+          <p>{message}</p>
+        </div>
+        {(onRetry || onSignOut) && (
+          <div className="auth-form">
+            {onRetry && <button className="primary-button" onClick={onRetry}>Try again</button>}
+            {onSignOut && <button className="secondary-button" onClick={onSignOut}>Sign out</button>}
+          </div>
+        )}
+      </section>
+    </main>
   );
 }

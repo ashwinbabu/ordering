@@ -2,13 +2,14 @@
 
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
 
-export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
+export function LoginScreen() {
   const [method, setMethod] = useState<"phone" | "email">("phone");
   const [phoneStep, setPhoneStep] = useState<"number" | "otp">("number");
-  const [phone, setPhone] = useState("94490 76076");
+  const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
-  const [email, setEmail] = useState("owner@a2goa.in");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,41 +21,91 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }
     return () => window.clearInterval(timer);
   }, [phoneStep, resendSeconds]);
 
-  function finish() {
-    setBusy(true);
-    setError("");
-    window.setTimeout(() => {
-      setBusy(false);
-      onAuthenticated();
-    }, 650);
+  function phoneE164() {
+    return `+91${phone.replace(/\D/g, "")}`;
   }
 
-  function submitPhone(event: React.FormEvent) {
+  async function sendPhoneOtp() {
+    const { error } = await supabase.auth.signInWithOtp({ phone: phoneE164() });
+    if (error) throw error;
+    setPhoneStep("otp");
+    setResendSeconds(28);
+  }
+
+  async function submitPhone(event: React.FormEvent) {
     event.preventDefault();
     if (phoneStep === "number") {
       if (phone.replace(/\D/g, "").length < 10) {
         setError("Enter a valid 10-digit mobile number.");
         return;
       }
-      setError("");
-      setPhoneStep("otp");
-      setResendSeconds(28);
-      return;
     }
-    if (!/^\d{6}$/.test(otp)) {
+    if (phoneStep === "otp" && !/^\d{6}$/.test(otp)) {
       setError("Enter the 6-digit code.");
       return;
     }
-    finish();
+
+    setBusy(true);
+    setError("");
+    try {
+      if (phoneStep === "number") await sendPhoneOtp();
+      else {
+        const { error } = await supabase.auth.verifyOtp({ phone: phoneE164(), token: otp, type: "sms" });
+        if (error) throw error;
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to sign in. Try again.");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function submitEmail(event: React.FormEvent) {
+  async function submitEmail(event: React.FormEvent) {
     event.preventDefault();
     if (!email.includes("@") || password.length < 4) {
       setError("Check your email and password, then try again.");
       return;
     }
-    finish();
+    setBusy(true);
+    setError("");
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to sign in. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resendPhoneOtp() {
+    setBusy(true);
+    setError("");
+    try {
+      await sendPhoneOtp();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to send a new code.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendPasswordReset() {
+    if (!email.includes("@")) {
+      setError("Enter your email address first.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      if (error) throw error;
+      setError("If this account exists, reset instructions have been sent.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Unable to send reset instructions.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -133,8 +184,8 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }
                 <button
                   type="button"
                   className="resend-button"
-                  disabled={resendSeconds > 0}
-                  onClick={() => setResendSeconds(28)}
+                  disabled={resendSeconds > 0 || busy}
+                  onClick={() => { void resendPhoneOtp(); }}
                 >
                   {resendSeconds > 0 ? `Resend in 00:${String(resendSeconds).padStart(2, "0")}` : "Resend code"}
                 </button>
@@ -162,7 +213,7 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }
                 placeholder="Enter your password"
               />
             </label>
-            <button type="button" className="text-button forgot-button" onClick={() => setError("If this account exists, reset instructions have been sent.")}>
+            <button type="button" className="text-button forgot-button" disabled={busy} onClick={() => { void sendPasswordReset(); }}>
               Forgot password?
             </button>
             {error && <p className="neutral-message" role="status">{error}</p>}
@@ -176,4 +227,3 @@ export function LoginScreen({ onAuthenticated }: { onAuthenticated: () => void }
     </main>
   );
 }
-
