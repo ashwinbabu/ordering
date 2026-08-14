@@ -1779,6 +1779,17 @@ export type Database = {
         }
         Returns: Json
       }
+      list_orders_for_location: {
+        Args: {
+          p_before_created_at?: string
+          p_before_id?: string
+          p_business_id: string
+          p_limit?: number
+          p_location_id: string
+          p_statuses?: string[]
+        }
+        Returns: Json
+      }
       list_stale_payment_attempts: {
         Args: { p_before: string; p_limit?: number }
         Returns: Json
@@ -1931,6 +1942,17 @@ export type Database = {
         Args: {
           p_cancel_reason?: string
           p_expected_status: string
+          p_new_status: string
+          p_order_id: string
+        }
+        Returns: Json
+      }
+      transition_order_at_location: {
+        Args: {
+          p_business_id: string
+          p_cancel_reason?: string
+          p_expected_status: string
+          p_location_id: string
           p_new_status: string
           p_order_id: string
         }

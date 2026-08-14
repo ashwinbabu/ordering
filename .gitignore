@@ -34,6 +34,7 @@ _logs/
 
 # env files (can opt-in for committing if needed)
 .env*
+!apps/storefront/.env.example
 
 # vercel
 .vercel

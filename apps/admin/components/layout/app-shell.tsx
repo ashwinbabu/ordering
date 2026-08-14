@@ -138,7 +138,7 @@ export function AppShell({
               <div className="account-menu" role="menu">
                 {branches.length > 1 && (
                   <>
-                    <p className="menu-label">Switch branch</p>
+                    <p className="menu-label">Switch location</p>
                     {branches.map((branch) => (
                       <button
                         key={branch.id}
