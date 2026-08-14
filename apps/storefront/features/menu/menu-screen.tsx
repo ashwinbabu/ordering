@@ -5,14 +5,21 @@ import {
   productsForCategory,
   type Menu,
   type MenuPresentation,
+  type MenuProduct,
 } from "../../domain/storefront";
 import { CategoryNavigator } from "./category-navigator";
 import { MenuImage } from "./menu-image";
 import { MenuProductCard } from "./menu-product-card";
 
 interface MenuScreenProps {
+  cartQuantities: Record<string, number>;
+  cartItemCount: number;
   menu: Menu;
+  onGoToCart: () => void;
+  onAddProduct: (product: MenuProduct) => void;
+  onQuantityChange: (productId: string, quantity: number) => void;
   orderingStatus: string;
+  locationName: string;
 }
 
 const categorySymbols: Record<string, string> = {
@@ -23,7 +30,7 @@ const categorySymbols: Record<string, string> = {
   desserts: "○",
 };
 
-export function MenuScreen({ menu, orderingStatus }: MenuScreenProps) {
+export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, onAddProduct, onGoToCart, onQuantityChange, orderingStatus }: MenuScreenProps) {
   const initialCategoryId = menu.categories[0]?.id ?? "";
   const [activeCategoryId, setActiveCategoryId] = useState(initialCategoryId);
   const [isNavigatorOpen, setIsNavigatorOpen] = useState(false);
@@ -109,7 +116,7 @@ export function MenuScreen({ menu, orderingStatus }: MenuScreenProps) {
         <section className="menu-intro content-width">
           <p className="service-status"><span aria-hidden="true" />{orderingStatus}</p>
           <h1 id="menu-title">What are you craving?</h1>
-          <p className="menu-intro__message">Made fresh in Mandrem. Choose delivery or pickup in your cart.</p>
+          <p className="menu-intro__message">Made fresh in {locationName}. Choose delivery or pickup in your cart.</p>
           <p className="menu-intro__delivery-note">
             <Clock3 aria-hidden="true" size={14} strokeWidth={1.9} />
             Typical delivery · 25–35 min
@@ -163,7 +170,17 @@ export function MenuScreen({ menu, orderingStatus }: MenuScreenProps) {
                       <h3>{product.name}</h3>
                       <span>From ₹{product.price}</span>
                     </div>
-                    <span className="featured-card__add" aria-hidden="true">Add</span>
+                    {product.availability === "available" && (product.optionGroups?.length ?? 0) > 0 ? (
+                      <button className="featured-card__add" type="button" onClick={() => onAddProduct(product)}>Configure</button>
+                    ) : product.availability === "available" ? (
+                      cartQuantities[product.id] ? (
+                        <div className="featured-card__add quantity-control" aria-label={`Quantity of ${product.name}`}>
+                          <button type="button" aria-label={`Remove one ${product.name}`} onClick={() => onQuantityChange(product.id, cartQuantities[product.id] - 1)}><Minus aria-hidden="true" size={15} /></button>
+                          <span>{cartQuantities[product.id]}</span>
+                          <button type="button" aria-label={`Add one ${product.name}`} onClick={() => onQuantityChange(product.id, cartQuantities[product.id] + 1)}><Plus aria-hidden="true" size={15} /></button>
+                        </div>
+                      ) : <button className="featured-card__add" type="button" onClick={() => onAddProduct(product)}>Add</button>
+                    ) : null}
                   </article>
                 );
               })}
@@ -174,7 +191,7 @@ export function MenuScreen({ menu, orderingStatus }: MenuScreenProps) {
         <section className="full-menu content-width" aria-labelledby="full-menu-title">
           <div className="full-menu__heading">
             <div>
-              <p className="section-kicker">Made with Love in Mandrem</p>
+              <p className="section-kicker">Made with love in {locationName}</p>
               <h2 id="full-menu-title">Full menu</h2>
             </div>
             {menu.allowPresentationChange ? (
@@ -222,7 +239,14 @@ export function MenuScreen({ menu, orderingStatus }: MenuScreenProps) {
               </div>
               <div className={presentation === "list" ? "product-collection--list" : "product-collection--grid"}>
                 {products.map((product) => (
-                  <MenuProductCard key={product.id} product={product} presentation={presentation} />
+                  <MenuProductCard
+                    key={product.id}
+                    onAdd={onAddProduct}
+                    onQuantityChange={onQuantityChange}
+                    presentation={presentation}
+                    product={product}
+                    quantity={cartQuantities[product.id] ?? 0}
+                  />
                 ))}
               </div>
             </section>
@@ -247,6 +271,13 @@ export function MenuScreen({ menu, orderingStatus }: MenuScreenProps) {
         onSelect={selectCategory}
         productCounts={productCounts}
       />
+      {cartItemCount > 0 ? (
+        <button className="go-to-cart" type="button" onClick={onGoToCart}>
+          <span>{cartItemCount}</span>
+          <strong>Go to Cart</strong>
+          <small>Review your order</small>
+        </button>
+      ) : null}
     </section>
   );
 }

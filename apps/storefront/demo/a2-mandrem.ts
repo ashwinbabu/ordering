@@ -1,4 +1,4 @@
-import type { StorefrontDemo } from "../domain/storefront";
+import type { CustomerProfile, DeliveryAddress, StorefrontDemo, StorefrontOrder } from "../domain/storefront";
 
 export const a2MandremStorefront: StorefrontDemo = {
   venue: {
@@ -182,3 +182,84 @@ export const a2MandremStorefront: StorefrontDemo = {
     ],
   },
 };
+
+export const a2MandremCustomer: CustomerProfile = {
+  name: "Ashwin Babu",
+  countryCode: "+91",
+  phone: "9025117533",
+  email: "ashwin@example.com",
+  isPhoneVerified: true,
+};
+
+export const a2MandremAddresses: DeliveryAddress[] = [
+  {
+    id: "home-beach-road", label: "Home", recipientName: "Ashwin Babu", recipientPhone: "9025117533",
+    line1: "41 Beach Road", line2: "", locality: "Arambol", city: "North Goa", state: "Goa", postalCode: "403524",
+    landmark: "Near the beach entrance", instructions: "Leave at reception", isDefault: true,
+  },
+  {
+    id: "work-mandrem", label: "Work", recipientName: "Ashwin Babu", recipientPhone: "9025117533",
+    line1: "Mandrem Market Road", line2: "", locality: "Mandrem", city: "North Goa", state: "Goa", postalCode: "403527",
+    landmark: "", instructions: "", isDefault: false,
+  },
+];
+
+export const a2MandremOrders: StorefrontOrder[] = [
+  {
+    id: "A21083", restaurantId: "a2-mandrem", placedAt: "2026-08-14T15:20:00+05:30", status: "preparing",
+    paymentStatus: "paid", paymentMethod: "UPI", fulfilment: "delivery",
+    items: [
+      { id: "order-1083-1", productId: "prawn-curry-rice", name: "Goan Prawn Curry Rice", quantity: 1, unitPrice: 340, selectedOptions: ["Medium spicy"] },
+      { id: "order-1083-2", productId: "paneer-kathi-roll", name: "Paneer Kathi Roll", quantity: 1, unitPrice: 190 },
+      { id: "order-1083-3", productId: "kokum-cooler", name: "Kokum Cooler", quantity: 1, unitPrice: 95 },
+    ],
+    subtotal: 625, discount: 0, deliveryFee: 39, taxes: 112, total: 776,
+    deliveryAddress: a2MandremAddresses[0], orderNote: "Please call when outside.", estimatedFulfilment: "Estimated delivery 4:10 PM",
+    timeline: [
+      { label: "Order placed", occurredAt: "2026-08-14T15:20:00+05:30" },
+      { label: "Accepted", occurredAt: "2026-08-14T15:22:00+05:30" },
+      { label: "Preparing", occurredAt: "2026-08-14T15:28:00+05:30" },
+    ],
+  },
+  {
+    id: "A20984", restaurantId: "a2-mandrem", placedAt: "2026-08-12T20:42:00+05:30", status: "delivered",
+    paymentStatus: "paid", paymentMethod: "UPI", fulfilment: "delivery",
+    items: [
+      { id: "order-984-1", productId: "masala-dosa", name: "Classic Masala Dosa", quantity: 2, unitPrice: 150, selectedOptions: ["Extra chutney"] },
+      { id: "order-984-2", productId: "masala-fries", name: "Masala Fries", quantity: 1, unitPrice: 130, selectedOptions: ["Extra lime"] },
+    ],
+    subtotal: 430, discount: 50, couponCode: "SAVE10", deliveryFee: 39, taxes: 68, total: 487,
+    deliveryAddress: a2MandremAddresses[0], completedAt: "2026-08-12T21:26:00+05:30",
+    timeline: [
+      { label: "Order placed", occurredAt: "2026-08-12T20:42:00+05:30" },
+      { label: "Accepted", occurredAt: "2026-08-12T20:44:00+05:30" },
+      { label: "Out for delivery", occurredAt: "2026-08-12T21:08:00+05:30" },
+      { label: "Delivered", occurredAt: "2026-08-12T21:26:00+05:30" },
+    ],
+  },
+  {
+    id: "A20917", restaurantId: "a2-mandrem", placedAt: "2026-08-03T13:14:00+05:30", status: "completed",
+    paymentStatus: "paid", paymentMethod: "Card", fulfilment: "pickup",
+    items: [
+      { id: "order-917-1", productId: "veg-xacuti", name: "Vegetable Xacuti", quantity: 1, unitPrice: 260 },
+      { id: "order-917-2", productId: "bebinca", name: "Goan Bebinca", quantity: 1, unitPrice: 180 },
+    ],
+    subtotal: 440, discount: 0, deliveryFee: 0, taxes: 79, total: 519, completedAt: "2026-08-03T13:39:00+05:30",
+    timeline: [
+      { label: "Order placed", occurredAt: "2026-08-03T13:14:00+05:30" },
+      { label: "Ready for pickup", occurredAt: "2026-08-03T13:36:00+05:30" },
+      { label: "Collected", occurredAt: "2026-08-03T13:39:00+05:30" },
+    ],
+  },
+  {
+    id: "A20871", restaurantId: "a2-mandrem", placedAt: "2026-07-27T19:08:00+05:30", status: "cancelled",
+    paymentStatus: "refunded", fulfilment: "delivery",
+    items: [{ id: "order-871-1", productId: "fish-thali", name: "Goan Fish Thali", quantity: 1, unitPrice: 390 }],
+    subtotal: 390, discount: 0, deliveryFee: 0, taxes: 0, total: 390,
+    deliveryAddress: a2MandremAddresses[1], cancellationReason: "Restaurant unable to fulfil this order.",
+    timeline: [
+      { label: "Order placed", occurredAt: "2026-07-27T19:08:00+05:30" },
+      { label: "Cancelled", occurredAt: "2026-07-27T19:14:00+05:30" },
+    ],
+  },
+];

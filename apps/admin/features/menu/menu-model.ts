@@ -37,6 +37,7 @@ export interface Product {
   scheduleEnd: string;
   scheduleDays: string[];
   image?: string;
+  featured?: boolean;
   variantGroups: VariantGroup[];
 }
 

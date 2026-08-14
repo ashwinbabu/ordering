@@ -878,47 +878,6 @@ export type Database = {
         }
         Relationships: []
       }
-      location_featured_products: {
-        Row: {
-          created_at: string
-          ends_at: string | null
-          is_active: boolean
-          location_id: string
-          product_id: string
-          sort_order: number
-          starts_at: string | null
-          updated_at: string
-        }
-        Insert: {
-          created_at?: string
-          ends_at?: string | null
-          is_active?: boolean
-          location_id: string
-          product_id: string
-          sort_order?: number
-          starts_at?: string | null
-          updated_at?: string
-        }
-        Update: {
-          created_at?: string
-          ends_at?: string | null
-          is_active?: boolean
-          location_id?: string
-          product_id?: string
-          sort_order?: number
-          starts_at?: string | null
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "location_featured_products_product_location_fkey"
-            columns: ["product_id", "location_id"]
-            isOneToOne: true
-            referencedRelation: "product_locations"
-            referencedColumns: ["product_id", "location_id"]
-          },
-        ]
-      }
       menu_categories: {
         Row: {
           business_id: string
@@ -1795,10 +1754,6 @@ export type Database = {
         }
         Returns: Json
       }
-      get_featured_product_ids: {
-        Args: { p_business_id: string; p_location_id: string }
-        Returns: Json
-      }
       get_menu: {
         Args: { p_business_id: string; p_location_id: string }
         Returns: Json
@@ -1931,14 +1886,6 @@ export type Database = {
           p_business_id: string
           p_location_id: string
           p_settings: Json
-        }
-        Returns: undefined
-      }
-      save_featured_product_ids: {
-        Args: {
-          p_business_id: string
-          p_location_id: string
-          p_product_ids: string[]
         }
         Returns: undefined
       }

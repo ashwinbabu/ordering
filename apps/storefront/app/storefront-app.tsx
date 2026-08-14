@@ -1,14 +1,166 @@
-import { a2MandremStorefront } from "../demo/a2-mandrem";
+import { a2MandremAddresses, a2MandremCustomer, a2MandremOrders } from "../demo/a2-mandrem";
+import { useMemo, useState } from "react";
+import type { CartLine, CartLineOptionSelection, CheckoutRequest, CustomerDetails, CustomerProfile, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
+import { AccountScreen } from "../features/account/account-screen";
+import { SavedAddressesScreen } from "../features/addresses/saved-addresses-screen";
+import { AuthFlowSheet, type AuthFlowRequest } from "../features/auth/auth-flow-sheet";
+import { CartScreen } from "../features/cart/cart-screen";
+import { PaymentFlowScreen } from "../features/checkout/payment-flow-screen";
+import { useCheckoutFlow } from "../features/checkout/use-checkout-flow";
 import { MenuScreen } from "../features/menu/menu-screen";
+import { ProductConfigurationSheet } from "../features/menu/product-configuration-sheet";
+import { menuFromStorefrontMenu, venueFromStorefrontMenu } from "../features/menu/storefront-menu-adapter";
+import { storefrontLocationId } from "../features/menu/storefront-location";
+import { useStorefrontMenu } from "../features/menu/use-storefront-menu";
+import { OrderDetailsScreen } from "../features/orders/order-details-screen";
+import { OrdersScreen } from "../features/orders/orders-screen";
+import { OrderTrackingScreen } from "../features/orders/order-tracking-screen";
 import { VenueFooter } from "../features/venue/venue-footer";
 import { VenueHeader } from "../features/venue/venue-header";
+import type { AddressDraft } from "../features/addresses/address-form";
+
+type Screen = "account" | "addresses" | "cart" | "menu" | "order-details" | "orders" | "payment" | "tracking";
+interface ConfigurationTarget { productId: string; lineId?: string; }
+
+const currentOrderStatuses = new Set<StorefrontOrder["status"]>(["placed", "accepted", "preparing", "out-for-delivery"]);
 
 export function StorefrontApp() {
-  return (
-    <main className="ordering-app">
-      <VenueHeader venue={a2MandremStorefront.venue} />
-      <MenuScreen menu={a2MandremStorefront.menu} orderingStatus={a2MandremStorefront.venue.orderingStatus} />
-      <VenueFooter venue={a2MandremStorefront.venue} />
-    </main>
+  const [cart, setCart] = useState<CartLine[]>([]);
+  const [customer, setCustomer] = useState<CustomerProfile>(a2MandremCustomer);
+  const [savedAddresses, setSavedAddresses] = useState<DeliveryAddress[]>(a2MandremAddresses);
+  const [orders] = useState<StorefrontOrder[]>(a2MandremOrders);
+  const checkout = useCheckoutFlow();
+  const [screen, setScreen] = useState<Screen>(() => checkout.order ? checkout.phase === "confirmed" ? "tracking" : "payment" : "menu");
+  const [authRequest, setAuthRequest] = useState<AuthFlowRequest>();
+  const [selectedOrderId, setSelectedOrderId] = useState<string>();
+  const [configurationTarget, setConfigurationTarget] = useState<ConfigurationTarget>();
+  const storefrontMenuResource = useStorefrontMenu(storefrontLocationId);
+  const menu = useMemo(
+    () => storefrontMenuResource.data ? menuFromStorefrontMenu(storefrontMenuResource.data) : null,
+    [storefrontMenuResource.data],
   );
+  const venue = useMemo(
+    () => storefrontMenuResource.data ? venueFromStorefrontMenu(storefrontMenuResource.data) : null,
+    [storefrontMenuResource.data],
+  );
+  const cartQuantities = useMemo(() => Object.fromEntries(cart.map((line) => [line.productId, line.quantity])), [cart]);
+  const cartItemCount = useMemo(() => cart.reduce((count, line) => count + line.quantity, 0), [cart]);
+  const customerDetails: CustomerDetails = { name: customer.name, countryCode: customer.countryCode, phone: customer.phone };
+  const restaurantOrders = orders.filter((order) => order.restaurantId === "a2-mandrem");
+  const currentOrders = restaurantOrders.filter((order) => currentOrderStatuses.has(order.status));
+  const pastOrders = restaurantOrders.filter((order) => !currentOrderStatuses.has(order.status)).slice().sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt));
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId);
+
+  const configurationProduct = configurationTarget ? menu?.products.find((product) => product.id === configurationTarget.productId) : undefined;
+  const configurationLine = configurationTarget?.lineId ? cart.find((line) => line.id === configurationTarget.lineId) : undefined;
+
+  function changeSimpleProductQuantity(productId: string, quantity: number) {
+    setCart((current) => {
+      const existing = current.find((line) => line.productId === productId && line.selectedOptions.length === 0);
+      if (quantity <= 0) return existing ? current.filter((line) => line.id !== existing.id) : current;
+      if (existing) return current.map((line) => line.id === existing.id ? { ...line, quantity } : line);
+      const product = menu?.products.find((item) => item.id === productId);
+      return product ? [...current, { id: `simple-${product.id}`, productId, quantity, unitPrice: product.price, selectedOptions: [] }] : current;
+    });
+  }
+
+  function changeCartLineQuantity(lineId: string, quantity: number) {
+    setCart((current) => quantity <= 0
+      ? current.filter((line) => line.id !== lineId)
+      : current.map((line) => line.id === lineId ? { ...line, quantity } : line));
+  }
+
+  function openProductConfiguration(product: MenuProduct) {
+    if ((product.optionGroups?.length ?? 0) > 0) setConfigurationTarget({ productId: product.id });
+    else changeSimpleProductQuantity(product.id, (cart.find((line) => line.productId === product.id && line.selectedOptions.length === 0)?.quantity ?? 0) + 1);
+  }
+
+  function saveConfiguration(selections: CartLineOptionSelection[]) {
+    if (!configurationProduct) return;
+    const unitPrice = configurationProduct.price + selections.reduce((total, selection) => total + selection.priceDelta, 0);
+    setCart((current) => configurationTarget?.lineId
+      ? current.map((line) => line.id === configurationTarget.lineId ? { ...line, selectedOptions: selections, unitPrice } : line)
+      : [...current, { id: `configuration-${Date.now()}`, productId: configurationProduct.id, quantity: 1, unitPrice, selectedOptions: selections }]);
+    setConfigurationTarget(undefined);
+  }
+
+  function changeCustomerDetails(details: CustomerDetails) {
+    setCustomer((current) => ({ ...current, ...details, isPhoneVerified: current.phone === details.phone ? current.isPhoneVerified : false }));
+  }
+
+  function saveAddress(draft: AddressDraft, editingId?: string) {
+    const id = editingId ?? `address-${Date.now()}`;
+    const next = { ...draft, id };
+    setSavedAddresses((current) => editingId
+      ? current.map((address) => address.id === editingId ? next : draft.isDefault ? { ...address, isDefault: false } : address)
+      : [...current.map((address) => draft.isDefault ? { ...address, isDefault: false } : address), next]);
+  }
+
+  function openAuth(request: AuthFlowRequest) {
+    setAuthRequest({
+      ...request,
+      onCancel: () => { request.onCancel?.(); setAuthRequest(undefined); },
+      onSuccess: (phone) => { request.onSuccess(phone); setAuthRequest(undefined); },
+    });
+  }
+
+  function requestAccountAuthentication() {
+    openAuth({
+      context: "account",
+      onSuccess: () => setScreen("account"),
+    });
+  }
+
+  function beginCheckout(request: CheckoutRequest) {
+    setScreen("payment");
+    void checkout.begin(request);
+  }
+
+  function openTracking() {
+    if (!checkout.order) return;
+    window.history.replaceState({}, "", `/orders/${checkout.order.id}`);
+    setScreen("tracking");
+  }
+
+  function returnToRestaurant() {
+    window.history.replaceState({}, "", "/");
+    setScreen("menu");
+  }
+
+  function openOrderDetails(order: StorefrontOrder) {
+    setSelectedOrderId(order.id);
+    setScreen("order-details");
+    window.scrollTo({ top: 0 });
+  }
+
+  function orderAgain(order: StorefrontOrder) {
+    const lines = order.items.flatMap((item) => {
+      const product = item.productId ? menu?.products.find((candidate) => candidate.id === item.productId) : undefined;
+      return product ? [{ id: `reorder-${item.id}`, productId: product.id, quantity: item.quantity, unitPrice: product.price, selectedOptions: [] }] : [];
+    });
+    setCart(lines);
+    setScreen("menu");
+    requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+  }
+
+  if (storefrontMenuResource.status === "error") {
+    return <main className="ordering-app"><section className="customer-empty-state" role="alert"><h1>Menu unavailable</h1><p>{storefrontMenuResource.error.message}</p><button className="primary-button" type="button" onClick={storefrontMenuResource.retry}>Try again</button></section></main>;
+  }
+
+  if (storefrontMenuResource.status === "loading" || !menu || !venue) {
+    return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading menu</h1><p>Getting the latest menu for this location.</p></section></main>;
+  }
+
+  return <>
+    {screen === "menu" ? <main className="ordering-app"><VenueHeader venue={venue} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onGoToCart={() => { setScreen("cart"); window.scrollTo({ top: 0 }); }} onQuantityChange={changeSimpleProductQuantity} orderingStatus={venue.orderingStatus} /><VenueFooter venue={venue} /></main> : null}
+    {screen === "cart" ? <CartScreen cart={cart} customerDetails={customerDetails} isCustomerVerified={customer.isPhoneVerified} menu={menu} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCheckoutAttempt={beginCheckout} onCustomerDetailsChange={changeCustomerDetails} onEditConfiguration={(lineId) => { const line = cart.find((candidate) => candidate.id === lineId); if (line) setConfigurationTarget({ productId: line.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
+    {screen === "account" ? <AccountScreen addressCount={savedAddresses.length} customer={customer} onBack={() => setScreen("menu")} onOpenAddresses={() => setScreen("addresses")} onOpenOrders={() => setScreen("orders")} onRequestPhoneChange={() => openAuth({ context: "account", initialStep: "phone", phone: { countryCode: customer.countryCode, phone: customer.phone }, onSuccess: (phone) => setCustomer((current) => ({ ...current, ...phone, isPhoneVerified: true })) })} onSaveCustomer={setCustomer} onSignOut={() => setScreen("menu")} venue={venue} /> : null}
+    {screen === "addresses" ? <SavedAddressesScreen addresses={savedAddresses} onBack={() => setScreen("account")} onDelete={(id) => setSavedAddresses((current) => current.filter((address) => address.id !== id))} onSave={saveAddress} venue={venue} /> : null}
+    {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} venue={venue} /> : null}
+    {screen === "order-details" && selectedOrder ? <OrderDetailsScreen order={selectedOrder} onBack={() => setScreen("orders")} onOrderAgain={orderAgain} venue={venue} /> : null}
+    {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onProviderReturn={checkout.returnFromProvider} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
+    {screen === "tracking" && checkout.order ? <OrderTrackingScreen onBackToRestaurant={returnToRestaurant} order={checkout.order} venue={venue} /> : null}
+    {configurationProduct ? <ProductConfigurationSheet initialSelections={configurationLine?.selectedOptions} product={configurationProduct} onClose={() => setConfigurationTarget(undefined)} onConfirm={saveConfiguration} /> : null}
+    {authRequest ? <AuthFlowSheet request={authRequest} /> : null}
+  </>;
 }

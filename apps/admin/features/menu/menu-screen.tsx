@@ -877,6 +877,14 @@ export function ProductEditorOverlay({
             <div className="form-section-heading">
               <h3>Availability</h3>
             </div>
+            <label className="required-field">
+              <input
+                type="checkbox"
+                checked={draft.featured ?? false}
+                onChange={(event) => change("featured", event.target.checked)}
+              />
+              <span>Mark featured</span>
+            </label>
             <div className="availability-edit-row">
               <span>
                 <strong>Manually available</strong>

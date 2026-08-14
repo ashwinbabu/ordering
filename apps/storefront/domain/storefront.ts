@@ -28,7 +28,7 @@ export interface MenuProduct {
   imageUrl?: string;
   availability: ProductAvailability;
   badges?: string[];
-  configurable?: boolean;
+  optionGroups?: StorefrontMenuOptionGroup[];
 }
 
 export interface FeaturedProduct {
@@ -49,11 +49,185 @@ export interface StorefrontDemo {
   menu: Menu;
 }
 
+export type StorefrontOptionSelectionType = "single" | "multiple";
+
+export interface StorefrontMenuOption {
+  id: string;
+  name: string;
+  priceDelta: number;
+  available: boolean;
+  sortOrder: number;
+}
+
+export interface StorefrontMenuOptionGroup {
+  id: string;
+  name: string;
+  selectionType: StorefrontOptionSelectionType;
+  minSelections: number;
+  maxSelections: number;
+  sortOrder: number;
+  options: StorefrontMenuOption[];
+}
+
+export interface StorefrontMenuProduct {
+  id: string;
+  name: string;
+  description: string | null;
+  basePrice: number;
+  image: string | null;
+  dietaryType: string | null;
+  available: boolean;
+  sortOrder: number;
+  optionGroups: StorefrontMenuOptionGroup[];
+}
+
+export interface StorefrontMenuCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+  products: StorefrontMenuProduct[];
+}
+
+export interface StorefrontMenu {
+  schemaVersion: 1;
+  business: {
+    id: string;
+    name: string;
+    slug: string;
+    currency: string;
+  };
+  location: {
+    id: string;
+    name: string;
+  };
+  categories: StorefrontMenuCategory[];
+  featuredProducts: FeaturedProduct[];
+}
+
+export type FulfilmentType = "delivery" | "pickup";
+
+export interface CartLine {
+  id: string;
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  selectedOptions: CartLineOptionSelection[];
+}
+
+export interface CartLineOptionSelection {
+  groupId: string;
+  optionId: string;
+  groupName: string;
+  optionName: string;
+  priceDelta: number;
+}
+
+export interface CustomerDetails {
+  name: string;
+  countryCode: string;
+  phone: string;
+}
+
+export type AddressLabel = "Home" | "Work" | "Other";
+
+export interface DeliveryAddress {
+  id: string;
+  label: AddressLabel;
+  customLabel?: string;
+  recipientName: string;
+  recipientPhone: string;
+  line1: string;
+  line2: string;
+  locality: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  landmark: string;
+  instructions: string;
+  isDefault: boolean;
+}
+
+export interface CustomerProfile {
+  name: string;
+  countryCode: string;
+  phone: string;
+  email?: string;
+  isPhoneVerified: boolean;
+}
+
+export type OrderStatus = "placed" | "accepted" | "preparing" | "out-for-delivery" | "delivered" | "completed" | "cancelled" | "refunded";
+export type PaymentStatus = "awaiting_provider" | "confirmed" | "pending" | "failed" | "cancelled" | "verification_error";
+export type OrderPaymentStatus = "paid" | "pending" | "refunded";
+
+export interface OrderLineItem {
+  id: string;
+  productId?: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  selectedOptions?: string[];
+  note?: string;
+}
+
+export interface OrderTimelineEntry {
+  label: string;
+  occurredAt: string;
+}
+
+export interface StorefrontOrder {
+  id: string;
+  restaurantId: string;
+  placedAt: string;
+  status: OrderStatus;
+  paymentStatus: OrderPaymentStatus;
+  paymentMethod?: string;
+  fulfilment: FulfilmentType;
+  items: OrderLineItem[];
+  subtotal: number;
+  discount: number;
+  deliveryFee: number;
+  taxes: number;
+  total: number;
+  couponCode?: string;
+  deliveryAddress?: DeliveryAddress;
+  orderNote?: string;
+  estimatedFulfilment?: string;
+  completedAt?: string;
+  cancellationReason?: string;
+  timeline?: OrderTimelineEntry[];
+}
+
+export type ResourceState = "loading" | "ready" | "error";
+
+export interface CheckoutRequest {
+  cart: CartLine[];
+  customer: CustomerDetails;
+  deliveryAddress?: DeliveryAddress;
+  displayedTotal: number;
+  fulfilment: FulfilmentType;
+  items: OrderLineItem[];
+  subtotal: number;
+  deliveryFee: number;
+  taxes: number;
+}
+
+export interface PaymentPendingOrder {
+  id: string;
+  amount: number;
+  createdAt: string;
+  fulfilment: FulfilmentType;
+  itemCount: number;
+  paymentStatus: PaymentStatus;
+  trackingOrder: StorefrontOrder;
+}
+
 export function formatRupees(amount: number) {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 

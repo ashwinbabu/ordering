@@ -1,11 +1,12 @@
-import { MapPin } from "lucide-react";
+import { CircleUserRound, MapPin } from "lucide-react";
 import type { Venue } from "../../domain/storefront";
 
 interface VenueHeaderProps {
+  onOpenAccount: () => void;
   venue: Venue;
 }
 
-export function VenueHeader({ venue }: VenueHeaderProps) {
+export function VenueHeader({ onOpenAccount, venue }: VenueHeaderProps) {
   return (
     <header className="outlet-header">
       <div className="outlet-header__inner">
@@ -24,6 +25,7 @@ export function VenueHeader({ venue }: VenueHeaderProps) {
             </p>
           </div>
         </div>
+        <button className="venue-account-button" type="button" onClick={onOpenAccount} aria-label="Open account"><CircleUserRound aria-hidden="true" size={22} /></button>
       </div>
     </header>
   );

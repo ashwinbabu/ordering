@@ -318,12 +318,28 @@ function parseMenuBaseline(data: Json | null): MenuBaseline {
   };
 }
 
+function parseFeaturedProductIds(data: Json | null): string[] {
+  if (!Array.isArray(data) || !data.every((item) => typeof item === "string")) {
+    throw new Error("The featured products response is invalid.");
+  }
+  return data;
+}
+
 export async function getMenu(scope: MenuScope): Promise<MenuData> {
-  const { data, error } = await supabase.schema("ordering").rpc("get_menu", {
-    p_business_id: scope.businessId,
-    p_location_id: scope.locationId,
-  });
-  throwIfError(error);
+  const [menuResponse, featuredResponse] = await Promise.all([
+    supabase.schema("ordering").rpc("get_menu", {
+      p_business_id: scope.businessId,
+      p_location_id: scope.locationId,
+    }),
+    supabase.schema("ordering").rpc("get_featured_product_ids", {
+      p_business_id: scope.businessId,
+      p_location_id: scope.locationId,
+    }),
+  ]);
+  throwIfError(menuResponse.error);
+  throwIfError(featuredResponse.error);
+  const data = menuResponse.data;
+  const featuredProductIds = new Set(parseFeaturedProductIds(featuredResponse.data));
   const {
     categories: categoryItems,
     products: productItems,
@@ -414,6 +430,7 @@ export async function getMenu(scope: MenuScope): Promise<MenuData> {
       scheduledUnavailable: false,
       ...schedule,
       image: product.image_url ?? undefined,
+      featured: featuredProductIds.has(product.id),
       variantGroups: groupsByProductId.get(product.id) ?? [],
     });
     productsByCategoryId.set(product.category_id, entries);
@@ -541,5 +558,15 @@ export async function saveMenuChanges({
       p_menu: menu,
     });
   throwIfError(error);
+  const { error: featuredError } = await supabase
+    .schema("ordering")
+    .rpc("save_featured_product_ids", {
+      p_business_id: scope.businessId,
+      p_location_id: scope.locationId,
+      p_product_ids: products
+        .filter((product) => product.featured)
+        .map((product) => product.id),
+    });
+  throwIfError(featuredError);
   return parseMenuBaseline(data);
 }
