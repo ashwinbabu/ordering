@@ -34,6 +34,7 @@ _logs/
 
 # env files (can opt-in for committing if needed)
 .env*
+!apps/storefront/.env.example
 
 # vercel
 .vercel
@@ -46,8 +47,3 @@ next-env.d.ts
 /apps/*/.sites-runtime/
 /outputs/
 /work/
-
-# documentation
-docs/
-reference/
-*.md

@@ -14,11 +14,14 @@ import { useOutletContext } from "@/features/outlet-context/outlet-context";
 import { useOrderingStatus } from "@/features/ordering-status/ordering-status-context";
 import {
   formatMoney as money,
-  INITIAL_ORDERS,
   nextOrderStatus as nextStatus,
   type Order,
   type OrderStatus,
 } from "@/features/orders/order-model";
+import {
+  useOrdersQuery,
+  useTransitionOrderMutation,
+} from "@/features/orders/orders-query";
 import {
   KotView,
   OrderDetails,
@@ -52,6 +55,13 @@ interface LocalMenuState {
   baseline: MenuBaseline;
 }
 
+function nextOrderBackendStatus(status: string | undefined) {
+  if (status === "placed" || status === "needs_attention") return "accepted";
+  if (status === "accepted" || status === "ready_for_pickup") return "out_for_delivery";
+  if (status === "out_for_delivery") return "delivered";
+  return null;
+}
+
 export function AdminApp() {
   const { authenticated, loading: authLoading, signOut } = useAuth();
   const {
@@ -68,11 +78,15 @@ export function AdminApp() {
     activeBusiness?.id ?? null,
     activeLocation?.id ?? null,
   );
+  const ordersQuery = useOrdersQuery(
+    activeBusiness?.id ?? null,
+    activeLocation?.id ?? null,
+  );
+  const transitionOrderMutation = useTransitionOrderMutation();
   const saveMenuMutation = useSaveMenuMutation();
   const [view, setView] = useState<View>("orders");
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [menuState, setMenuState] = useState<LocalMenuState | null>(null);
-  const [selectedOrderId, setSelectedOrderId] = useState("1048");
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | OrderStatus>("All");
   const [pauseConfirm, setPauseConfirm] = useState(false);
@@ -143,10 +157,11 @@ export function AdminApp() {
   )
     ? selectedCategoryId
     : (categories[0]?.id ?? "");
+  const orders = ordersQuery.data ?? [];
 
   const selectedOrder =
-    orders.find((order) => order.id === selectedOrderId) || orders[0];
-  const cancelOrder = orders.find((order) => order.id === cancelOrderId);
+    orders.find((order) => order.recordId === selectedOrderId) || orders[0];
+  const cancelOrder = orders.find((order) => order.recordId === cancelOrderId);
 
   useEffect(() => {
     document.body.style.overflow = productDraft ? "hidden" : "";
@@ -211,19 +226,26 @@ export function AdminApp() {
     );
   }
 
-  async function persistMenu(categoriesToSave: Category[]) {
+  async function persistMenu(
+    categoriesToSave: Category[],
+    reloadMenu = true,
+  ) {
     if (!activeBusiness || !activeLocation || !menuBaseline) {
       throw new Error(
         "The menu is still loading. Please try again in a moment.",
       );
     }
 
-    await saveMenuMutation.mutateAsync({
+    const baseline = await saveMenuMutation.mutateAsync({
       businessId: activeBusiness.id,
       locationId: activeLocation.id,
       baseline: menuBaseline,
       categories: categoriesToSave,
     });
+    if (!reloadMenu) {
+      replaceMenuState({ categories: categoriesToSave, baseline });
+      return;
+    }
     const refreshed = await menuQuery.refetch();
     if (refreshed.error) throw refreshed.error;
     if (!refreshed.data)
@@ -244,6 +266,9 @@ export function AdminApp() {
 
   function switchLocation(locationId: string) {
     const branch = locations.find((location) => location.id === locationId);
+    setSelectedOrderId("");
+    setCancelOrderId("");
+    setStatusFilter("All");
     selectLocation(locationId);
     showToast(
       `Switched to ${branch ? `${branch.businessName} · ${branch.name}` : "outlet"}.`,
@@ -301,34 +326,36 @@ export function AdminApp() {
     }
   }
 
-  function progressOrder(order: Order) {
+  async function progressOrder(order: Order) {
     const status = nextStatus(order.status);
-    if (!status) return;
+    const nextBackendStatus = nextOrderBackendStatus(order.backendStatus);
+    if (
+      !status ||
+      !nextBackendStatus ||
+      !order.recordId ||
+      !order.backendStatus ||
+      !activeBusiness ||
+      !activeLocation
+    )
+      return;
     setBusyOrderId(order.id);
-    window.setTimeout(() => {
-      const time = new Date().toLocaleTimeString("en-IN", {
-        hour: "numeric",
-        minute: "2-digit",
+    try {
+      await transitionOrderMutation.mutateAsync({
+        businessId: activeBusiness.id,
+        locationId: activeLocation.id,
+        orderId: order.recordId,
+        expectedStatus: order.backendStatus,
+        newStatus: nextBackendStatus,
       });
-      setOrders((current) =>
-        current.map((item) =>
-          item.id === order.id
-            ? {
-                ...item,
-                status,
-                age: status === "Delivered" ? `Delivered ${time}` : item.age,
-                timeline: item.timeline.map((entry) =>
-                  entry.label === (status === "Preparing" ? "Accepted" : status)
-                    ? { ...entry, complete: true, time }
-                    : entry,
-                ),
-              }
-            : item,
-        ),
-      );
-      setBusyOrderId("");
       showToast(`Order #${order.id} moved to ${status}.`);
-    }, 650);
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "Could not update the order.",
+        "error",
+      );
+    } finally {
+      setBusyOrderId("");
+    }
   }
 
   function orderCopyText(order: Order) {
@@ -354,23 +381,23 @@ export function AdminApp() {
   }
 
   function openOrder(order: Order) {
-    setSelectedOrderId(order.id);
+    setSelectedOrderId(order.recordId ?? "");
     setView("order-detail");
   }
 
   function openKOT(order: Order) {
-    setSelectedOrderId(order.id);
+    setSelectedOrderId(order.recordId ?? "");
     setView("kot");
   }
 
   function requestCancel(order: Order) {
-    setCancelOrderId(order.id);
+    setCancelOrderId(order.recordId ?? "");
     setCancelReason("");
     setCancelOther("");
     setRefundAck(false);
   }
 
-  function confirmCancel() {
+  async function confirmCancel() {
     if (
       !cancelOrder ||
       !cancelReason ||
@@ -379,43 +406,46 @@ export function AdminApp() {
     )
       return;
     const reason = cancelReason === "Other" ? cancelOther.trim() : cancelReason;
-    const time = new Date().toLocaleTimeString("en-IN", {
-      hour: "numeric",
-      minute: "2-digit",
-    });
-    setOrders((current) =>
-      current.map((order) =>
-        order.id === cancelOrder.id
-          ? {
-              ...order,
-              status: "Cancelled",
-              cancellationReason: reason,
-              timeline: [
-                ...order.timeline.filter((item) => item.label !== "Delivered"),
-                { label: "Cancelled", time, complete: true },
-              ],
-            }
-          : order,
-      ),
-    );
-    setCancelOrderId("");
-    showToast(
-      `Order #${cancelOrder.id} cancelled. Manual refund responsibility recorded.`,
-      "info",
-    );
+    if (!cancelOrder.recordId || !cancelOrder.backendStatus || !activeBusiness || !activeLocation) return;
+    setBusyOrderId(cancelOrder.id);
+    try {
+      await transitionOrderMutation.mutateAsync({
+        businessId: activeBusiness.id,
+        locationId: activeLocation.id,
+        orderId: cancelOrder.recordId,
+        expectedStatus: cancelOrder.backendStatus,
+        newStatus: "cancelled",
+        cancelReason: reason,
+      });
+      setCancelOrderId("");
+      showToast(
+        `Order #${cancelOrder.id} cancelled. Manual refund responsibility recorded.`,
+        "info",
+      );
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "Could not cancel the order.",
+        "error",
+      );
+    } finally {
+      setBusyOrderId("");
+    }
   }
 
   async function toggleCategoryAvailability(category: Category) {
     setBusyAvailability(category.id);
+    const previousCategories = categories;
     const nextCategories = categories.map((item) =>
       item.id === category.id ? { ...item, available: !item.available } : item,
     );
+    setCategories(nextCategories);
     try {
-      await persistMenu(nextCategories);
+      await persistMenu(nextCategories, false);
       showToast(
         `${category.name} ${category.available ? "made unavailable" : "is available"}.`,
       );
     } catch (error) {
+      setCategories(previousCategories);
       showToast(
         error instanceof Error
           ? error.message
@@ -451,6 +481,7 @@ export function AdminApp() {
       return;
     }
     setBusyAvailability(product.id);
+    const previousCategories = categories;
     const nextCategories = categories.map((item) =>
       item.id === category.id
         ? {
@@ -463,12 +494,14 @@ export function AdminApp() {
           }
         : item,
     );
+    setCategories(nextCategories);
     try {
-      await persistMenu(nextCategories);
+      await persistMenu(nextCategories, false);
       showToast(
         `${product.name} ${product.available ? "made unavailable" : "is available"}.`,
       );
     } catch (error) {
+      setCategories(previousCategories);
       showToast(
         error instanceof Error
           ? error.message
@@ -924,7 +957,24 @@ export function AdminApp() {
   }
 
   let content: React.ReactNode;
-  if (view === "orders") {
+  if (view === "orders" && ordersQuery.isPending) {
+    content = (
+      <MenuDataState
+        title="Loading orders"
+        message="Fetching the orders for this outlet."
+      />
+    );
+  } else if (view === "orders" && ordersQuery.error) {
+    content = (
+      <MenuDataState
+        title="Couldn’t load orders"
+        message={ordersQuery.error.message}
+        onRetry={() => {
+          void ordersQuery.refetch();
+        }}
+      />
+    );
+  } else if (view === "orders") {
     content = (
       <OrdersPage
         orders={orders}
@@ -1188,7 +1238,9 @@ export function AdminApp() {
               <button
                 className="danger-button"
                 disabled={!canConfirmCancel}
-                onClick={confirmCancel}
+                onClick={() => {
+                  void confirmCancel();
+                }}
               >
                 Confirm cancellation
               </button>
