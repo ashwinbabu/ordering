@@ -1,0 +1,16 @@
+{
+  "name": "A2 Food & Beverages — Mandrem",
+  "short_name": "A2 Mandrem",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8f4ed",
+  "theme_color": "#f8f4ed",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
