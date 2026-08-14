@@ -1,64 +1,151 @@
 "use client";
 
 import { CircleAlert, Clock3, Phone } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { AppShell, type AdminView as View } from "@/components/layout/app-shell";
+import { useEffect, useRef, useState, type SetStateAction } from "react";
+import {
+  AppShell,
+  type AdminView as View,
+} from "@/components/layout/app-shell";
 import { Modal } from "@/components/ui/modal";
 import { Toast, type ToastTone } from "@/components/ui/toast";
 import { LoginScreen } from "@/features/auth/login-screen";
 import { useAuth } from "@/features/auth/auth-context";
 import { useOutletContext } from "@/features/outlet-context/outlet-context";
 import { useOrderingStatus } from "@/features/ordering-status/ordering-status-context";
-import { formatMoney as money, INITIAL_ORDERS, nextOrderStatus as nextStatus, type Order, type OrderStatus } from "@/features/orders/order-model";
-import { KotView, OrderDetails, OrdersPage } from "@/features/orders/orders-screen";
-import { cloneCategories, DAYS, INITIAL_CATEGORIES, scheduleSummaryFor, type Category, type CategoryDialog, type Product, type ScheduleMode } from "@/features/menu/menu-model";
-import { MenuAvailability, MenuEditor, ProductEditorOverlay } from "@/features/menu/menu-screen";
+import {
+  formatMoney as money,
+  INITIAL_ORDERS,
+  nextOrderStatus as nextStatus,
+  type Order,
+  type OrderStatus,
+} from "@/features/orders/order-model";
+import {
+  KotView,
+  OrderDetails,
+  OrdersPage,
+} from "@/features/orders/orders-screen";
+import {
+  cloneCategories,
+  createMenuId,
+  DAYS,
+  duplicateMenuProduct,
+  INITIAL_CATEGORIES,
+  scheduleSummaryFor,
+  type Category,
+  type CategoryDialog,
+  type Product,
+  type ScheduleMode,
+} from "@/features/menu/menu-model";
+import {
+  MenuAvailability,
+  MenuEditor,
+  ProductEditorOverlay,
+} from "@/features/menu/menu-screen";
+import { useMenuQuery, useSaveMenuMutation } from "@/features/menu/menu-query";
+import type { MenuBaseline, MenuData } from "@/features/menu/api/menu-api";
 import { BusinessSettings } from "@/features/business-settings/business-settings-screen";
+
+interface LocalMenuState {
+  scopeKey: string;
+  categories: Category[];
+  savedCategories: Category[];
+  baseline: MenuBaseline;
+}
 
 export function AdminApp() {
   const { authenticated, loading: authLoading, signOut } = useAuth();
-  const { activeBusiness, activeLocation, locations, loading: outletLoading, error: outletError, selectLocation, retry: retryOutletContext } = useOutletContext();
+  const {
+    activeBusiness,
+    activeLocation,
+    locations,
+    loading: outletLoading,
+    error: outletError,
+    selectLocation,
+    retry: retryOutletContext,
+  } = useOutletContext();
   const { orderingOpen, pauseOrdering, resumeOrdering } = useOrderingStatus();
+  const menuQuery = useMenuQuery(
+    activeBusiness?.id ?? null,
+    activeLocation?.id ?? null,
+  );
+  const saveMenuMutation = useSaveMenuMutation();
   const [view, setView] = useState<View>("orders");
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
-  const [categories, setCategories] = useState<Category[]>(() => cloneCategories(INITIAL_CATEGORIES));
-  const [savedCategories, setSavedCategories] = useState<Category[]>(() => cloneCategories(INITIAL_CATEGORIES));
+  const [menuState, setMenuState] = useState<LocalMenuState | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState("1048");
-  const [selectedCategoryId, setSelectedCategoryId] = useState("burgers");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | OrderStatus>("All");
   const [pauseConfirm, setPauseConfirm] = useState(false);
   const [pendingNavigation, setPendingNavigation] = useState<View | null>(null);
+  const [pendingLocationId, setPendingLocationId] = useState<string | null>(
+    null,
+  );
   const [busyOrderId, setBusyOrderId] = useState("");
   const [busyAvailability, setBusyAvailability] = useState("");
   const [cancelOrderId, setCancelOrderId] = useState("");
   const [cancelReason, setCancelReason] = useState("");
   const [cancelOther, setCancelOther] = useState("");
   const [refundAck, setRefundAck] = useState(false);
-  const [toast, setToast] = useState<{ tone: ToastTone; message: string } | null>(null);
+  const [toast, setToast] = useState<{
+    tone: ToastTone;
+    message: string;
+  } | null>(null);
   const toastTimer = useRef<number | null>(null);
 
   const [unsavedMenu, setUnsavedMenu] = useState(false);
   const [unsavedSettings, setUnsavedSettings] = useState(false);
+  const [settingsResetToken, setSettingsResetToken] = useState(0);
   const [savingMenu, setSavingMenu] = useState(false);
   const [categoryMenuId, setCategoryMenuId] = useState("");
   const [productMenuId, setProductMenuId] = useState("");
   const [categoryDialog, setCategoryDialog] = useState<CategoryDialog>(null);
   const [categoryName, setCategoryName] = useState("");
   const [categoryError, setCategoryError] = useState("");
-  const [categoryScheduleMode, setCategoryScheduleMode] = useState<ScheduleMode>("restaurant");
+  const [categoryScheduleMode, setCategoryScheduleMode] =
+    useState<ScheduleMode>("restaurant");
   const [categoryScheduleStart, setCategoryScheduleStart] = useState("16:00");
   const [categoryScheduleEnd, setCategoryScheduleEnd] = useState("18:00");
-  const [categoryScheduleDays, setCategoryScheduleDays] = useState<string[]>(DAYS);
+  const [categoryScheduleDays, setCategoryScheduleDays] =
+    useState<string[]>(DAYS);
 
   const [productDraft, setProductDraft] = useState<Product | null>(null);
-  const [productOrigin, setProductOrigin] = useState<{ categoryId: string; productId: string | null } | null>(null);
+  const [productOrigin, setProductOrigin] = useState<{
+    categoryId: string;
+    productId: string | null;
+  } | null>(null);
   const [productDirty, setProductDirty] = useState(false);
-  const [productErrors, setProductErrors] = useState<Record<string, string>>({});
+  const [productErrors, setProductErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [discardProductConfirm, setDiscardProductConfirm] = useState(false);
   const [deleteProductConfirm, setDeleteProductConfirm] = useState(false);
-  const [productDeleteTarget, setProductDeleteTarget] = useState<Product | null>(null);
+  const [productDeleteTarget, setProductDeleteTarget] =
+    useState<Product | null>(null);
 
-  const selectedOrder = orders.find((order) => order.id === selectedOrderId) || orders[0];
+  const menuScopeKey =
+    activeBusiness && activeLocation
+      ? `${activeBusiness.id}:${activeLocation.id}`
+      : null;
+  const scopedMenuState =
+    menuState?.scopeKey === menuScopeKey ? menuState : null;
+  const categories =
+    scopedMenuState?.categories ??
+    menuQuery.data?.categories ??
+    INITIAL_CATEGORIES;
+  const savedCategories =
+    scopedMenuState?.savedCategories ??
+    menuQuery.data?.categories ??
+    INITIAL_CATEGORIES;
+  const menuBaseline =
+    scopedMenuState?.baseline ?? menuQuery.data?.baseline ?? null;
+  const currentSelectedCategoryId = categories.some(
+    (category) => category.id === selectedCategoryId,
+  )
+    ? selectedCategoryId
+    : (categories[0]?.id ?? "");
+
+  const selectedOrder =
+    orders.find((order) => order.id === selectedOrderId) || orders[0];
   const cancelOrder = orders.find((order) => order.id === cancelOrderId);
 
   useEffect(() => {
@@ -85,21 +172,133 @@ export function AdminApp() {
     toastTimer.current = window.setTimeout(() => setToast(null), 3200);
   }
 
+  function setCategories(update: SetStateAction<Category[]>) {
+    if (!menuScopeKey) return;
+    setMenuState((current) => {
+      const scoped = current?.scopeKey === menuScopeKey ? current : null;
+      const currentCategories =
+        scoped?.categories ??
+        menuQuery.data?.categories ??
+        cloneCategories(INITIAL_CATEGORIES);
+      const currentSavedCategories =
+        scoped?.savedCategories ??
+        menuQuery.data?.categories ??
+        cloneCategories(INITIAL_CATEGORIES);
+      const currentBaseline = scoped?.baseline ??
+        menuQuery.data?.baseline ?? { categories: [], products: [] };
+      return {
+        scopeKey: menuScopeKey,
+        categories:
+          typeof update === "function" ? update(currentCategories) : update,
+        savedCategories: currentSavedCategories,
+        baseline: currentBaseline,
+      };
+    });
+  }
+
+  function replaceMenuState(data: MenuData) {
+    if (!menuScopeKey) return;
+    setMenuState({
+      scopeKey: menuScopeKey,
+      categories: cloneCategories(data.categories),
+      savedCategories: cloneCategories(data.categories),
+      baseline: data.baseline,
+    });
+    setSelectedCategoryId((current) =>
+      data.categories.some((category) => category.id === current)
+        ? current
+        : (data.categories[0]?.id ?? ""),
+    );
+  }
+
+  async function persistMenu(categoriesToSave: Category[]) {
+    if (!activeBusiness || !activeLocation || !menuBaseline) {
+      throw new Error(
+        "The menu is still loading. Please try again in a moment.",
+      );
+    }
+
+    await saveMenuMutation.mutateAsync({
+      businessId: activeBusiness.id,
+      locationId: activeLocation.id,
+      baseline: menuBaseline,
+      categories: categoriesToSave,
+    });
+    const refreshed = await menuQuery.refetch();
+    if (refreshed.error) throw refreshed.error;
+    if (!refreshed.data)
+      throw new Error("The saved menu could not be reloaded.");
+    replaceMenuState(refreshed.data);
+  }
+
   function navigate(nextView: View) {
-    if ((view === "menu-editor" && unsavedMenu && nextView !== "menu-editor") || (view === "settings" && unsavedSettings && nextView !== "settings")) {
+    if (
+      (view === "menu-editor" && unsavedMenu && nextView !== "menu-editor") ||
+      (view === "settings" && unsavedSettings && nextView !== "settings")
+    ) {
       setPendingNavigation(nextView);
       return;
     }
     setView(nextView);
   }
 
-  function discardMenuAndNavigate() {
-    if (!pendingNavigation) return;
+  function switchLocation(locationId: string) {
+    const branch = locations.find((location) => location.id === locationId);
+    selectLocation(locationId);
+    showToast(
+      `Switched to ${branch ? `${branch.businessName} · ${branch.name}` : "outlet"}.`,
+      "info",
+    );
+  }
+
+  function requestLocationChange(locationId: string) {
+    if (locationId === activeLocation?.id) return;
+    if (unsavedMenu || unsavedSettings) {
+      setPendingLocationId(locationId);
+      return;
+    }
+    switchLocation(locationId);
+  }
+
+  function discardChangesAndContinue() {
     setCategories(cloneCategories(savedCategories));
     setUnsavedMenu(false);
     setUnsavedSettings(false);
+    setSettingsResetToken((current) => current + 1);
+    if (pendingLocationId) {
+      switchLocation(pendingLocationId);
+      setPendingLocationId(null);
+      return;
+    }
+    if (!pendingNavigation) return;
     setPendingNavigation(null);
     setView(pendingNavigation);
+  }
+
+  async function resumeOrderingWithFeedback() {
+    try {
+      await resumeOrdering();
+      showToast("Ordering resumed. Customers can place new orders.", "info");
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "Could not resume ordering.",
+        "error",
+      );
+    }
+  }
+
+  async function pauseOrderingWithFeedback() {
+    try {
+      await pauseOrdering();
+      showToast("Ordering paused manually.", "info");
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "Could not pause ordering.",
+        "error",
+      );
+    } finally {
+      setPauseConfirm(false);
+    }
   }
 
   function progressOrder(order: Order) {
@@ -107,26 +306,41 @@ export function AdminApp() {
     if (!status) return;
     setBusyOrderId(order.id);
     window.setTimeout(() => {
-      const time = new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-      setOrders((current) => current.map((item) => item.id === order.id
-        ? {
-            ...item,
-            status,
-            age: status === "Delivered" ? `Delivered ${time}` : item.age,
-            timeline: item.timeline.map((entry) => entry.label === (status === "Preparing" ? "Accepted" : status) ? { ...entry, complete: true, time } : entry),
-          }
-        : item));
+      const time = new Date().toLocaleTimeString("en-IN", {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+      setOrders((current) =>
+        current.map((item) =>
+          item.id === order.id
+            ? {
+                ...item,
+                status,
+                age: status === "Delivered" ? `Delivered ${time}` : item.age,
+                timeline: item.timeline.map((entry) =>
+                  entry.label === (status === "Preparing" ? "Accepted" : status)
+                    ? { ...entry, complete: true, time }
+                    : entry,
+                ),
+              }
+            : item,
+        ),
+      );
       setBusyOrderId("");
       showToast(`Order #${order.id} moved to ${status}.`);
     }, 650);
   }
 
   function orderCopyText(order: Order) {
-    const items = order.items.map((item) => {
-      const variants = item.variants?.length ? ` (${item.variants.join(", ")})` : "";
-      const note = item.instructions ? ` — ${item.instructions}` : "";
-      return `${item.qty} x ${item.name}${variants}${note}`;
-    }).join("\n");
+    const items = order.items
+      .map((item) => {
+        const variants = item.variants?.length
+          ? ` (${item.variants.join(", ")})`
+          : "";
+        const note = item.instructions ? ` — ${item.instructions}` : "";
+        return `${item.qty} x ${item.name}${variants}${note}`;
+      })
+      .join("\n");
     return `A2 Order #${order.id}\nCustomer: ${order.customer} · ${order.phone}\n\n${items}\n\nOrder note: ${order.instructions || "None"}\nAddress: ${order.fullAddress}\nDelivery: ${order.deliveryInstructions}\nTotal: ${money(order.total)} · ${order.paid ? "Paid" : "Cash on delivery"}`;
   }
 
@@ -157,52 +371,129 @@ export function AdminApp() {
   }
 
   function confirmCancel() {
-    if (!cancelOrder || !cancelReason || (cancelReason === "Other" && !cancelOther.trim()) || (cancelOrder.paid && !refundAck)) return;
+    if (
+      !cancelOrder ||
+      !cancelReason ||
+      (cancelReason === "Other" && !cancelOther.trim()) ||
+      (cancelOrder.paid && !refundAck)
+    )
+      return;
     const reason = cancelReason === "Other" ? cancelOther.trim() : cancelReason;
-    const time = new Date().toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-    setOrders((current) => current.map((order) => order.id === cancelOrder.id ? {
-      ...order,
-      status: "Cancelled",
-      cancellationReason: reason,
-      timeline: [...order.timeline.filter((item) => item.label !== "Delivered"), { label: "Cancelled", time, complete: true }],
-    } : order));
+    const time = new Date().toLocaleTimeString("en-IN", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    setOrders((current) =>
+      current.map((order) =>
+        order.id === cancelOrder.id
+          ? {
+              ...order,
+              status: "Cancelled",
+              cancellationReason: reason,
+              timeline: [
+                ...order.timeline.filter((item) => item.label !== "Delivered"),
+                { label: "Cancelled", time, complete: true },
+              ],
+            }
+          : order,
+      ),
+    );
     setCancelOrderId("");
-    showToast(`Order #${cancelOrder.id} cancelled. Manual refund responsibility recorded.`, "info");
+    showToast(
+      `Order #${cancelOrder.id} cancelled. Manual refund responsibility recorded.`,
+      "info",
+    );
   }
 
-  function toggleCategoryAvailability(category: Category) {
+  async function toggleCategoryAvailability(category: Category) {
     setBusyAvailability(category.id);
-    window.setTimeout(() => {
-      setCategories((current) => current.map((item) => item.id === category.id ? { ...item, available: !item.available } : item));
-      setSavedCategories((current) => current.map((item) => item.id === category.id ? { ...item, available: !item.available } : item));
+    const nextCategories = categories.map((item) =>
+      item.id === category.id ? { ...item, available: !item.available } : item,
+    );
+    try {
+      await persistMenu(nextCategories);
+      showToast(
+        `${category.name} ${category.available ? "made unavailable" : "is available"}.`,
+      );
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Could not update category availability.",
+        "error",
+      );
+    } finally {
       setBusyAvailability("");
-      showToast(`${category.name} ${category.available ? "made unavailable" : "is available"}.`);
-    }, 480);
+    }
   }
 
-  function toggleProductAvailability(category: Category, product: Product, staged = false) {
+  async function toggleProductAvailability(
+    category: Category,
+    product: Product,
+    staged = false,
+  ) {
     if (staged) {
-      setCategories((current) => current.map((item) => item.id === category.id ? { ...item, products: item.products.map((entry) => entry.id === product.id ? { ...entry, available: !entry.available } : entry) } : item));
+      setCategories((current) =>
+        current.map((item) =>
+          item.id === category.id
+            ? {
+                ...item,
+                products: item.products.map((entry) =>
+                  entry.id === product.id
+                    ? { ...entry, available: !entry.available }
+                    : entry,
+                ),
+              }
+            : item,
+        ),
+      );
       setUnsavedMenu(true);
       return;
     }
     setBusyAvailability(product.id);
-    window.setTimeout(() => {
-      setCategories((current) => current.map((item) => item.id === category.id ? { ...item, products: item.products.map((entry) => entry.id === product.id ? { ...entry, available: !entry.available } : entry) } : item));
-      setSavedCategories((current) => current.map((item) => item.id === category.id ? { ...item, products: item.products.map((entry) => entry.id === product.id ? { ...entry, available: !entry.available } : entry) } : item));
+    const nextCategories = categories.map((item) =>
+      item.id === category.id
+        ? {
+            ...item,
+            products: item.products.map((entry) =>
+              entry.id === product.id
+                ? { ...entry, available: !entry.available }
+                : entry,
+            ),
+          }
+        : item,
+    );
+    try {
+      await persistMenu(nextCategories);
+      showToast(
+        `${product.name} ${product.available ? "made unavailable" : "is available"}.`,
+      );
+    } catch (error) {
+      showToast(
+        error instanceof Error
+          ? error.message
+          : "Could not update product availability.",
+        "error",
+      );
+    } finally {
       setBusyAvailability("");
-      showToast(`${product.name} ${product.available ? "made unavailable" : "is available"}.`);
-    }, 480);
+    }
   }
 
-  function saveMenu() {
+  async function saveMenu() {
     setSavingMenu(true);
-    window.setTimeout(() => {
-      setSavingMenu(false);
-      setSavedCategories(cloneCategories(categories));
+    try {
+      await persistMenu(categories);
       setUnsavedMenu(false);
       showToast("Menu changes saved.");
-    }, 700);
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "Could not save menu changes.",
+        "error",
+      );
+    } finally {
+      setSavingMenu(false);
+    }
   }
 
   function reorderCategory(id: string, direction: -1 | 1) {
@@ -217,16 +508,28 @@ export function AdminApp() {
     setUnsavedMenu(true);
   }
 
-  function reorderProduct(categoryId: string, productId: string, direction: -1 | 1) {
-    setCategories((current) => current.map((category) => {
-      if (category.id !== categoryId) return category;
-      const index = category.products.findIndex((product) => product.id === productId);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= category.products.length) return category;
-      const products = [...category.products];
-      [products[index], products[target]] = [products[target], products[index]];
-      return { ...category, products };
-    }));
+  function reorderProduct(
+    categoryId: string,
+    productId: string,
+    direction: -1 | 1,
+  ) {
+    setCategories((current) =>
+      current.map((category) => {
+        if (category.id !== categoryId) return category;
+        const index = category.products.findIndex(
+          (product) => product.id === productId,
+        );
+        const target = index + direction;
+        if (index < 0 || target < 0 || target >= category.products.length)
+          return category;
+        const products = [...category.products];
+        [products[index], products[target]] = [
+          products[target],
+          products[index],
+        ];
+        return { ...category, products };
+      }),
+    );
     setUnsavedMenu(true);
   }
 
@@ -256,55 +559,119 @@ export function AdminApp() {
         setCategoryError("Category name is required.");
         return;
       }
-      const duplicate = categories.some((category) => category.name.toLowerCase() === name.toLowerCase() && (categoryDialog.type === "add" || category.id !== categoryDialog.categoryId));
+      const duplicate = categories.some(
+        (category) =>
+          category.name.toLowerCase() === name.toLowerCase() &&
+          (categoryDialog.type === "add" ||
+            category.id !== categoryDialog.categoryId),
+      );
       if (duplicate) {
         setCategoryError("A category with this name already exists.");
         return;
       }
       if (categoryDialog.type === "add") {
-        const id = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`;
-        setCategories((current) => [...current, { id, name, available: true, scheduleMode: "restaurant", scheduleSummary: "All restaurant hours", scheduleStart: "", scheduleEnd: "", scheduleDays: DAYS, products: [] }]);
+        const id = createMenuId();
+        setCategories((current) => [
+          ...current,
+          {
+            id,
+            name,
+            description: "",
+            available: true,
+            scheduleMode: "restaurant",
+            scheduleSummary: "All restaurant hours",
+            scheduleStart: "",
+            scheduleEnd: "",
+            scheduleDays: DAYS,
+            products: [],
+          },
+        ]);
         setSelectedCategoryId(id);
       } else {
-        setCategories((current) => current.map((category) => category.id === categoryDialog.categoryId ? { ...category, name } : category));
+        setCategories((current) =>
+          current.map((category) =>
+            category.id === categoryDialog.categoryId
+              ? { ...category, name }
+              : category,
+          ),
+        );
       }
       setUnsavedMenu(true);
       setCategoryDialog(null);
       return;
     }
     if (categoryDialog.type === "schedule") {
-      if (categoryScheduleMode !== "restaurant" && (!categoryScheduleStart || !categoryScheduleEnd || categoryScheduleStart >= categoryScheduleEnd)) {
+      if (
+        categoryScheduleMode !== "restaurant" &&
+        (!categoryScheduleStart ||
+          !categoryScheduleEnd ||
+          categoryScheduleStart >= categoryScheduleEnd)
+      ) {
         setCategoryError("End time must be later than start time.");
         return;
       }
-      if (categoryScheduleMode === "different" && !categoryScheduleDays.length) {
+      if (
+        categoryScheduleMode === "different" &&
+        !categoryScheduleDays.length
+      ) {
         setCategoryError("Select at least one day.");
         return;
       }
-      const template = categories.find((category) => category.id === categoryDialog.categoryId)?.products[0] || INITIAL_CATEGORIES[0].products[0];
-      const summary = scheduleSummaryFor({ ...template, scheduleMode: categoryScheduleMode, scheduleStart: categoryScheduleStart, scheduleEnd: categoryScheduleEnd, scheduleDays: categoryScheduleDays });
-      setCategories((current) => current.map((category) => category.id === categoryDialog.categoryId ? { ...category, scheduleMode: categoryScheduleMode, scheduleStart: categoryScheduleStart, scheduleEnd: categoryScheduleEnd, scheduleDays: categoryScheduleDays, scheduleSummary: summary } : category));
+      const template =
+        categories.find((category) => category.id === categoryDialog.categoryId)
+          ?.products[0] || INITIAL_CATEGORIES[0].products[0];
+      const summary = scheduleSummaryFor({
+        ...template,
+        scheduleMode: categoryScheduleMode,
+        scheduleStart: categoryScheduleStart,
+        scheduleEnd: categoryScheduleEnd,
+        scheduleDays: categoryScheduleDays,
+      });
+      setCategories((current) =>
+        current.map((category) =>
+          category.id === categoryDialog.categoryId
+            ? {
+                ...category,
+                scheduleMode: categoryScheduleMode,
+                scheduleStart: categoryScheduleStart,
+                scheduleEnd: categoryScheduleEnd,
+                scheduleDays: categoryScheduleDays,
+                scheduleSummary: summary,
+              }
+            : category,
+        ),
+      );
       setUnsavedMenu(true);
       setCategoryDialog(null);
       return;
     }
     if (categoryDialog.type === "delete") {
-      const category = categories.find((item) => item.id === categoryDialog.categoryId);
+      const category = categories.find(
+        (item) => item.id === categoryDialog.categoryId,
+      );
       if (category?.products.length) return;
-      setCategories((current) => current.filter((item) => item.id !== categoryDialog.categoryId));
-      setSelectedCategoryId(categories.find((item) => item.id !== categoryDialog.categoryId)?.id || "");
+      setCategories((current) =>
+        current.filter((item) => item.id !== categoryDialog.categoryId),
+      );
+      setSelectedCategoryId(
+        categories.find((item) => item.id !== categoryDialog.categoryId)?.id ||
+          "",
+      );
       setUnsavedMenu(true);
       setCategoryDialog(null);
     }
   }
 
   function duplicateCategory(category: Category) {
-    const id = `${category.id}-copy-${Date.now()}`;
+    const id = createMenuId();
     const clone: Category = {
-      ...JSON.parse(JSON.stringify(category)),
+      ...category,
       id,
       name: `Copy of ${category.name}`,
-      products: category.products.map((product) => ({ ...JSON.parse(JSON.stringify(product)), id: `${product.id}-copy-${Date.now()}-${Math.random()}`, categoryId: id })),
+      scheduleDays: [...category.scheduleDays],
+      products: category.products.map((product) =>
+        duplicateMenuProduct(product, id),
+      ),
     };
     setCategories((current) => [...current, clone]);
     setSelectedCategoryId(id);
@@ -314,16 +681,15 @@ export function AdminApp() {
   }
 
   function duplicateProduct(product: Product) {
-    const now = Date.now();
-    const clone = JSON.parse(JSON.stringify(product)) as Product;
-    clone.id = `${product.id}-copy-${now}`;
+    const clone = duplicateMenuProduct(product);
     clone.name = `Copy of ${product.name}`;
-    clone.variantGroups = clone.variantGroups.map((group, groupIndex) => ({
-      ...group,
-      id: `${group.id}-copy-${now}-${groupIndex}`,
-      options: group.options.map((option, optionIndex) => ({ ...option, id: `${option.id}-copy-${now}-${optionIndex}` })),
-    }));
-    setCategories((current) => current.map((category) => category.id === product.categoryId ? { ...category, products: [...category.products, clone] } : category));
+    setCategories((current) =>
+      current.map((category) =>
+        category.id === product.categoryId
+          ? { ...category, products: [...category.products, clone] }
+          : category,
+      ),
+    );
     setUnsavedMenu(true);
     setProductMenuId("");
     showToast(`${clone.name} created. Review before saving.`, "info");
@@ -337,7 +703,18 @@ export function AdminApp() {
   function deleteProductFromMenu() {
     if (!productDeleteTarget) return;
     const name = productDeleteTarget.name;
-    setCategories((current) => current.map((category) => category.id === productDeleteTarget.categoryId ? { ...category, products: category.products.filter((product) => product.id !== productDeleteTarget.id) } : category));
+    setCategories((current) =>
+      current.map((category) =>
+        category.id === productDeleteTarget.categoryId
+          ? {
+              ...category,
+              products: category.products.filter(
+                (product) => product.id !== productDeleteTarget.id,
+              ),
+            }
+          : category,
+      ),
+    );
     setUnsavedMenu(true);
     setProductDeleteTarget(null);
     showToast(`${name} deleted. Save the menu to publish.`, "info");
@@ -345,13 +722,15 @@ export function AdminApp() {
 
   function createBlankProduct(): Product {
     return {
-      id: `product-${Date.now()}`,
+      id: createMenuId(),
       name: "",
       description: "",
-      categoryId: selectedCategoryId,
+      categoryId: currentSelectedCategoryId,
       price: 0,
+      prepTimeMinutes: null,
       foodType: "Veg",
       tag: "",
+      catalogAvailable: true,
       available: true,
       scheduledUnavailable: false,
       scheduleMode: "restaurant",
@@ -365,7 +744,10 @@ export function AdminApp() {
 
   function openNewProduct() {
     setProductDraft(createBlankProduct());
-    setProductOrigin({ categoryId: selectedCategoryId, productId: null });
+    setProductOrigin({
+      categoryId: currentSelectedCategoryId,
+      productId: null,
+    });
     setProductDirty(true);
     setProductErrors({});
   }
@@ -394,15 +776,31 @@ export function AdminApp() {
   function validateProduct(product: Product) {
     const errors: Record<string, string> = {};
     if (!product.name.trim()) errors.name = "Product name is required.";
-    if (!Number.isFinite(product.price) || product.price <= 0) errors.price = "Enter a price greater than ₹0.";
+    if (!Number.isFinite(product.price) || product.price <= 0)
+      errors.price = "Enter a price greater than ₹0.";
     if (product.scheduleMode !== "restaurant") {
-      if (!product.scheduleStart || !product.scheduleEnd || product.scheduleStart >= product.scheduleEnd) errors.schedule = "End time must be later than start time.";
-      if (product.scheduleMode === "different" && !product.scheduleDays.length) errors.schedule = "Select at least one day.";
+      if (
+        !product.scheduleStart ||
+        !product.scheduleEnd ||
+        product.scheduleStart >= product.scheduleEnd
+      )
+        errors.schedule = "End time must be later than start time.";
+      if (product.scheduleMode === "different" && !product.scheduleDays.length)
+        errors.schedule = "Select at least one day.";
     }
     product.variantGroups.forEach((group, index) => {
-      if (group.required && !group.options.length) errors[`group-${index}`] = "A required group needs at least one option.";
-      else if (group.type === "multi" && (group.min > group.max || group.max < 1)) errors[`group-${index}`] = "Minimum cannot exceed maximum.";
-      else if (group.options.some((option) => !option.name.trim() || option.price < 0)) errors[`group-${index}`] = "Every option needs a name and valid price.";
+      if (group.required && !group.options.length)
+        errors[`group-${index}`] =
+          "A required group needs at least one option.";
+      else if (
+        group.type === "multi" &&
+        (group.min > group.max || group.max < 1)
+      )
+        errors[`group-${index}`] = "Minimum cannot exceed maximum.";
+      else if (
+        group.options.some((option) => !option.name.trim() || option.price < 0)
+      )
+        errors[`group-${index}`] = "Every option needs a name and valid price.";
     });
     return errors;
   }
@@ -415,14 +813,33 @@ export function AdminApp() {
       showToast("Fix the highlighted fields before saving.", "error");
       return;
     }
-    const finalProduct = { ...productDraft, scheduleSummary: scheduleSummaryFor(productDraft) };
+    const finalProduct = {
+      ...productDraft,
+      scheduleSummary: scheduleSummaryFor(productDraft),
+    };
     setCategories((current) => {
-      if (productOrigin.productId && productOrigin.categoryId === finalProduct.categoryId) {
-        return current.map((category) => category.id === finalProduct.categoryId ? { ...category, products: category.products.map((product) => product.id === finalProduct.id ? finalProduct : product) } : category);
+      if (
+        productOrigin.productId &&
+        productOrigin.categoryId === finalProduct.categoryId
+      ) {
+        return current.map((category) =>
+          category.id === finalProduct.categoryId
+            ? {
+                ...category,
+                products: category.products.map((product) =>
+                  product.id === finalProduct.id ? finalProduct : product,
+                ),
+              }
+            : category,
+        );
       }
       return current.map((category) => {
-        const products = category.products.filter((product) => product.id !== productOrigin.productId);
-        return category.id === finalProduct.categoryId ? { ...category, products: [...products, finalProduct] } : { ...category, products };
+        const products = category.products.filter(
+          (product) => product.id !== productOrigin.productId,
+        );
+        return category.id === finalProduct.categoryId
+          ? { ...category, products: [...products, finalProduct] }
+          : { ...category, products };
       });
     });
     setSelectedCategoryId(finalProduct.categoryId);
@@ -433,7 +850,14 @@ export function AdminApp() {
 
   function deleteProduct() {
     if (!productOrigin?.productId || !productDraft) return;
-    setCategories((current) => current.map((category) => ({ ...category, products: category.products.filter((product) => product.id !== productOrigin.productId) })));
+    setCategories((current) =>
+      current.map((category) => ({
+        ...category,
+        products: category.products.filter(
+          (product) => product.id !== productOrigin.productId,
+        ),
+      })),
+    );
     setUnsavedMenu(true);
     const name = productDraft.name;
     closeProductEditor();
@@ -449,22 +873,54 @@ export function AdminApp() {
   }
 
   if (outletLoading) {
-    return <OutletContextState title="Loading your business" message="We’re confirming the business and outlet available to this account." />;
+    return (
+      <OutletContextState
+        title="Loading your business"
+        message="We’re confirming the business and outlet available to this account."
+      />
+    );
   }
 
   if (outletError) {
-    return <OutletContextState title="Couldn’t load your business" message={outletError.message} onRetry={retryOutletContext} onSignOut={() => { void signOut(); }} />;
+    return (
+      <OutletContextState
+        title="Couldn’t load your business"
+        message={outletError.message}
+        onRetry={retryOutletContext}
+        onSignOut={() => {
+          void signOut();
+        }}
+      />
+    );
   }
 
   if (!activeBusiness || !activeLocation) {
-    return <OutletContextState title="No active outlet available" message="This account does not have an active business membership with an active outlet." onSignOut={() => { void signOut(); }} />;
+    return (
+      <OutletContextState
+        title="No active outlet available"
+        message="This account does not have an active business membership with an active outlet."
+        onSignOut={() => {
+          void signOut();
+        }}
+      />
+    );
   }
 
-  const branches = locations.map((location) => ({ id: location.id, label: `${location.businessName} · ${location.name}` }));
-  const activeBranch = branches.find((branch) => branch.id === activeLocation.id) ?? { id: activeLocation.id, label: `${activeLocation.businessName} · ${activeLocation.name}` };
+  const branches = locations.map((location) => ({
+    id: location.id,
+    label: `${location.businessName} · ${location.name}`,
+  }));
+  const activeBranch = branches.find(
+    (branch) => branch.id === activeLocation.id,
+  ) ?? {
+    id: activeLocation.id,
+    label: `${activeLocation.businessName} · ${activeLocation.name}`,
+  };
 
   if (view === "kot" && selectedOrder) {
-    return <KotView order={selectedOrder} onBack={() => setView("order-detail")} />;
+    return (
+      <KotView order={selectedOrder} onBack={() => setView("order-detail")} />
+    );
   }
 
   let content: React.ReactNode;
@@ -473,7 +929,10 @@ export function AdminApp() {
       <OrdersPage
         orders={orders}
         orderingOpen={orderingOpen}
-        onOrderingToggle={() => orderingOpen ? setPauseConfirm(true) : resumeOrdering()}
+        onOrderingToggle={() => {
+          if (orderingOpen) setPauseConfirm(true);
+          else void resumeOrderingWithFeedback();
+        }}
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}
         busyOrderId={busyOrderId}
@@ -484,13 +943,35 @@ export function AdminApp() {
         onCancel={requestCancel}
       />
     );
+  } else if (
+    (view === "menu" || view === "menu-editor") &&
+    menuQuery.isPending
+  ) {
+    content = (
+      <MenuDataState
+        title="Loading menu"
+        message="Fetching the categories and products for this outlet."
+      />
+    );
+  } else if ((view === "menu" || view === "menu-editor") && menuQuery.error) {
+    content = (
+      <MenuDataState
+        title="Couldn’t load menu"
+        message={menuQuery.error.message}
+        onRetry={() => {
+          void menuQuery.refetch();
+        }}
+      />
+    );
   } else if (view === "menu") {
     content = (
       <MenuAvailability
         categories={categories}
         busyAvailability={busyAvailability}
         onToggleCategory={toggleCategoryAvailability}
-        onToggleProduct={(category, product) => toggleProductAvailability(category, product)}
+        onToggleProduct={(category, product) =>
+          toggleProductAvailability(category, product)
+        }
         onEditMenu={() => setView("menu-editor")}
       />
     );
@@ -498,7 +979,7 @@ export function AdminApp() {
     content = (
       <MenuEditor
         categories={categories}
-        selectedCategoryId={selectedCategoryId}
+        selectedCategoryId={currentSelectedCategoryId}
         onSelectCategory={setSelectedCategoryId}
         unsaved={unsavedMenu}
         saving={savingMenu}
@@ -508,9 +989,16 @@ export function AdminApp() {
         setCategoryMenuId={setCategoryMenuId}
         onCategoryAction={openCategoryDialog}
         onDuplicateCategory={duplicateCategory}
+        canDeleteCategory={(category) =>
+          !menuBaseline?.categories.some(
+            (savedCategory) => savedCategory.id === category.id,
+          )
+        }
         onReorderCategory={reorderCategory}
         onReorderProduct={reorderProduct}
-        onToggleProduct={(category, product) => toggleProductAvailability(category, product, true)}
+        onToggleProduct={(category, product) =>
+          toggleProductAvailability(category, product, true)
+        }
         onAddProduct={openNewProduct}
         onEditProduct={openEditProduct}
         productMenuId={productMenuId}
@@ -520,7 +1008,21 @@ export function AdminApp() {
       />
     );
   } else if (view === "settings") {
-    content = <BusinessSettings businessName={activeBusiness.name} locationName={activeLocation.name} orderingOpen={orderingOpen} dirty={unsavedSettings} onOrderingToggle={() => orderingOpen ? setPauseConfirm(true) : (resumeOrdering(), showToast("Ordering resumed. Customers can place new orders.", "info"))} onDirtyChange={setUnsavedSettings} onSaved={(section) => showToast(`${section} settings saved.`)} />;
+    content = (
+      <BusinessSettings
+        businessId={activeBusiness.id}
+        locationId={activeLocation.id}
+        businessRole={activeBusiness.role}
+        orderingOpen={orderingOpen}
+        resetToken={settingsResetToken}
+        onOrderingToggle={() => {
+          if (orderingOpen) setPauseConfirm(true);
+          else void resumeOrderingWithFeedback();
+        }}
+        onDirtyChange={setUnsavedSettings}
+        onSaved={(section) => showToast(`${section} settings saved.`)}
+      />
+    );
   } else {
     content = (
       <OrderDetails
@@ -535,8 +1037,16 @@ export function AdminApp() {
     );
   }
 
-  const categoryForDialog = categoryDialog && categoryDialog.type !== "add" ? categories.find((category) => category.id === categoryDialog.categoryId) : null;
-  const canConfirmCancel = Boolean(cancelOrder && cancelReason && (cancelReason !== "Other" || cancelOther.trim()) && (!cancelOrder.paid || refundAck));
+  const categoryForDialog =
+    categoryDialog && categoryDialog.type !== "add"
+      ? categories.find((category) => category.id === categoryDialog.categoryId)
+      : null;
+  const canConfirmCancel = Boolean(
+    cancelOrder &&
+    cancelReason &&
+    (cancelReason !== "Other" || cancelOther.trim()) &&
+    (!cancelOrder.paid || refundAck),
+  );
 
   return (
     <>
@@ -545,10 +1055,16 @@ export function AdminApp() {
         onNavigate={navigate}
         activeBranch={activeBranch}
         branches={branches}
-        onBranchChange={(locationId) => { const branch = branches.find((item) => item.id === locationId); selectLocation(locationId); showToast(`Switched to ${branch?.label ?? "outlet"}.`, "info"); }}
-        onSignOut={() => { void signOut(); setView("orders"); }}
+        onBranchChange={requestLocationChange}
+        onSignOut={() => {
+          void signOut();
+          setView("orders");
+        }}
         orderingOpen={orderingOpen}
-        onKillSwitch={() => orderingOpen ? setPauseConfirm(true) : (resumeOrdering(), showToast("Ordering resumed. Customers can place new orders.", "info"))}
+        onKillSwitch={() => {
+          if (orderingOpen) setPauseConfirm(true);
+          else void resumeOrderingWithFeedback();
+        }}
       >
         {content}
       </AppShell>
@@ -559,7 +1075,11 @@ export function AdminApp() {
           categories={categories}
           dirty={productDirty}
           errors={productErrors}
-          onChange={(draft) => { setProductDraft(draft); setProductDirty(true); setProductErrors({}); }}
+          onChange={(draft) => {
+            setProductDraft(draft);
+            setProductDirty(true);
+            setProductErrors({});
+          }}
           onClose={requestCloseProduct}
           onSave={saveProduct}
           onDelete={() => setDeleteProductConfirm(true)}
@@ -571,21 +1091,83 @@ export function AdminApp() {
         <Modal
           title="Pause new orders?"
           onClose={() => setPauseConfirm(false)}
-          footer={<><button className="secondary-button" onClick={() => setPauseConfirm(false)}>Keep accepting</button><button className="danger-button" onClick={() => { pauseOrdering(); setPauseConfirm(false); showToast("Ordering paused manually.", "info"); }}>Pause ordering</button></>}
+          footer={
+            <>
+              <button
+                className="secondary-button"
+                onClick={() => setPauseConfirm(false)}
+              >
+                Keep accepting
+              </button>
+              <button
+                className="danger-button"
+                onClick={() => {
+                  void pauseOrderingWithFeedback();
+                }}
+              >
+                Pause ordering
+              </button>
+            </>
+          }
         >
-          <p>Customers will not be able to place new orders until ordering is resumed.</p>
-          <div className="modal-info-row"><Clock3 size={17} /><span><strong>Current schedule</strong>Open until 10:30 PM</span></div>
+          <p>
+            Customers will not be able to place new orders until ordering is
+            resumed.
+          </p>
+          <div className="modal-info-row">
+            <Clock3 size={17} />
+            <span>
+              <strong>Current schedule</strong>Open until 10:30 PM
+            </span>
+          </div>
         </Modal>
       )}
 
-      {pendingNavigation && (
+      {(pendingNavigation || pendingLocationId) && (
         <Modal
-          title={view === "settings" ? "Your settings are mid-recipe" : "Your menu has a plot twist"}
-          onClose={() => setPendingNavigation(null)}
-          footer={<><button className="secondary-button" onClick={() => setPendingNavigation(null)}>Keep editing</button><button className="danger-button" onClick={discardMenuAndNavigate}>Leave without saving</button></>}
+          title={
+            unsavedSettings
+              ? "Your settings are mid-recipe"
+              : "Your menu has a plot twist"
+          }
+          onClose={() => {
+            setPendingNavigation(null);
+            setPendingLocationId(null);
+          }}
+          footer={
+            <>
+              <button
+                className="secondary-button"
+                onClick={() => {
+                  setPendingNavigation(null);
+                  setPendingLocationId(null);
+                }}
+              >
+                Keep editing
+              </button>
+              <button
+                className="danger-button"
+                onClick={discardChangesAndContinue}
+              >
+                Leave without saving
+              </button>
+            </>
+          }
         >
-          <p>{view === "settings" ? "A few changes are still on the counter. Leaving now will put the saved settings back exactly as they were." : "You have menu changes waiting in the wings. Leaving now will send them back to the kitchen—unsaved."}</p>
-          <div className="modal-info-row"><CircleAlert size={17} /><span><strong>Nothing has gone live.</strong>{view === "settings" ? "Your current outlet settings will stay exactly as they were." : "Your customer menu will stay exactly as it was."}</span></div>
+          <p>
+            {unsavedSettings
+              ? "A few changes are still on the counter. Leaving now will put the saved settings back exactly as they were."
+              : "You have menu changes waiting in the wings. Leaving now will send them back to the kitchen—unsaved."}
+          </p>
+          <div className="modal-info-row">
+            <CircleAlert size={17} />
+            <span>
+              <strong>Nothing has gone live.</strong>
+              {unsavedSettings
+                ? "Your current outlet settings will stay exactly as they were."
+                : "Your customer menu will stay exactly as it was."}
+            </span>
+          </div>
         </Modal>
       )}
 
@@ -595,61 +1177,324 @@ export function AdminApp() {
           onClose={() => setCancelOrderId("")}
           destructive
           wide
-          footer={<><button className="secondary-button" onClick={() => setCancelOrderId("")}>Keep order</button><button className="danger-button" disabled={!canConfirmCancel} onClick={confirmCancel}>Confirm cancellation</button></>}
+          footer={
+            <>
+              <button
+                className="secondary-button"
+                onClick={() => setCancelOrderId("")}
+              >
+                Keep order
+              </button>
+              <button
+                className="danger-button"
+                disabled={!canConfirmCancel}
+                onClick={confirmCancel}
+              >
+                Confirm cancellation
+              </button>
+            </>
+          }
         >
-          <div className="cancel-summary"><span><strong>{cancelOrder.customer}</strong><small>{cancelOrder.phone}</small></span><span><small>{cancelOrder.status}</small><strong>{money(cancelOrder.total)} · {cancelOrder.paid ? "Paid" : "Cash"}</strong></span></div>
+          <div className="cancel-summary">
+            <span>
+              <strong>{cancelOrder.customer}</strong>
+              <small>{cancelOrder.phone}</small>
+            </span>
+            <span>
+              <small>{cancelOrder.status}</small>
+              <strong>
+                {money(cancelOrder.total)} ·{" "}
+                {cancelOrder.paid ? "Paid" : "Cash"}
+              </strong>
+            </span>
+          </div>
           <fieldset className="reason-list">
             <legend>Reason *</legend>
-            {["Item unavailable", "Restaurant unable to fulfil", "Customer requested cancellation", "Duplicate order", "Other"].map((reason) => (
-              <label key={reason}><input type="radio" name="cancel-reason" checked={cancelReason === reason} onChange={() => setCancelReason(reason)} />{reason}</label>
+            {[
+              "Item unavailable",
+              "Restaurant unable to fulfil",
+              "Customer requested cancellation",
+              "Duplicate order",
+              "Other",
+            ].map((reason) => (
+              <label key={reason}>
+                <input
+                  type="radio"
+                  name="cancel-reason"
+                  checked={cancelReason === reason}
+                  onChange={() => setCancelReason(reason)}
+                />
+                {reason}
+              </label>
             ))}
           </fieldset>
-          {cancelReason === "Other" && <label className="field-label">Describe the reason *<textarea value={cancelOther} onChange={(event) => setCancelOther(event.target.value)} rows={2} /></label>}
-          {cancelOrder.paid && (
-            <label className="refund-ack"><input type="checkbox" checked={refundAck} onChange={(event) => setRefundAck(event.target.checked)} /><span><strong>I will handle this {money(cancelOrder.total)} refund manually.</strong><small>This action records responsibility; it does not send a provider refund.</small></span></label>
+          {cancelReason === "Other" && (
+            <label className="field-label">
+              Describe the reason *
+              <textarea
+                value={cancelOther}
+                onChange={(event) => setCancelOther(event.target.value)}
+                rows={2}
+              />
+            </label>
           )}
-          <div className="call-nudge"><Phone size={18} /><span><strong>Please call the customer to explain the cancellation.</strong><small>{cancelOrder.phone}</small></span><a href={`tel:${cancelOrder.phone.replaceAll(" ", "")}`}>Call</a><button onClick={() => navigator.clipboard?.writeText(cancelOrder.phone)}>Copy</button></div>
+          {cancelOrder.paid && (
+            <label className="refund-ack">
+              <input
+                type="checkbox"
+                checked={refundAck}
+                onChange={(event) => setRefundAck(event.target.checked)}
+              />
+              <span>
+                <strong>
+                  I will handle this {money(cancelOrder.total)} refund manually.
+                </strong>
+                <small>
+                  This action records responsibility; it does not send a
+                  provider refund.
+                </small>
+              </span>
+            </label>
+          )}
+          <div className="call-nudge">
+            <Phone size={18} />
+            <span>
+              <strong>
+                Please call the customer to explain the cancellation.
+              </strong>
+              <small>{cancelOrder.phone}</small>
+            </span>
+            <a href={`tel:${cancelOrder.phone.replaceAll(" ", "")}`}>Call</a>
+            <button
+              onClick={() => navigator.clipboard?.writeText(cancelOrder.phone)}
+            >
+              Copy
+            </button>
+          </div>
         </Modal>
       )}
 
       {categoryDialog && (
         <Modal
-          title={categoryDialog.type === "add" ? "Add category" : categoryDialog.type === "rename" ? "Rename category" : categoryDialog.type === "schedule" ? "Availability times" : "Delete category"}
+          title={
+            categoryDialog.type === "add"
+              ? "Add category"
+              : categoryDialog.type === "rename"
+                ? "Rename category"
+                : categoryDialog.type === "schedule"
+                  ? "Availability times"
+                  : "Delete category"
+          }
           onClose={() => setCategoryDialog(null)}
           destructive={categoryDialog.type === "delete"}
-          footer={<><button className="secondary-button" onClick={() => setCategoryDialog(null)}>Cancel</button><button className={categoryDialog.type === "delete" ? "danger-button" : "primary-button"} disabled={categoryDialog.type === "delete" && Boolean(categoryForDialog?.products.length)} onClick={saveCategoryDialog}>{categoryDialog.type === "delete" ? "Delete category" : "Save"}</button></>}
+          footer={
+            <>
+              <button
+                className="secondary-button"
+                onClick={() => setCategoryDialog(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className={
+                  categoryDialog.type === "delete"
+                    ? "danger-button"
+                    : "primary-button"
+                }
+                disabled={
+                  categoryDialog.type === "delete" &&
+                  Boolean(categoryForDialog?.products.length)
+                }
+                onClick={saveCategoryDialog}
+              >
+                {categoryDialog.type === "delete" ? "Delete category" : "Save"}
+              </button>
+            </>
+          }
         >
-          {(categoryDialog.type === "add" || categoryDialog.type === "rename") && <label className="field-label">Category name *<input autoFocus value={categoryName} onChange={(event) => setCategoryName(event.target.value)} aria-invalid={Boolean(categoryError)} />{categoryError && <small className="field-error">{categoryError}</small>}</label>}
+          {(categoryDialog.type === "add" ||
+            categoryDialog.type === "rename") && (
+            <label className="field-label">
+              Category name *
+              <input
+                autoFocus
+                value={categoryName}
+                onChange={(event) => setCategoryName(event.target.value)}
+                aria-invalid={Boolean(categoryError)}
+              />
+              {categoryError && (
+                <small className="field-error">{categoryError}</small>
+              )}
+            </label>
+          )}
           {categoryDialog.type === "schedule" && (
             <>
               <div className="schedule-options" role="radiogroup">
-                <label><input type="radio" checked={categoryScheduleMode === "restaurant"} onChange={() => setCategoryScheduleMode("restaurant")} />All times the restaurant is open</label>
-                <label><input type="radio" checked={categoryScheduleMode === "same"} onChange={() => setCategoryScheduleMode("same")} />Same time for all days</label>
-                <label><input type="radio" checked={categoryScheduleMode === "different"} onChange={() => setCategoryScheduleMode("different")} />Different times on different days</label>
+                <label>
+                  <input
+                    type="radio"
+                    checked={categoryScheduleMode === "restaurant"}
+                    onChange={() => setCategoryScheduleMode("restaurant")}
+                  />
+                  All times the restaurant is open
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    checked={categoryScheduleMode === "same"}
+                    onChange={() => setCategoryScheduleMode("same")}
+                  />
+                  Same time for all days
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    checked={categoryScheduleMode === "different"}
+                    onChange={() => setCategoryScheduleMode("different")}
+                  />
+                  Different times on different days
+                </label>
               </div>
-              {categoryScheduleMode !== "restaurant" && <div className="schedule-detail-box">{categoryScheduleMode === "different" && <div className="weekday-selector">{DAYS.map((day) => <button key={day} className={categoryScheduleDays.includes(day) ? "selected" : ""} onClick={() => setCategoryScheduleDays(categoryScheduleDays.includes(day) ? categoryScheduleDays.filter((value) => value !== day) : [...categoryScheduleDays, day])}>{day}</button>)}</div>}<div className="time-grid"><label className="field-label">Start<input type="time" value={categoryScheduleStart} onChange={(event) => setCategoryScheduleStart(event.target.value)} /></label><label className="field-label">End<input type="time" value={categoryScheduleEnd} onChange={(event) => setCategoryScheduleEnd(event.target.value)} /></label></div></div>}
+              {categoryScheduleMode !== "restaurant" && (
+                <div className="schedule-detail-box">
+                  {categoryScheduleMode === "different" && (
+                    <div className="weekday-selector">
+                      {DAYS.map((day) => (
+                        <button
+                          key={day}
+                          className={
+                            categoryScheduleDays.includes(day) ? "selected" : ""
+                          }
+                          onClick={() =>
+                            setCategoryScheduleDays(
+                              categoryScheduleDays.includes(day)
+                                ? categoryScheduleDays.filter(
+                                    (value) => value !== day,
+                                  )
+                                : [...categoryScheduleDays, day],
+                            )
+                          }
+                        >
+                          {day}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="time-grid">
+                    <label className="field-label">
+                      Start
+                      <input
+                        type="time"
+                        value={categoryScheduleStart}
+                        onChange={(event) =>
+                          setCategoryScheduleStart(event.target.value)
+                        }
+                      />
+                    </label>
+                    <label className="field-label">
+                      End
+                      <input
+                        type="time"
+                        value={categoryScheduleEnd}
+                        onChange={(event) =>
+                          setCategoryScheduleEnd(event.target.value)
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
               {categoryError && <p className="field-error">{categoryError}</p>}
             </>
           )}
-          {categoryDialog.type === "delete" && <div className="delete-explanation"><CircleAlert size={20} /><span><strong>{categoryForDialog?.name}</strong>{categoryForDialog?.products.length ? ` contains ${categoryForDialog.products.length} products. Deletion is blocked until the backend move/archive rule is finalised.` : " is empty and can be deleted. This is staged until you save the menu."}</span></div>}
+          {categoryDialog.type === "delete" && (
+            <div className="delete-explanation">
+              <CircleAlert size={20} />
+              <span>
+                <strong>{categoryForDialog?.name}</strong>
+                {categoryForDialog?.products.length
+                  ? ` contains ${categoryForDialog.products.length} products. Deletion is blocked until the backend move/archive rule is finalised.`
+                  : " is empty and can be deleted. This is staged until you save the menu."}
+              </span>
+            </div>
+          )}
         </Modal>
       )}
 
       {discardProductConfirm && (
-        <Modal title="Discard product changes?" onClose={() => setDiscardProductConfirm(false)} footer={<><button className="secondary-button" onClick={() => setDiscardProductConfirm(false)}>Continue editing</button><button className="danger-button" onClick={closeProductEditor}>Discard changes</button></>}>
-          <p>Your unsaved edits to {productDraft?.name || "this product"} will be lost.</p>
+        <Modal
+          title="Discard product changes?"
+          onClose={() => setDiscardProductConfirm(false)}
+          footer={
+            <>
+              <button
+                className="secondary-button"
+                onClick={() => setDiscardProductConfirm(false)}
+              >
+                Continue editing
+              </button>
+              <button className="danger-button" onClick={closeProductEditor}>
+                Discard changes
+              </button>
+            </>
+          }
+        >
+          <p>
+            Your unsaved edits to {productDraft?.name || "this product"} will be
+            lost.
+          </p>
         </Modal>
       )}
 
       {deleteProductConfirm && (
-        <Modal title="Delete this product?" onClose={() => setDeleteProductConfirm(false)} destructive footer={<><button className="secondary-button" onClick={() => setDeleteProductConfirm(false)}>Keep product</button><button className="danger-button" onClick={deleteProduct}>Delete product</button></>}>
-          <p>{productDraft?.name} will be removed when the menu changes are saved.</p>
+        <Modal
+          title="Delete this product?"
+          onClose={() => setDeleteProductConfirm(false)}
+          destructive
+          footer={
+            <>
+              <button
+                className="secondary-button"
+                onClick={() => setDeleteProductConfirm(false)}
+              >
+                Keep product
+              </button>
+              <button className="danger-button" onClick={deleteProduct}>
+                Delete product
+              </button>
+            </>
+          }
+        >
+          <p>
+            {productDraft?.name} will be removed when the menu changes are
+            saved.
+          </p>
         </Modal>
       )}
 
       {productDeleteTarget && (
-        <Modal title="Delete this product?" onClose={() => setProductDeleteTarget(null)} destructive footer={<><button className="secondary-button" onClick={() => setProductDeleteTarget(null)}>Keep product</button><button className="danger-button" onClick={deleteProductFromMenu}>Delete product</button></>}>
-          <p>{productDeleteTarget.name} will be removed when the menu changes are saved.</p>
+        <Modal
+          title="Delete this product?"
+          onClose={() => setProductDeleteTarget(null)}
+          destructive
+          footer={
+            <>
+              <button
+                className="secondary-button"
+                onClick={() => setProductDeleteTarget(null)}
+              >
+                Keep product
+              </button>
+              <button className="danger-button" onClick={deleteProductFromMenu}>
+                Delete product
+              </button>
+            </>
+          }
+        >
+          <p>
+            {productDeleteTarget.name} will be removed when the menu changes are
+            saved.
+          </p>
         </Modal>
       )}
 
@@ -664,7 +1509,42 @@ export function AdminApp() {
   );
 }
 
-function OutletContextState({ title, message, onRetry, onSignOut }: { title: string; message: string; onRetry?: () => void; onSignOut?: () => void }) {
+function MenuDataState({
+  title,
+  message,
+  onRetry,
+}: {
+  title: string;
+  message: string;
+  onRetry?: () => void;
+}) {
+  return (
+    <div className="page">
+      <div className="empty-state compact-empty">
+        <CircleAlert size={26} />
+        <h3>{title}</h3>
+        <p>{message}</p>
+        {onRetry && (
+          <button className="primary-button" onClick={onRetry}>
+            Try again
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function OutletContextState({
+  title,
+  message,
+  onRetry,
+  onSignOut,
+}: {
+  title: string;
+  message: string;
+  onRetry?: () => void;
+  onSignOut?: () => void;
+}) {
   return (
     <main className="login-page" aria-live="polite">
       <section className="login-card">
@@ -674,8 +1554,16 @@ function OutletContextState({ title, message, onRetry, onSignOut }: { title: str
         </div>
         {(onRetry || onSignOut) && (
           <div className="auth-form">
-            {onRetry && <button className="primary-button" onClick={onRetry}>Try again</button>}
-            {onSignOut && <button className="secondary-button" onClick={onSignOut}>Sign out</button>}
+            {onRetry && (
+              <button className="primary-button" onClick={onRetry}>
+                Try again
+              </button>
+            )}
+            {onSignOut && (
+              <button className="secondary-button" onClick={onSignOut}>
+                Sign out
+              </button>
+            )}
           </div>
         )}
       </section>
