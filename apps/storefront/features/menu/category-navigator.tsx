@@ -66,7 +66,7 @@ export function CategoryNavigator({
                 <span className="category-nav-copy">
                   <strong>{category.name}</strong>
                   <small>
-                    {productCounts[category.id] ?? 0} {productCounts[category.id] === 1 ? "item" : "items"}
+                    {productCounts[category.id] ?? 0} {productCounts[category.id] === 1 ? "dish" : "dishes"}
                   </small>
                 </span>
                 {isSelected ? <Check aria-hidden="true" size={19} /> : <ChevronRight aria-hidden="true" size={18} />}

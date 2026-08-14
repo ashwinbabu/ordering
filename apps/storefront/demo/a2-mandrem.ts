@@ -152,7 +152,6 @@ export const a2MandremStorefront: StorefrontDemo = {
         name: "South Indian Filter Coffee",
         description: "Rich, aromatic coffee with hot milk and a frothy pour.",
         price: 80,
-        imageUrl: "/food/kokum-cooler.jpg",
         availability: "available",
       },
       {

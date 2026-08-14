@@ -25,7 +25,7 @@ export interface MenuProduct {
   name: string;
   description: string;
   price: number;
-  imageUrl: string;
+  imageUrl?: string;
   availability: ProductAvailability;
   badges?: string[];
   configurable?: boolean;

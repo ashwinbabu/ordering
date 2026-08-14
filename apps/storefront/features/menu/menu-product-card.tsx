@@ -21,9 +21,11 @@ export function MenuProductCard({ presentation, product }: MenuProductCardProps)
   const productTag = product.badges?.find((badge) => !(badge in dietaryBadges) && badge !== "Sold out");
 
   return (
-    <article className={`product-card product-card--${presentation}`}>
-      <div className="product-card__surface">
-        <MenuImage src={product.imageUrl} alt={product.name} className="product-card__image" />
+    <article
+      className={`product-card product-card--${presentation}${isAvailable ? "" : " product-card--unavailable"}`}
+    >
+      <div className={`product-card__surface${product.imageUrl ? "" : " product-card__surface--without-image"}`}>
+        {product.imageUrl ? <MenuImage src={product.imageUrl} alt={product.name} className="product-card__image" /> : null}
         <div className="product-card__body">
           <div className="product-card__title-row">
             {dietaryBadge ? (

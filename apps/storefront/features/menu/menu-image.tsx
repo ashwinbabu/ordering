@@ -3,11 +3,15 @@ import { useState } from "react";
 interface MenuImageProps {
   alt: string;
   className: string;
-  src: string;
+  src?: string;
 }
 
 export function MenuImage({ alt, className, src }: MenuImageProps) {
   const [failed, setFailed] = useState(false);
+
+  if (!src) {
+    return null;
+  }
 
   if (failed) {
     return (

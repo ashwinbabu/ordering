@@ -1,4 +1,4 @@
-import { ChevronDown, Clock3, Grid2X2, List, Menu as MenuIcon } from "lucide-react";
+import { ChevronDown, Clock3, Grid2X2, List, Menu as MenuIcon, Sparkle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   productById,
@@ -130,7 +130,7 @@ export function MenuScreen({ menu, orderingStatus }: MenuScreenProps) {
                   {categorySymbols[category.id] ?? "•"}
                 </span>
                 <span>{category.name}</span>
-                <small>{productCounts[category.id] ?? 0} items</small>
+                <small>{productCounts[category.id] ?? 0} dishes</small>
               </button>
             ))}
           </div>
@@ -156,7 +156,10 @@ export function MenuScreen({ menu, orderingStatus }: MenuScreenProps) {
                     <MenuImage src={product.imageUrl} alt={product.name} className="featured-card__image" />
                     <div className="featured-card__gradient" />
                     <div className="featured-card__content">
-                      <p>{editorialLabel}</p>
+                      <p>
+                        {editorialLabel === "A Mandrem favourite" ? <Sparkle aria-hidden="true" size={12} /> : null}
+                        {editorialLabel}
+                      </p>
                       <h3>{product.name}</h3>
                       <span>From ₹{product.price}</span>
                     </div>
