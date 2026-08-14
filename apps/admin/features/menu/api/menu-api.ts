@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase/client";
-import type { Json } from "@/lib/supabase/database.types";
+import type { Database, Json } from "@/lib/supabase/database.types";
 import {
   DAYS,
   scheduleSummaryFor,
@@ -28,6 +28,61 @@ interface SaveMenuInput {
   scope: MenuScope;
   baseline: MenuBaseline;
   categories: Category[];
+}
+
+type OrderingTables = Database["ordering"]["Tables"];
+type MenuCategoryRow = Pick<
+  OrderingTables["menu_categories"]["Row"],
+  "id" | "name" | "description" | "sort_order" | "is_active" | "updated_at"
+>;
+type MenuProductRow = Pick<
+  OrderingTables["products"]["Row"],
+  | "id"
+  | "category_id"
+  | "name"
+  | "description"
+  | "base_price"
+  | "image_url"
+  | "dietary_type"
+  | "is_available"
+  | "sort_order"
+  | "prep_time_minutes"
+  | "updated_at"
+>;
+type ProductLocationRow = Pick<
+  OrderingTables["product_locations"]["Row"],
+  "product_id" | "is_available"
+>;
+type AvailabilityWindowRow = Pick<
+  OrderingTables["catalog_availability_windows"]["Row"],
+  "category_id" | "product_id" | "day_of_week" | "starts_at" | "ends_at"
+>;
+type ProductOptionGroupRow = Pick<
+  OrderingTables["product_option_groups"]["Row"],
+  "product_id" | "option_group_id" | "sort_order"
+>;
+type OptionGroupRow = Pick<
+  OrderingTables["option_groups"]["Row"],
+  | "id"
+  | "name"
+  | "selection_type"
+  | "min_selections"
+  | "max_selections"
+  | "sort_order"
+>;
+type OptionRow = Pick<
+  OrderingTables["options"]["Row"],
+  "id" | "option_group_id" | "name" | "price_delta" | "is_available" | "sort_order"
+>;
+
+interface MenuAggregate {
+  categories: MenuCategoryRow[];
+  products: MenuProductRow[];
+  productLocations: ProductLocationRow[];
+  availabilityWindows: AvailabilityWindowRow[];
+  productOptionGroups: ProductOptionGroupRow[];
+  optionGroups: OptionGroupRow[];
+  options: OptionRow[];
 }
 
 type ScheduledMenuItem = Pick<
@@ -107,102 +162,180 @@ function imageUrlForSave(image: string | undefined) {
   return image?.startsWith("https://") ? image : null;
 }
 
-export async function getMenu(scope: MenuScope): Promise<MenuData> {
-  const ordering = supabase.schema("ordering");
-  const { data: categoryRows, error: categoryError } = await ordering
-    .from("menu_categories")
-    .select("id, name, description, sort_order, is_active, updated_at")
-    .eq("business_id", scope.businessId)
-    .eq("location_id", scope.locationId)
-    .order("sort_order");
-  throwIfError(categoryError);
-  const categoryItems = categoryRows ?? [];
+type JsonObject = { [key: string]: Json | undefined };
 
-  const categoryIds = categoryItems.map((category) => category.id);
-  if (!categoryIds.length) {
-    return { categories: [], baseline: { categories: [], products: [] } };
+function parseJsonObject(value: Json | null, message: string): JsonObject {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error(message);
+  }
+  return value;
+}
+
+function parseJsonArray(value: Json | undefined, message: string): Json[] {
+  if (!Array.isArray(value)) throw new Error(message);
+  return value;
+}
+
+function readString(row: JsonObject, key: string): string {
+  const value = row[key];
+  if (typeof value !== "string") {
+    throw new Error(`The menu response has an invalid ${key} value.`);
+  }
+  return value;
+}
+
+function readNullableString(row: JsonObject, key: string): string | null {
+  const value = row[key];
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new Error(`The menu response has an invalid ${key} value.`);
+  }
+  return value;
+}
+
+function readNumber(row: JsonObject, key: string): number {
+  const value = row[key];
+  if (typeof value !== "number") {
+    throw new Error(`The menu response has an invalid ${key} value.`);
+  }
+  return value;
+}
+
+function readNullableNumber(row: JsonObject, key: string): number | null {
+  const value = row[key];
+  if (value === null) return null;
+  if (typeof value !== "number") {
+    throw new Error(`The menu response has an invalid ${key} value.`);
+  }
+  return value;
+}
+
+function readBoolean(row: JsonObject, key: string): boolean {
+  const value = row[key];
+  if (typeof value !== "boolean") {
+    throw new Error(`The menu response has an invalid ${key} value.`);
+  }
+  return value;
+}
+
+function parseRows<T>(
+  value: Json | undefined,
+  key: string,
+  parseRow: (row: JsonObject) => T,
+): T[] {
+  return parseJsonArray(value, `The menu response is missing ${key}.`).map(
+    (item) => parseRow(parseJsonObject(item, `The menu response has an invalid ${key} row.`)),
+  );
+}
+
+function parseMenuAggregate(data: Json | null): MenuAggregate {
+  const response = parseJsonObject(data, "The menu response is invalid.");
+  if (response.schema_version !== 1) {
+    throw new Error("The menu response has an unsupported schema version.");
   }
 
-  const { data: productRows, error: productError } = await ordering
-    .from("products")
-    .select(
-      "id, category_id, name, description, base_price, image_url, dietary_type, is_available, sort_order, prep_time_minutes, updated_at",
-    )
-    .eq("business_id", scope.businessId)
-    .eq("is_active", true)
-    .in("category_id", categoryIds)
-    .order("sort_order");
-  throwIfError(productError);
-  const productItems = productRows ?? [];
+  return {
+    categories: parseRows(response.categories, "categories", (row) => ({
+      id: readString(row, "id"),
+      name: readString(row, "name"),
+      description: readNullableString(row, "description"),
+      sort_order: readNumber(row, "sort_order"),
+      is_active: readBoolean(row, "is_active"),
+      updated_at: readString(row, "updated_at"),
+    })),
+    products: parseRows(response.products, "products", (row) => ({
+      id: readString(row, "id"),
+      category_id: readString(row, "category_id"),
+      name: readString(row, "name"),
+      description: readNullableString(row, "description"),
+      base_price: readNumber(row, "base_price"),
+      image_url: readNullableString(row, "image_url"),
+      dietary_type: readNullableString(row, "dietary_type"),
+      is_available: readBoolean(row, "is_available"),
+      sort_order: readNumber(row, "sort_order"),
+      prep_time_minutes: readNullableNumber(row, "prep_time_minutes"),
+      updated_at: readString(row, "updated_at"),
+    })),
+    productLocations: parseRows(
+      response.product_locations,
+      "product_locations",
+      (row) => ({
+        product_id: readString(row, "product_id"),
+        is_available: readBoolean(row, "is_available"),
+      }),
+    ),
+    availabilityWindows: parseRows(
+      response.availability_windows,
+      "availability_windows",
+      (row) => ({
+        category_id: readNullableString(row, "category_id"),
+        product_id: readNullableString(row, "product_id"),
+        day_of_week: readNumber(row, "day_of_week"),
+        starts_at: readString(row, "starts_at"),
+        ends_at: readString(row, "ends_at"),
+      }),
+    ),
+    productOptionGroups: parseRows(
+      response.product_option_groups,
+      "product_option_groups",
+      (row) => ({
+        product_id: readString(row, "product_id"),
+        option_group_id: readString(row, "option_group_id"),
+        sort_order: readNumber(row, "sort_order"),
+      }),
+    ),
+    optionGroups: parseRows(response.option_groups, "option_groups", (row) => ({
+      id: readString(row, "id"),
+      name: readString(row, "name"),
+      selection_type: readString(row, "selection_type"),
+      min_selections: readNumber(row, "min_selections"),
+      max_selections: readNumber(row, "max_selections"),
+      sort_order: readNumber(row, "sort_order"),
+    })),
+    options: parseRows(response.options, "options", (row) => ({
+      id: readString(row, "id"),
+      option_group_id: readString(row, "option_group_id"),
+      name: readString(row, "name"),
+      price_delta: readNumber(row, "price_delta"),
+      is_available: readBoolean(row, "is_available"),
+      sort_order: readNumber(row, "sort_order"),
+    })),
+  };
+}
 
+function parseMenuBaseline(data: Json | null): MenuBaseline {
+  const response = parseJsonObject(data, "The saved menu response is invalid.");
+
+  return {
+    categories: parseRows(response.categories, "categories", (row) => ({
+      id: readString(row, "id"),
+      updatedAt: readString(row, "updated_at"),
+    })),
+    products: parseRows(response.products, "products", (row) => ({
+      id: readString(row, "id"),
+      updatedAt: readString(row, "updated_at"),
+    })),
+  };
+}
+
+export async function getMenu(scope: MenuScope): Promise<MenuData> {
+  const { data, error } = await supabase.schema("ordering").rpc("get_menu", {
+    p_business_id: scope.businessId,
+    p_location_id: scope.locationId,
+  });
+  throwIfError(error);
+  const {
+    categories: categoryItems,
+    products: productItems,
+    productLocations: productLocationItems,
+    availabilityWindows,
+    productOptionGroups: productGroupLinkItems,
+    optionGroups: optionGroupItems,
+    options: optionItems,
+  } = parseMenuAggregate(data);
+
+  const categoryIds = categoryItems.map((category) => category.id);
   const productIds = productItems.map((product) => product.id);
-  const [
-    { data: productLocations, error: productLocationError },
-    { data: windows, error: windowError },
-  ] = await Promise.all([
-    productIds.length
-      ? ordering
-          .from("product_locations")
-          .select("product_id, is_available")
-          .eq("location_id", scope.locationId)
-          .in("product_id", productIds)
-      : Promise.resolve({ data: [], error: null }),
-    ordering
-      .from("catalog_availability_windows")
-      .select("category_id, product_id, day_of_week, starts_at, ends_at")
-      .eq("location_id", scope.locationId),
-  ]);
-  throwIfError(productLocationError);
-  throwIfError(windowError);
-  const productLocationItems = productLocations ?? [];
-  const availabilityWindows = windows ?? [];
-
-  const [{ data: productGroupLinks, error: productGroupLinkError }] =
-    await Promise.all([
-      productIds.length
-        ? ordering
-            .from("product_option_groups")
-            .select("product_id, option_group_id, sort_order")
-            .in("product_id", productIds)
-            .order("sort_order")
-        : Promise.resolve({ data: [], error: null }),
-    ]);
-  throwIfError(productGroupLinkError);
-  const productGroupLinkItems = productGroupLinks ?? [];
-
-  const optionGroupIds = productGroupLinkItems.map(
-    (link) => link.option_group_id,
-  );
-  const [
-    { data: optionGroups, error: optionGroupError },
-    { data: optionRows, error: optionError },
-  ] = await Promise.all([
-    optionGroupIds.length
-      ? ordering
-          .from("option_groups")
-          .select(
-            "id, name, selection_type, min_selections, max_selections, sort_order",
-          )
-          .eq("business_id", scope.businessId)
-          .eq("is_active", true)
-          .in("id", optionGroupIds)
-          .order("sort_order")
-      : Promise.resolve({ data: [], error: null }),
-    optionGroupIds.length
-      ? ordering
-          .from("options")
-          .select(
-            "id, option_group_id, name, price_delta, is_available, sort_order",
-          )
-          .eq("is_active", true)
-          .in("option_group_id", optionGroupIds)
-          .order("sort_order")
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  throwIfError(optionGroupError);
-  throwIfError(optionError);
-  const optionGroupItems = optionGroups ?? [];
-  const optionItems = optionRows ?? [];
 
   const availabilityByProductId = new Map(
     productLocationItems.map((location) => [
@@ -399,11 +532,14 @@ export async function saveMenuChanges({
     })),
   };
 
-  const { error } = await supabase.schema("ordering").rpc("save_menu_changes", {
-    p_business_id: scope.businessId,
-    p_location_id: scope.locationId,
-    p_baseline: rpcBaseline,
-    p_menu: menu,
-  });
+  const { data, error } = await supabase
+    .schema("ordering")
+    .rpc("save_menu_changes_with_baseline", {
+      p_business_id: scope.businessId,
+      p_location_id: scope.locationId,
+      p_baseline: rpcBaseline,
+      p_menu: menu,
+    });
   throwIfError(error);
+  return parseMenuBaseline(data);
 }

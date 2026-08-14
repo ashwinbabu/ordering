@@ -211,19 +211,26 @@ export function AdminApp() {
     );
   }
 
-  async function persistMenu(categoriesToSave: Category[]) {
+  async function persistMenu(
+    categoriesToSave: Category[],
+    reloadMenu = true,
+  ) {
     if (!activeBusiness || !activeLocation || !menuBaseline) {
       throw new Error(
         "The menu is still loading. Please try again in a moment.",
       );
     }
 
-    await saveMenuMutation.mutateAsync({
+    const baseline = await saveMenuMutation.mutateAsync({
       businessId: activeBusiness.id,
       locationId: activeLocation.id,
       baseline: menuBaseline,
       categories: categoriesToSave,
     });
+    if (!reloadMenu) {
+      replaceMenuState({ categories: categoriesToSave, baseline });
+      return;
+    }
     const refreshed = await menuQuery.refetch();
     if (refreshed.error) throw refreshed.error;
     if (!refreshed.data)
@@ -407,15 +414,18 @@ export function AdminApp() {
 
   async function toggleCategoryAvailability(category: Category) {
     setBusyAvailability(category.id);
+    const previousCategories = categories;
     const nextCategories = categories.map((item) =>
       item.id === category.id ? { ...item, available: !item.available } : item,
     );
+    setCategories(nextCategories);
     try {
-      await persistMenu(nextCategories);
+      await persistMenu(nextCategories, false);
       showToast(
         `${category.name} ${category.available ? "made unavailable" : "is available"}.`,
       );
     } catch (error) {
+      setCategories(previousCategories);
       showToast(
         error instanceof Error
           ? error.message
@@ -451,6 +461,7 @@ export function AdminApp() {
       return;
     }
     setBusyAvailability(product.id);
+    const previousCategories = categories;
     const nextCategories = categories.map((item) =>
       item.id === category.id
         ? {
@@ -463,12 +474,14 @@ export function AdminApp() {
           }
         : item,
     );
+    setCategories(nextCategories);
     try {
-      await persistMenu(nextCategories);
+      await persistMenu(nextCategories, false);
       showToast(
         `${product.name} ${product.available ? "made unavailable" : "is available"}.`,
       );
     } catch (error) {
+      setCategories(previousCategories);
       showToast(
         error instanceof Error
           ? error.message
