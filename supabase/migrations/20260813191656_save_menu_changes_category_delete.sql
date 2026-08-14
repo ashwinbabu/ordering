@@ -1,0 +1,2 @@
+-- This development revision was superseded before category deletion was released.
+-- The final supported menu save behavior is recorded in 20260813192711.

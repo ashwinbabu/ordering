@@ -1,0 +1,2 @@
+-- This development revision removed category deletion from the menu save RPC.
+-- The final supported menu save behavior is recorded in 20260813192711.

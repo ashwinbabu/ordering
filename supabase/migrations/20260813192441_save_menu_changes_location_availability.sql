@@ -1,0 +1,2 @@
+-- This development revision split location availability from catalog availability.
+-- The final supported menu save behavior is recorded in 20260813192711.

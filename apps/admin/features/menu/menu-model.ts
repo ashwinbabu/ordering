@@ -15,6 +15,7 @@ export interface VariantGroup {
   required: boolean;
   min: number;
   max: number;
+  catalogSortOrder?: number;
   options: VariantOption[];
 }
 
@@ -24,8 +25,10 @@ export interface Product {
   description: string;
   categoryId: string;
   price: number;
+  prepTimeMinutes?: number | null;
   foodType: FoodType;
   tag: string;
+  catalogAvailable?: boolean;
   available: boolean;
   scheduledUnavailable: boolean;
   scheduleMode: ScheduleMode;
@@ -40,6 +43,7 @@ export interface Product {
 export interface Category {
   id: string;
   name: string;
+  description?: string;
   available: boolean;
   scheduleMode: ScheduleMode;
   scheduleSummary: string;
@@ -57,7 +61,6 @@ export type CategoryDialog =
   | null;
 
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
 
 const burgerVariants: VariantGroup[] = [
   {
@@ -118,7 +121,8 @@ export const INITIAL_CATEGORIES: Category[] = [
       {
         id: "paneer-wrap",
         name: "Paneer Tikka Wrap",
-        description: "Charred paneer tikka, mint chutney, onions and crisp lettuce.",
+        description:
+          "Charred paneer tikka, mint chutney, onions and crisp lettuce.",
         categoryId: "burgers",
         price: 230,
         foodType: "Veg",
@@ -135,7 +139,8 @@ export const INITIAL_CATEGORIES: Category[] = [
       {
         id: "mushroom-burger",
         name: "Mushroom Melt Burger",
-        description: "Peppery mushrooms, caramelised onions and melted cheddar.",
+        description:
+          "Peppery mushrooms, caramelised onions and melted cheddar.",
         categoryId: "burgers",
         price: 250,
         foodType: "Veg",
@@ -204,7 +209,12 @@ export const INITIAL_CATEGORIES: Category[] = [
             options: [
               { id: "sweet", name: "Sweet", price: 0, available: true },
               { id: "salted", name: "Salted", price: 0, available: true },
-              { id: "mixed", name: "Sweet & salted", price: 0, available: true },
+              {
+                id: "mixed",
+                name: "Sweet & salted",
+                price: 0,
+                available: true,
+              },
             ],
           },
         ],
@@ -274,6 +284,29 @@ export function cloneCategories(categories: Category[]) {
   return JSON.parse(JSON.stringify(categories)) as Category[];
 }
 
+export function createMenuId() {
+  return crypto.randomUUID();
+}
+
+export function duplicateMenuProduct(
+  product: Product,
+  categoryId = product.categoryId,
+): Product {
+  return {
+    ...(JSON.parse(JSON.stringify(product)) as Product),
+    id: createMenuId(),
+    categoryId,
+    variantGroups: product.variantGroups.map((group) => ({
+      ...(JSON.parse(JSON.stringify(group)) as VariantGroup),
+      id: createMenuId(),
+      options: group.options.map((option) => ({
+        ...(JSON.parse(JSON.stringify(option)) as VariantOption),
+        id: createMenuId(),
+      })),
+    })),
+  };
+}
+
 export function priceFromInput(value: string) {
   const amount = Number(value);
   return Number.isFinite(amount) ? Math.round(amount * 100) / 100 : 0;
@@ -286,7 +319,12 @@ export function effectiveProductState(category: Category, product: Product) {
   return "Available";
 }
 
-export function scheduleSummaryFor(product: Product) {
+export function scheduleSummaryFor(
+  product: Pick<
+    Product,
+    "scheduleMode" | "scheduleStart" | "scheduleEnd" | "scheduleDays"
+  >,
+) {
   if (product.scheduleMode === "restaurant") return "All restaurant hours";
   const start = product.scheduleStart || "16:00";
   const end = product.scheduleEnd || "18:00";
@@ -299,6 +337,8 @@ export function scheduleSummaryFor(product: Product) {
   if (product.scheduleMode === "same") {
     return `Daily, ${format(start)}–${format(end)}`;
   }
-  const days = product.scheduleDays.length ? product.scheduleDays.join(", ") : "No days";
+  const days = product.scheduleDays.length
+    ? product.scheduleDays.join(", ")
+    : "No days";
   return `${days}, ${format(start)}–${format(end)}`;
 }
