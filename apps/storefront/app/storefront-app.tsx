@@ -174,15 +174,15 @@ export function StorefrontApp() {
     {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={() => { setScreen("cart"); window.scrollTo({ top: 0 }); }} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onGoToCart={() => { setScreen("cart"); window.scrollTo({ top: 0 }); }} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
     {screen === "cart" ? <CartScreen cart={cart} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} menu={menu} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const line = cart.find((candidate) => candidate.id === lineId); if (line) setConfigurationTarget({ productId: line.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
     {/*
-      Known limitation: verifying a different number here re-runs the full
-      MSG91 + customer-auth-msg91 exchange, which finds-or-creates a customer
-      keyed by that phone_e164. That signs the browser into whichever
-      identity the new number resolves to, rather than renaming the phone on
-      the currently signed-in customer - core.customers has no "reassign
-      phone_e164" operation. The session context picks up the new identity
-      on its own via onAuthStateChange, so no local merge is needed here,
-      but this is a real product gap worth a deliberate fix, not something
-      this task covers.
+      Known limitation: verifying a different number here signs the browser
+      into whichever Supabase Auth identity that new phone resolves to
+      (signInWithOtp/verifyOtp create a new auth.users row for an unseen
+      number, and private.sync_customer_from_auth_user links it to a
+      matching or new core.customers row) rather than renaming the phone on
+      the currently signed-in customer - there is no "reassign phone_e164"
+      operation. The session context picks up the new identity on its own
+      via onAuthStateChange, so no local merge is needed here, but this is a
+      real product gap worth a deliberate fix, not something this task covers.
     */}
     {screen === "account" ? (customer
       ? <AccountScreen addressCount={savedAddresses.length} customer={customer} onBack={() => setScreen("menu")} onOpenAddresses={() => setScreen("addresses")} onOpenOrders={() => setScreen("orders")} onRequestPhoneChange={() => openAuth({ context: "account", initialStep: "phone", phone: { countryCode: customer.countryCode, phone: customer.phone }, onSuccess: () => {} })} onSaveCustomer={customerSession.updateLocalProfile} onSignOut={() => { void customerSession.signOut(); setScreen("menu"); }} venue={venue} />

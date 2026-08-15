@@ -5,9 +5,10 @@ export interface PhoneNumber {
 
 /**
  * One row per country we can validate a phone number for. Only India has
- * smsOtpEnabled today - MSG91 is wired for SMS only in this phase. The table
- * exists so a future country (or MSG91's email channel for non-Indian
- * customers) is a data addition here, not a rewrite of the validation logic.
+ * smsOtpEnabled today - SMS delivery (via the Send SMS Auth Hook) is wired
+ * for +91 only in this phase. The table exists so a future country (or
+ * Supabase's email-OTP path for non-Indian customers) is a data addition
+ * here, not a rewrite of the validation logic.
  */
 export interface CountryDialCode {
   iso2: string;
@@ -56,11 +57,6 @@ export function maskPhoneNumber({ countryCode, phone }: PhoneNumber) {
 /** E.164, e.g. "+919025117533" - the format core.customers.phone_e164 requires. */
 export function toE164(phone: PhoneNumber) {
   return `${phone.countryCode}${phone.phone}`;
-}
-
-/** MSG91 widget identifier: country code without "+", e.g. "919025117533". */
-export function toMsg91Identifier(phone: PhoneNumber) {
-  return `${phone.countryCode.replace("+", "")}${phone.phone}`;
 }
 
 /** Inverse of toE164() - splits a stored E.164 value back into countryCode/phone using the country table. Falls back to the default country if no dial code matches (only one is configured today, so this only matters once more are added). */

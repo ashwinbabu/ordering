@@ -1,6 +1,6 @@
 import type { Session } from "@supabase/supabase-js";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { splitE164, type PhoneNumber } from "../../domain/phone";
+import { splitE164 } from "../../domain/phone";
 import type { CustomerProfile } from "../../domain/storefront";
 import { getSupabaseClient } from "../../lib/supabase/client";
 
@@ -23,14 +23,6 @@ interface CustomerSessionValue {
    * how the rest of the storefront treats non-auth data as demo state.
    */
   updateLocalProfile: (patch: Partial<CustomerProfile>) => void;
-  /**
-   * use-otp-verification.ts calls this when MSG91 isn't configured and a
-   * demo code was accepted - no real MSG91/Supabase session ever gets
-   * minted in that path, so without this the account screen would wait
-   * forever for a customer row that's never coming. Local-only, cleared on
-   * sign-out or once a real session arrives.
-   */
-  completeDemoSignIn: (phone: PhoneNumber) => void;
 }
 
 const CustomerSessionContext = createContext<CustomerSessionValue | null>(null);
@@ -51,7 +43,6 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   const [sessionLoaded, setSessionLoaded] = useState(false);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [baseProfile, setBaseProfile] = useState<CustomerProfile | null>(null);
-  const [demoProfile, setDemoProfile] = useState<CustomerProfile | null>(null);
   const [localOverride, setLocalOverride] = useState<Partial<CustomerProfile>>({});
   const [customerLoaded, setCustomerLoaded] = useState(true);
 
@@ -79,6 +70,9 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
 
+    // core.customers is linked from the database side (private.sync_customer_from_auth_user,
+    // triggered off auth.users) by the time verifyOtp's response reaches the
+    // client, so this lookup always finds the row for a freshly-verified session.
     const fetchCustomer = session
       ? getSupabaseClient()
           .schema("core")
@@ -98,7 +92,6 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
         const row = data as CustomerRow;
         setCustomerId(row.id);
         setBaseProfile(profileFromRow(row));
-        setDemoProfile(null); // a real session supersedes any demo sign-in
       }
       setLocalOverride({});
       setCustomerLoaded(true);
@@ -110,7 +103,6 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   async function signOut() {
-    setDemoProfile(null);
     await getSupabaseClient().auth.signOut();
   }
 
@@ -118,15 +110,7 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     setLocalOverride((current) => ({ ...current, ...patch }));
   }
 
-  function completeDemoSignIn(phone: PhoneNumber) {
-    setDemoProfile({ name: "", countryCode: phone.countryCode, phone: phone.phone, isPhoneVerified: true });
-    setLocalOverride({});
-  }
-
-  const customer = useMemo(() => {
-    const source = baseProfile ?? demoProfile;
-    return source ? { ...source, ...localOverride } : null;
-  }, [baseProfile, demoProfile, localOverride]);
+  const customer = useMemo(() => baseProfile ? { ...baseProfile, ...localOverride } : null, [baseProfile, localOverride]);
 
   const value: CustomerSessionValue = {
     customer,
@@ -134,7 +118,6 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     isLoading: !sessionLoaded || !customerLoaded,
     signOut,
     updateLocalProfile,
-    completeDemoSignIn,
   };
 
   return <CustomerSessionContext.Provider value={value}>{children}</CustomerSessionContext.Provider>;

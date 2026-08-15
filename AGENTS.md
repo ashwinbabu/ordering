@@ -138,7 +138,7 @@ Do not connect, switch, rename, or modify a Supabase project unless the current 
 
 Do not modify database schema, migrations, RLS, RPCs, Edge Functions, Auth configuration, Storage configuration, or production data unless explicitly requested.
 
-This blanket restriction has been explicitly authorized for one additional boundary: the MSG91 OTP customer-authentication integration (Storefront sign-in and checkout verification). That authorization covers the `core.customer_auth_verifications` table and its RLS, the `customer-auth-msg91` Edge Function, and the Supabase Auth session bridge (synthetic-email magic-link exchange) it depends on. It does not extend to any other schema, RPC, Edge Function, or Auth configuration change.
+This blanket restriction has been explicitly authorized for one additional boundary: Storefront customer phone authentication (sign-in and checkout verification), via Supabase's native phone auth (`signInWithOtp`/`verifyOtp`) with MSG91 used only as SMS transport inside the Send SMS Auth Hook. That authorization covers the `send-sms-hook` Edge Function, the `private.sync_customer_from_auth_user()` trigger linking `auth.users` to `core.customers`, and the Auth configuration enabling Phone auth and pointing the Send SMS Hook at that function. It does not extend to any other schema, RPC, Edge Function, or Auth configuration change. It does not authorize a second, parallel OTP/authentication path.
 
 Do not invent environment values.
 

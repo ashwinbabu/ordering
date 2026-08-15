@@ -2,6 +2,12 @@
 -- Edge Function. The function itself trusts only the identifier MSG91's own
 -- verifyAccessToken response reports as verified; this table exists purely so
 -- a given MSG91 access token can be accepted by our server exactly once.
+--
+-- Superseded by 20260815160000_supabase_phone_auth_customer_link.sql, which
+-- drops this table: the architecture moved from an MSG91-widget bridge to
+-- native Supabase phone auth, which has its own built-in OTP replay/expiry
+-- protection. Left in place as history rather than deleted, since it already
+-- shipped to the remote database - migrations are an append-only ledger.
 
 create table core.customer_auth_verifications (
   id uuid primary key default gen_random_uuid(),

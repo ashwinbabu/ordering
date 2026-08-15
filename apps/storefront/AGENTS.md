@@ -44,21 +44,23 @@ The original rebuild authorised no backend work at all. That blanket prohibition
 - the `get_storefront_menu` RPC and its migrations under `supabase/`;
 - `features/menu/api/storefront-menu-api.ts` reading that boundary.
 
-**MSG91 OTP customer authentication**, covering both the sign-in entry point (header/account) and the checkout verification entry point:
+**Customer phone authentication**, covering both the sign-in entry point (header/account) and the checkout verification entry point. Supabase Auth is the sole authentication authority; MSG91 is SMS transport only, invoked exclusively from inside the Send SMS Auth Hook — never from the browser, never as a second OTP authority:
 
-- `core.customer_auth_verifications` (replay guard) and its RLS, under `supabase/migrations/`;
-- the `customer-auth-msg91` Edge Function under `supabase/functions/`, which holds the MSG91 authkey as a server secret and never exposes it to the client;
-- the Supabase Auth session bridge it mints (deterministic synthetic-email magic-link exchange via `admin.generateLink` + client-side `auth.verifyOtp({ token_hash })`) — this is the sanctioned way to turn an MSG91-verified phone into a real Supabase session; do not invent a second one;
-- `VITE_MSG91_WIDGET_ID` and `VITE_MSG91_TOKEN_AUTH` in `.env.local` (client-safe by MSG91's own design — the authkey is not);
-- `features/auth/msg91/`, `features/auth/api/customer-auth-api.ts`, `features/auth/use-otp-verification.ts`, `features/auth/customer-session.tsx`, and the `auth-flow-sheet.tsx` / `cart-screen.tsx` / `storefront-app.tsx` wiring that consumes them.
+- `features/auth/api/phone-auth-api.ts` — the only place that calls `supabase.auth.signInWithOtp()` / `verifyOtp()`. Do not call these directly from UI components;
+- `features/auth/otp-verification.ts`, `features/auth/customer-session.tsx`, and the `auth-flow-sheet.tsx` / `cart-screen.tsx` / `storefront-app.tsx` wiring that consumes them;
+- the `send-sms-hook` Edge Function under `supabase/functions/`, configured in the Supabase dashboard as the project's Send SMS Auth Hook. It verifies Supabase's signed webhook request (Standard Webhooks spec, `SEND_SMS_HOOK_SECRET`), then hands the OTP Supabase already generated to MSG91's Flow SMS API. It must never generate or judge an OTP itself;
+- `private.sync_customer_from_auth_user()` and its trigger on `auth.users`, under `supabase/migrations/` — links a newly-verified Supabase Auth user to its `core.customers` row by `phone_e164` (or creates one), since Supabase's own phone auth has no notion of that table;
+- `MSG91_AUTHKEY`, `MSG91_TEMPLATE_ID`, `MSG91_OTP_VARIABLE_NAME` and `SEND_SMS_HOOK_SECRET` as Edge Function secrets — server-side only, never a `VITE_*` variable. There is no MSG91 credential anywhere in client code;
+- `customer-auth-msg91` (old widget-bridge Edge Function) is decommissioned in place — deployed as a `410 Gone` stub, since there is no tooling available to delete it outright. Do not resurrect it or route anything through it.
 
-SMS via MSG91 for Indian (+91) numbers only, for now. Email OTP for non-Indian customers is a deliberate seam (`domain/phone.ts`'s country table, MSG91's own email-channel support) but is not implemented — do not build it speculatively.
+SMS via MSG91 for Indian (+91) numbers only, for now. Email OTP for non-Indian customers is a deliberate seam (`domain/phone.ts`'s country table, Supabase's own email-OTP support) but is not implemented — do not build it speculatively.
 
-Everything outside these two boundaries remains unauthorised. Do not add or configure:
+Everything outside this boundary remains unauthorised. Do not add or configure:
 
-- Supabase's own phone/email OTP auth (Realtime and Storage stay unauthorised too);
-- new SQL, migrations, RLS, RPCs or Edge Functions beyond the two boundaries above;
-- new environment variables or secrets beyond the two boundaries above;
+- a second phone/OTP authentication path of any kind (MSG91 widget, a bespoke token exchange, or otherwise) — there must be exactly one;
+- Realtime or Storage;
+- new SQL, migrations, RLS, RPCs or Edge Functions beyond the boundary above;
+- new environment variables or secrets beyond the boundary above;
 - real payment processing;
 - live order, refund or delivery integrations.
 

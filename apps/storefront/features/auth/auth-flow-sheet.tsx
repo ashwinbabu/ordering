@@ -3,7 +3,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { defaultCountryCode, formatPhoneForInput, isValidPhoneNumber, maskPhoneNumber, normalizePhoneInput, type PhoneNumber } from "../../domain/phone";
 import { OtpInput } from "./otp-input";
 import { OtpResendTimer } from "./otp-resend-timer";
-import { OtpVerifyError, useOtpVerification } from "./use-otp-verification";
+import { OtpVerifyError, resendOtp as resendOtpRequest, sendOtp as sendOtpRequest, verifyOtp as verifyOtpRequest } from "./otp-verification";
 
 export type AuthContext = "account" | "addresses" | "checkout" | "orders";
 type AuthStep = "otp" | "phone";
@@ -67,7 +67,6 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   const priorFocusRef = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const previousAutoSubmittedOtpRef = useRef<string | undefined>(undefined);
   const initialSendCancelledRef = useRef(false);
-  const otpVerification = useOtpVerification();
 
   const isSending = requestState === "sending";
   const isVerifying = verificationState === "verifying";
@@ -97,7 +96,7 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
     // first invocation's cleanup would permanently poison the ref before the
     // second, real invocation's promise ever resolves.
     initialSendCancelledRef.current = false;
-    otpVerification.sendOtp(request.phone).then(() => {
+    sendOtpRequest(request.phone).then(() => {
       if (initialSendCancelledRef.current) return;
       setRequestState("idle");
       setResendRemainingSeconds(resendDelaySeconds);
@@ -125,7 +124,7 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
     setPhoneError(undefined);
     setRequestState("sending");
     try {
-      await otpVerification.sendOtp(phone);
+      await sendOtpRequest(phone);
       setOtp("");
       previousAutoSubmittedOtpRef.current = undefined;
       setVerificationState("idle");
@@ -142,13 +141,13 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
 
     setVerificationState("verifying");
     try {
-      await otpVerification.verifyOtp(phone, value);
+      await verifyOtpRequest(phone, value);
       request.onSuccess(phone);
     } catch (error) {
       const reason = error instanceof OtpVerifyError ? error.reason : "incorrect";
       setVerificationState(reason === "expired" ? "expired" : reason === "rate-limited" ? "rate-limited" : "incorrect");
     }
-  }, [isVerifying, otpVerification, phone, request]);
+  }, [isVerifying, phone, request]);
 
   useEffect(() => {
     if (step !== "otp" || otp.length !== 6 || isVerifying || previousAutoSubmittedOtpRef.current === otp) return;
@@ -160,7 +159,7 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
     if (resendRemainingSeconds > 0 || isResending) return;
     setIsResending(true);
     try {
-      await otpVerification.resendOtp(phone);
+      await resendOtpRequest(phone);
       setOtp("");
       previousAutoSubmittedOtpRef.current = undefined;
       setVerificationState("idle");
@@ -188,9 +187,6 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
         {step === "otp" ? <button aria-label="Back to phone number" className="icon-button sheet-close" disabled={isVerifying} onClick={returnToPhone} type="button"><ArrowLeft aria-hidden="true" size={20} /></button> : <span aria-hidden="true" className="auth-sheet__header-spacer" />}
         <button aria-label="Close verification" className="icon-button sheet-close" disabled={isSending || isVerifying || isResending} onClick={dismiss} type="button"><X aria-hidden="true" size={20} /></button>
       </div>
-
-      {/* Stable across phone/otp step switches so MSG91 never renders captcha into a node that then unmounts. */}
-      <div id={otpVerification.captchaContainerId} aria-label="Verification challenge" />
 
       {step === "phone" ? <form className="auth-sheet__body" noValidate onSubmit={submitPhone}>
         <div className="auth-sheet__intro"><p className="section-kicker">{request.context === "checkout" ? "Checkout" : "Your details"}</p><h2 id={dialogTitleId}>{copy.phoneTitle}</h2><p id={dialogDescriptionId}>{copy.phoneDescription}</p></div>
