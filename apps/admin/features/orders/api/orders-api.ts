@@ -134,6 +134,8 @@ function parseOrder(value: Json): Order {
     backendStatus,
     id: stringValue(row, "order_number"),
     status,
+    deliveredAt: nullableStringValue(row, "delivered_at"),
+    cancelledAt: nullableStringValue(row, "cancelled_at"),
     customer: stringValue(row, "customer_name"),
     phone: stringValue(row, "customer_phone"),
     shortAddress: fullAddress.split(",").slice(0, 2).join(","),
@@ -156,10 +158,9 @@ function parseOrder(value: Json): Order {
 }
 
 export async function getOrdersForLocation(scope: OrderScope): Promise<Order[]> {
-  // p_from/p_to are intentionally omitted: the RPC defaults to "today" in
-  // the business's own timezone, scoping delivered/cancelled orders to
-  // today while always including every still-open order regardless of
-  // when it was placed.
+  // No date window: an operations queue must never hide an order the
+  // operator just acted on, so every status stays visible and the day's
+  // figures are derived from each order's own milestone timestamps instead.
   const { data, error } = await supabase.schema("ordering").rpc("list_orders_for_location", {
     p_business_id: scope.businessId,
     p_location_id: scope.locationId,

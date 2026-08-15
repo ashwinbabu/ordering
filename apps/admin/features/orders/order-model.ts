@@ -23,6 +23,14 @@ export interface Order {
   backendStatus?: string;
   id: string;
   status: OrderStatus;
+  /**
+   * Milestone timestamps, ISO-8601, as stored. The day's figures are derived
+   * from these rather than from whichever orders happen to be in the queue,
+   * so a delivered order stays visible in the list without being counted
+   * against a day it wasn't completed on.
+   */
+  deliveredAt?: string | null;
+  cancelledAt?: string | null;
   customer: string;
   phone: string;
   shortAddress: string;
@@ -53,6 +61,22 @@ export function formatQueueDate(date: Date) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+/**
+ * Whether an ISO timestamp falls on the viewer's current local calendar day.
+ * The operator's device is assumed to be in the outlet's own timezone, which
+ * holds for restaurant floor staff.
+ */
+export function isOnLocalDay(value: string | null | undefined, day = new Date()) {
+  if (!value) return false;
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return false;
+  return (
+    at.getFullYear() === day.getFullYear() &&
+    at.getMonth() === day.getMonth() &&
+    at.getDate() === day.getDate()
+  );
 }
 
 export function nextOrderAction(status: OrderStatus) {

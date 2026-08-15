@@ -15,14 +15,8 @@ export function useOrdersQuery(
   businessId: string | null,
   locationId: string | null,
 ) {
-  // The server scopes closed orders to "today" by default. Bucketing the
-  // key by the client's local date keeps a session left open across
-  // midnight from continuing to serve a stale "today" from before the
-  // rollover -- an approximation of the server's business-timezone cutoff,
-  // not a substitute for it.
-  const dayBucket = new Date().toISOString().slice(0, 10);
   return useQuery({
-    queryKey: [...ordersQueryKey(businessId, locationId), dayBucket],
+    queryKey: ordersQueryKey(businessId, locationId),
     queryFn: () => getOrdersForLocation({ businessId: businessId!, locationId: locationId! }),
     enabled: Boolean(businessId && locationId),
     staleTime: 15_000,

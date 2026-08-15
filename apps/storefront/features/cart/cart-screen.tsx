@@ -1,53 +1,116 @@
 import { ArrowLeft, Check, ChevronDown, Minus, Pencil, Plus, ShoppingBag, Store, Tag, Truck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { AddressForm, type AddressDraft } from "../addresses/address-form";
 import { AddressSelectorSheet } from "../addresses/address-selector-sheet";
 import { SelectedAddressCard } from "../addresses/selected-address-card";
 import type { AuthFlowRequest } from "../auth/auth-flow-sheet";
 import { MenuImage } from "../menu/menu-image";
-import { formatRupees, productById, type CartLine, type CheckoutRequest, type CustomerDetails, type DeliveryAddress, type FulfilmentType, type Menu, type Venue } from "../../domain/storefront";
+import { formatRupees, type CheckoutRequest, type CustomerDetails, type DeliveryAddress, type FulfilmentType, type Venue } from "../../domain/storefront";
+import type { CartLineView, ServerCart, StorefrontSettings } from "../../domain/cart";
+import { checkoutEligibilityMessage, evaluateCheckoutEligibility } from "./cart-eligibility";
+import { cartErrorMessage, useSetCartCouponMutation } from "./storefront-cart-mutations";
+import { storefrontCartQueryKey } from "./storefront-cart-query";
+import { useCartCouponDiscountQuery } from "./storefront-coupon-query";
+import { useDeliveryQuoteQuery } from "./storefront-delivery-quote-query";
+import { useOnlineStatus } from "../../lib/storefront/use-online-status";
 
 interface CartScreenProps {
-  cart: CartLine[];
+  cart: ServerCart | undefined;
+  cartError?: string;
   customerDetails: CustomerDetails;
+  isCartLoading: boolean;
   isCustomerVerified: boolean;
-  menu: Menu;
+  lines: CartLineView[];
   onBack: () => void;
   onCheckoutAttempt: (request: CheckoutRequest) => void;
+  onDismissCartError: () => void;
   onEditConfiguration: (lineId: string) => void;
   onQuantityChange: (lineId: string, quantity: number) => void;
   onRequestAuthentication: (request: AuthFlowRequest) => void;
   onSavedAddressesChange: (addresses: DeliveryAddress[]) => void;
   savedAddresses: DeliveryAddress[];
+  settings: StorefrontSettings | null;
   venue: Venue;
 }
 
-type CouponState = "collapsed" | "expanded" | "applied";
+function computeDisplayTax(netFood: number, settings: StorefrontSettings | null) {
+  if (!settings || settings.taxMode === "none") return 0;
+  if (settings.taxMode === "inclusive") return Math.round((netFood * settings.taxRate / (100 + settings.taxRate)) * 100) / 100;
+  return Math.round(netFood * settings.taxRate) / 100;
+}
 
-export function CartScreen({ cart, customerDetails, isCustomerVerified, menu, onBack, onCheckoutAttempt, onEditConfiguration, onQuantityChange, onRequestAuthentication, onSavedAddressesChange, savedAddresses, venue }: CartScreenProps) {
+export function CartScreen({ cart, cartError, customerDetails, isCartLoading, isCustomerVerified, lines, onBack, onCheckoutAttempt, onDismissCartError, onEditConfiguration, onQuantityChange, onRequestAuthentication, onSavedAddressesChange, savedAddresses, settings, venue }: CartScreenProps) {
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("delivery");
   const [selectedAddressId, setSelectedAddressId] = useState<string>();
   const [addressSheet, setAddressSheet] = useState<"selector" | "form" | null>(null);
   const [editingAddress, setEditingAddress] = useState<DeliveryAddress>();
   const [addressInvalid, setAddressInvalid] = useState(false);
   const [specialInstructions, setSpecialInstructions] = useState("");
-  const [couponState, setCouponState] = useState<CouponState>("collapsed");
+  const [isCouponFormOpen, setIsCouponFormOpen] = useState(false);
   const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState("");
+  const [priceChangeNotice, setPriceChangeNotice] = useState(false);
+  const previousLineTotals = useRef<Map<string, { quantity: number; lineTotal: number }>>(new Map());
+  const queryClient = useQueryClient();
+  const setCartCoupon = useSetCartCouponMutation();
+  const isOnline = useOnlineStatus();
 
   useEffect(() => {
     window.scrollTo({ top: 0 });
+    // Revalidate pricing/availability against Supabase as soon as the
+    // customer opens the cart to review it (task: revalidate before
+    // financial actions), without polling while they're just browsing.
+    void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(), exact: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const previous = previousLineTotals.current;
+    if (previous.size > 0) {
+      const changed = lines.some((line) => {
+        const before = previous.get(line.id);
+        return before && before.quantity === line.quantity && before.lineTotal !== line.lineTotal;
+      });
+      if (changed) setPriceChangeNotice(true);
+    }
+    previousLineTotals.current = new Map(lines.map((line) => [line.id, { quantity: line.quantity, lineTotal: line.lineTotal }]));
+  }, [lines]);
+
   const effectiveAddressId = selectedAddressId ?? savedAddresses.find((address) => address.isDefault)?.id;
-  const lines = useMemo(() => cart.flatMap((line) => { const product = productById(menu, line.productId); return product ? [{ ...line, product }] : []; }), [cart, menu]);
-  const itemCount = cart.reduce((count, line) => count + line.quantity, 0);
-  const subtotal = lines.reduce((total, line) => total + line.unitPrice * line.quantity, 0);
+  const itemCount = lines.reduce((count, line) => count + line.quantity, 0);
+  const subtotal = cart?.estimatedFoodSubtotal ?? 0;
   const selectedAddress = savedAddresses.find((address) => address.id === effectiveAddressId);
-  const deliveryFee = fulfilment === "delivery" && selectedAddress ? 39 : 0;
-  const taxes = Math.round(subtotal * 0.18);
-  const total = subtotal + deliveryFee + taxes;
+  const appliedCouponCode = cart?.coupon?.code;
+  const couponDiscountQuery = useCartCouponDiscountQuery(appliedCouponCode, subtotal);
+  const discount = appliedCouponCode && couponDiscountQuery.data?.valid ? couponDiscountQuery.data.discountAmount ?? 0 : 0;
+  const netFoodSubtotal = Math.max(subtotal - discount, 0);
+
+  const pickupSupported = !settings || settings.orderingMode !== "delivery";
+  const deliverySupported = !settings || settings.orderingMode !== "pickup";
+  const deliveryDestination = fulfilment === "delivery" && selectedAddress?.latitude !== undefined && selectedAddress?.longitude !== undefined
+    ? { latitude: selectedAddress.latitude, longitude: selectedAddress.longitude }
+    : undefined;
+  const deliveryQuoteQuery = useDeliveryQuoteQuery(deliveryDestination, netFoodSubtotal);
+  const isDeliveryQuoteLoading = fulfilment === "delivery" && Boolean(selectedAddress) && Boolean(deliveryDestination) && deliveryQuoteQuery.isPending;
+  const deliveryFee = fulfilment === "pickup"
+    ? 0
+    : deliveryQuoteQuery.data?.serviceable
+      ? deliveryQuoteQuery.data.deliveryFee ?? 0
+      : undefined;
+  const taxes = computeDisplayTax(netFoodSubtotal, settings);
+  const total = settings?.taxMode === "exclusive" ? netFoodSubtotal + taxes + (deliveryFee ?? 0) : netFoodSubtotal + (deliveryFee ?? 0);
   const needsAddress = fulfilment === "delivery" && !selectedAddress;
+  const isDeliveryUnserviceable = fulfilment === "delivery" && Boolean(selectedAddress) && Boolean(deliveryDestination) && deliveryQuoteQuery.data?.serviceable === false;
+
+  const eligibility = useMemo(() => evaluateCheckoutEligibility({
+    lines,
+    settings,
+    fulfilment,
+    hasAddress: Boolean(selectedAddress),
+    deliveryServiceable: fulfilment === "delivery" ? deliveryQuoteQuery.data?.serviceable : undefined,
+    isOffline: !isOnline,
+    netFoodSubtotal,
+  }), [lines, settings, fulfilment, selectedAddress, deliveryQuoteQuery.data?.serviceable, isOnline, netFoodSubtotal]);
 
   function openAddressForm(address?: DeliveryAddress) { setEditingAddress(address); setAddressSheet("form"); }
   function saveAddress(draft: AddressDraft) {
@@ -60,29 +123,26 @@ export function CartScreen({ cart, customerDetails, isCustomerVerified, menu, on
     setSelectedAddressId(id); setEditingAddress(undefined); setAddressSheet(null); setAddressInvalid(false);
   }
   function applyCoupon() {
-    if (!couponCode) return;
-    setAppliedCoupon(couponCode);
-    setCouponState("applied");
+    if (!couponCode || !isOnline) return;
+    setCartCoupon.mutate({ code: couponCode });
   }
   function removeCoupon() {
-    setAppliedCoupon("");
+    setCartCoupon.mutate({ code: null });
     setCouponCode("");
-    setCouponState("collapsed");
+    setIsCouponFormOpen(false);
   }
   function continueToPayment() {
-    // Guarded as well as disabled: the operator can pause ordering between the
-    // render and the tap, and that arrives over Realtime without user action.
-    if (!venue.isAcceptingOrders) return;
     if (needsAddress) { setAddressInvalid(true); if (savedAddresses.length) setAddressSheet("selector"); else openAddressForm(); document.getElementById("delivery-address")?.scrollIntoView({ behavior: "smooth", block: "center" }); return; }
+    if (!eligibility.canCheckout) return;
     const checkoutRequest: CheckoutRequest = {
-      cart,
+      cart: lines.map((line) => ({ id: line.id, productId: line.productId, quantity: line.quantity, unitPrice: line.unitPrice, selectedOptions: [] })),
       customer: customerDetails,
       deliveryAddress: selectedAddress,
       displayedTotal: total,
       fulfilment,
-      items: lines.map(({ id, product, quantity, selectedOptions, unitPrice }) => ({ id, productId: product.id, name: product.name, quantity, unitPrice, selectedOptions: selectedOptions.map((option) => option.optionName) })),
-      subtotal,
-      deliveryFee,
+      items: lines.map((line) => ({ id: line.id, productId: line.productId, name: line.productName, quantity: line.quantity, unitPrice: line.unitPrice, selectedOptions: line.options.map((option) => option.name) })),
+      subtotal: netFoodSubtotal,
+      deliveryFee: deliveryFee ?? 0,
       taxes,
     };
     if (isCustomerVerified) { onCheckoutAttempt(checkoutRequest); return; }
@@ -96,13 +156,17 @@ export function CartScreen({ cart, customerDetails, isCustomerVerified, menu, on
   }
   function selectAddress(address: DeliveryAddress) { setSelectedAddressId(address.id); setAddressSheet(null); setAddressInvalid(false); }
 
-  const checkoutLabel = !venue.isAcceptingOrders
-    ? `${venue.locationName} has paused ordering`
-    : needsAddress
-      ? "Add a delivery address to continue"
+  const checkoutLabel = needsAddress
+    ? "Add a delivery address to continue"
+    : !eligibility.canCheckout && eligibility.reason
+      ? checkoutEligibilityMessage(eligibility.reason)
       : "Continue to payment";
 
-  if (!cart.length) {
+  if (isCartLoading && !cart) {
+    return <main className="cart-page"><section className="customer-empty-state" aria-busy="true"><h2>Loading your cart</h2><p>Getting your latest items and pricing.</p></section></main>;
+  }
+
+  if (!lines.length) {
     return <main className="cart-page">
       <header className="cart-header"><div className="cart-header__inner"><button className="icon-button" type="button" onClick={onBack} aria-label="Back to menu"><ArrowLeft aria-hidden="true" size={22} /></button><div><h1>Your cart</h1><p>0 items</p></div><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div></div></header>
       <section className="empty-cart">
@@ -117,27 +181,39 @@ export function CartScreen({ cart, customerDetails, isCustomerVerified, menu, on
   return <main className="cart-page">
     <header className="cart-header"><div className="cart-header__inner"><button className="icon-button" type="button" onClick={onBack} aria-label="Back to menu"><ArrowLeft aria-hidden="true" size={22} /></button><div><h1>Your cart</h1><p>{itemCount} {itemCount === 1 ? "item" : "items"}</p></div><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div></div></header>
     <div className="cart-content">
+      {!isOnline ? <p className="address-error" role="alert">You&rsquo;re offline. You can still review and edit your cart; pricing and checkout need a connection.</p> : null}
+      {cartError ? <p className="address-error" role="alert">{cartError} <button className="text-button" type="button" onClick={onDismissCartError}>Dismiss</button></p> : null}
+      {priceChangeNotice ? <p className="address-error" role="status">Some prices were just updated to current menu pricing. <button className="text-button" type="button" onClick={() => setPriceChangeNotice(false)}>Dismiss</button></p> : null}
+      {settings && !settings.orderingEnabled ? <p className="address-error" role="alert">{venue.locationName} has paused ordering. Your cart is saved -- you can check out once ordering resumes.</p> : null}
+      {settings && settings.orderingEnabled && !settings.isOpenNow && !settings.acceptOrdersWhenClosed ? <p className="address-error" role="alert">{venue.locationName} is closed right now. Your cart is saved for when it reopens.</p> : null}
+
       <section className="cart-section cart-items" aria-labelledby="cart-order-title">
         <div className="cart-section__title"><h2 id="cart-order-title">Your order</h2><button className="text-button" type="button" onClick={onBack}>Add more</button></div>
         <div className="cart-item-list">
-          {lines.map(({ id, product, quantity, selectedOptions, unitPrice }) => (
-            <article className="cart-item" key={id}>
-              <MenuImage src={product.imageUrl} alt={product.name} className="cart-item__image" />
+          {lines.map((line) => (
+            <article className="cart-item" style={line.isAvailable ? undefined : { opacity: 0.55 }} key={line.id}>
+              <MenuImage src={line.imageUrl} alt={line.productName} className="cart-item__image" />
               <div className="cart-item__body">
                 <div className="cart-item__top">
-                  <div><h3>{product.name}</h3><p>{selectedOptions.length ? selectedOptions.map((option) => option.optionName).join(" · ") : product.badges?.[0] ?? "Freshly made"}</p></div>
-                  <strong>{formatRupees(unitPrice * quantity)}</strong>
+                  <div>
+                    <h3>{line.productName}</h3>
+                    <p>{line.options.length ? line.options.map((option) => option.name).join(" · ") : "Freshly made"}</p>
+                    {!line.isAvailable ? <small className="address-error" role="alert">{unavailableCopy(line)}</small> : null}
+                  </div>
+                  <strong>{formatRupees(line.lineTotal)}</strong>
                 </div>
                 <div className="cart-item__actions">
                   <div className="cart-item__links">
-                    {(product.optionGroups?.length ?? 0) > 0 ? <button type="button" onClick={() => onEditConfiguration(id)}><Pencil aria-hidden="true" size={14} />Edit</button> : null}
-                    <button className="remove-link" type="button" onClick={() => onQuantityChange(id, 0)}>Remove</button>
+                    {line.isAvailable && line.hasOptionGroups ? <button type="button" onClick={() => onEditConfiguration(line.id)}><Pencil aria-hidden="true" size={14} />Edit</button> : null}
+                    <button className="remove-link" type="button" onClick={() => onQuantityChange(line.id, 0)}>Remove</button>
                   </div>
-                  <div className="quantity-stepper" aria-label={`Quantity of ${product.name}`}>
-                    <button type="button" onClick={() => onQuantityChange(id, quantity - 1)} aria-label="Decrease quantity"><Minus aria-hidden="true" size={15} /></button>
-                    <span>{quantity}</span>
-                    <button type="button" onClick={() => onQuantityChange(id, quantity + 1)} aria-label="Increase quantity"><Plus aria-hidden="true" size={15} /></button>
-                  </div>
+                  {line.isAvailable ? (
+                    <div className="quantity-stepper" aria-label={`Quantity of ${line.productName}`}>
+                      <button type="button" onClick={() => onQuantityChange(line.id, line.quantity - 1)} aria-label="Decrease quantity"><Minus aria-hidden="true" size={15} /></button>
+                      <span>{line.quantity}</span>
+                      <button type="button" onClick={() => onQuantityChange(line.id, line.quantity + 1)} aria-label="Increase quantity"><Plus aria-hidden="true" size={15} /></button>
+                    </div>
+                  ) : <span className="unavailable-pill">Unavailable</span>}
                 </div>
               </div>
             </article>
@@ -155,23 +231,24 @@ export function CartScreen({ cart, customerDetails, isCustomerVerified, menu, on
       </section>
 
       <section className="cart-section cart-section--supporting coupon-section" aria-label="Add a discount code">
-        {couponState === "applied" ? (
+        {appliedCouponCode ? (
           <div className="coupon-applied">
             <span className="coupon-success"><Check aria-hidden="true" size={20} /></span>
-            <span><strong>{appliedCoupon}</strong><small>Coupon applied</small></span>
-            <button type="button" onClick={removeCoupon}>Remove</button>
+            <span><strong>{appliedCouponCode}</strong><small>{couponDiscountQuery.isPending ? "Checking coupon…" : couponDiscountQuery.data?.valid ? `Coupon applied · -${formatRupees(discount)}` : "This coupon is no longer valid"}</small></span>
+            <button type="button" onClick={removeCoupon} disabled={setCartCoupon.isPending}>Remove</button>
           </div>
-        ) : couponState === "expanded" ? (
+        ) : isCouponFormOpen ? (
           <div className="coupon-expanded">
             <div className="cart-section__title"><h2>Add a discount code</h2></div>
             <div className="coupon-input-row">
               <label className="sr-only" htmlFor="coupon-code">Discount code</label>
               <input id="coupon-code" value={couponCode} onChange={(event) => setCouponCode(event.target.value.toUpperCase())} placeholder="Enter code" />
-              <button type="button" disabled={!couponCode} onClick={applyCoupon}>Apply</button>
+              <button type="button" disabled={!couponCode || setCartCoupon.isPending || !isOnline} onClick={applyCoupon}>{setCartCoupon.isPending ? "Applying…" : "Apply"}</button>
             </div>
+            {setCartCoupon.isError ? <p className="address-error" role="alert">{cartErrorMessage(setCartCoupon.error, "This code isn't valid for your order.")}</p> : null}
           </div>
         ) : (
-          <button className="coupon-collapsed" type="button" onClick={() => setCouponState("expanded")}>
+          <button className="coupon-collapsed" type="button" onClick={() => setIsCouponFormOpen(true)}>
             <span className="coupon-icon"><Tag aria-hidden="true" size={20} /></span>
             <span><strong>Add a discount code</strong><small>Have an offer code?</small></span>
             <ChevronDown aria-hidden="true" size={18} />
@@ -182,11 +259,11 @@ export function CartScreen({ cart, customerDetails, isCustomerVerified, menu, on
       <section className="cart-section cart-section--supporting fulfilment-section" aria-labelledby="fulfilment-title">
         <div className="cart-section__title cart-section__title--stacked"><div><p className="section-kicker">How should we get it to you?</p><h2 id="fulfilment-title">Fulfilment</h2></div></div>
         <div className="fulfilment-toggle" role="radiogroup" aria-label="Fulfilment method">
-          <button type="button" role="radio" aria-checked={fulfilment === "delivery"} className={fulfilment === "delivery" ? "is-active" : undefined} onClick={() => setFulfilment("delivery")}>
+          <button type="button" role="radio" aria-checked={fulfilment === "delivery"} disabled={!deliverySupported} className={fulfilment === "delivery" ? "is-active" : undefined} onClick={() => setFulfilment("delivery")}>
             <Truck aria-hidden="true" size={22} /><span><strong>Delivery</strong><small>To your door</small></span><span className="radio-dot" aria-hidden="true" />
           </button>
-          <button type="button" role="radio" aria-checked={fulfilment === "pickup"} className={fulfilment === "pickup" ? "is-active" : undefined} onClick={() => setFulfilment("pickup")}>
-            <Store aria-hidden="true" size={22} /><span><strong>Pickup</strong><small>From {venue.locationName.replace(", Goa", "")}</small></span><span className="radio-dot" aria-hidden="true" />
+          <button type="button" role="radio" aria-checked={fulfilment === "pickup"} disabled={!pickupSupported} className={fulfilment === "pickup" ? "is-active" : undefined} onClick={() => setFulfilment("pickup")}>
+            <Store aria-hidden="true" size={22} /><span><strong>Pickup</strong><small>{pickupSupported ? `From ${venue.locationName.replace(", Goa", "")}` : "Not offered here"}</small></span><span className="radio-dot" aria-hidden="true" />
           </button>
         </div>
         {fulfilment === "pickup" ? <div className="pickup-card"><span className="address-card-icon"><Store aria-hidden="true" size={18} /></span><div><strong>Collect from {venue.displayName}</strong><p>{venue.address}</p></div></div> : null}
@@ -194,7 +271,9 @@ export function CartScreen({ cart, customerDetails, isCustomerVerified, menu, on
           <section id="delivery-address" className="address-block" aria-labelledby="delivery-address-title">
             <h3 id="delivery-address-title" className="sr-only">Delivery address</h3>
             {selectedAddress ? (
-              <SelectedAddressCard address={selectedAddress} deliveryFee={deliveryFee} venueDisplayName={venue.displayName} onChange={() => setAddressSheet("selector")} onEdit={() => openAddressForm(selectedAddress)} />
+              isDeliveryQuoteLoading ? <p className="summary-note" role="status">Checking delivery for this address…</p>
+              : isDeliveryUnserviceable ? <p className="address-error" role="alert">We can&rsquo;t deliver to this address yet. Choose a different address or switch to pickup.</p>
+              : <SelectedAddressCard address={selectedAddress} deliveryFee={deliveryDestination ? deliveryFee : undefined} distanceKm={deliveryDestination ? deliveryQuoteQuery.data?.distanceKm : undefined} venueDisplayName={venue.displayName} onChange={() => setAddressSheet("selector")} onEdit={() => openAddressForm(selectedAddress)} />
             ) : (
               <button className="add-address-card" type="button" onClick={() => savedAddresses.length ? setAddressSheet("selector") : openAddressForm()} aria-describedby={addressInvalid ? "address-error" : undefined}>
                 <span className="address-card-icon"><Truck aria-hidden="true" size={18} /></span>
@@ -210,17 +289,25 @@ export function CartScreen({ cart, customerDetails, isCustomerVerified, menu, on
         <h2 id="payment-summary-title">Payment summary</h2>
         <dl>
           <div><dt>Subtotal</dt><dd>{formatRupees(subtotal)}</dd></div>
-          <div><dt>Delivery fee</dt><dd>{fulfilment === "delivery" && !selectedAddress ? "Calculated after address" : formatRupees(deliveryFee)}</dd></div>
+          {discount > 0 ? <div><dt>Discount</dt><dd>-{formatRupees(discount)}</dd></div> : null}
+          <div><dt>Delivery fee</dt><dd>{fulfilment === "pickup" ? formatRupees(0) : deliveryFee === undefined ? "Calculated after address" : formatRupees(deliveryFee)}</dd></div>
           <div><dt>Taxes</dt><dd>{formatRupees(taxes)}</dd></div>
           <div className="summary-total"><dt>Total</dt><dd>{formatRupees(total)}</dd></div>
         </dl>
+        {settings && netFoodSubtotal < settings.minimumOrderValue ? <p className="address-error" role="alert">Add {formatRupees(settings.minimumOrderValue - netFoodSubtotal)} more to meet the {formatRupees(settings.minimumOrderValue)} minimum order.</p> : null}
         <p className="summary-note">Final prices are rechecked before the secure payment hand-off.</p>
       </section>
     </div>
 
-    <div className="checkout-dock"><div className="checkout-dock__inner"><button className="primary-button" type="button" disabled={!venue.isAcceptingOrders} onClick={continueToPayment}>{checkoutLabel}</button></div></div>
+    <div className="checkout-dock"><div className="checkout-dock__inner"><button className="primary-button" type="button" disabled={!needsAddress && !eligibility.canCheckout} onClick={continueToPayment}>{checkoutLabel}</button></div></div>
 
     {addressSheet === "selector" ? <AddressSelectorSheet addresses={savedAddresses} onAdd={() => openAddressForm()} onClose={() => setAddressSheet(null)} onSelect={selectAddress} selectedAddressId={effectiveAddressId} /> : null}
     {addressSheet === "form" ? <div className="sheet-layer" role="presentation"><button aria-label="Close address form" className="sheet-scrim" type="button" onClick={() => setAddressSheet(null)} /><section className="bottom-sheet address-form-sheet" role="dialog" aria-modal="true" aria-label={editingAddress ? "Edit address" : "Add an address"}><AddressForm key={editingAddress?.id ?? "new-address"} initialValue={editingAddress} mode={editingAddress ? "edit" : "create"} onCancel={() => setAddressSheet(null)} onSave={saveAddress} /></section></div> : null}
   </main>;
+}
+
+function unavailableCopy(line: CartLineView) {
+  if (line.unavailableReason === "product-removed") return "This item is no longer on the menu.";
+  if (line.unavailableReason === "option-unavailable") return "A selected option is no longer available.";
+  return "Currently unavailable at this location.";
 }
