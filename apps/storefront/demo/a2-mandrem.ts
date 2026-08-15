@@ -8,6 +8,7 @@ export const a2MandremStorefront: StorefrontDemo = {
     locationDescription: "Freshly made favourites, served from Mandrem.",
     address: "Mandrem Market Road, Mandrem, Goa 403527",
     orderingStatus: "Open today · Orders until 10:30 PM",
+    isAcceptingOrders: true,
     accentColor: "#ad412d",
   },
   menu: {

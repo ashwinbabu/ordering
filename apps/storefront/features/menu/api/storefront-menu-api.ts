@@ -150,6 +150,9 @@ function parseStorefrontMenu(value: Json): StorefrontMenu {
 
   return {
     schemaVersion: 1,
+    // Read leniently so the client stays deployable ahead of the migration that
+    // adds this field. Absent means accepting orders, matching the Admin default.
+    orderingEnabled: typeof menu.orderingEnabled === "boolean" ? menu.orderingEnabled : true,
     business: {
       id: readString(business.id, "The storefront menu business ID"),
       name: readString(business.name, "The storefront menu business name"),

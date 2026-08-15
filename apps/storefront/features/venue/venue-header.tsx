@@ -1,12 +1,17 @@
-import { CircleUserRound, MapPin } from "lucide-react";
+import { CircleUserRound, Download, MapPin, ShoppingBag } from "lucide-react";
 import type { Venue } from "../../domain/storefront";
+import { useInstallPrompt } from "./use-install-prompt";
 
 interface VenueHeaderProps {
+  cartItemCount: number;
+  onGoToCart: () => void;
   onOpenAccount: () => void;
   venue: Venue;
 }
 
-export function VenueHeader({ onOpenAccount, venue }: VenueHeaderProps) {
+export function VenueHeader({ cartItemCount, onGoToCart, onOpenAccount, venue }: VenueHeaderProps) {
+  const { canInstall, promptInstall } = useInstallPrompt();
+
   return (
     <header className="outlet-header">
       <div className="outlet-header__inner">
@@ -25,7 +30,19 @@ export function VenueHeader({ onOpenAccount, venue }: VenueHeaderProps) {
             </p>
           </div>
         </div>
-        <button className="venue-account-button" type="button" onClick={onOpenAccount} aria-label="Open account"><CircleUserRound aria-hidden="true" size={22} /></button>
+        <div className="header-actions">
+          {canInstall ? (
+            <button className="install-button" type="button" onClick={promptInstall}>
+              <Download aria-hidden="true" size={15} strokeWidth={2.2} />
+              Install
+            </button>
+          ) : null}
+          <button className="header-bag" type="button" onClick={onGoToCart} aria-label={cartItemCount ? `Open cart, ${cartItemCount} items` : "Open cart"}>
+            <ShoppingBag aria-hidden="true" size={20} strokeWidth={2} />
+            {cartItemCount > 0 ? <span>{cartItemCount}</span> : null}
+          </button>
+          <button className="venue-account-button" type="button" onClick={onOpenAccount} aria-label="Open account"><CircleUserRound aria-hidden="true" size={22} /></button>
+        </div>
       </div>
     </header>
   );

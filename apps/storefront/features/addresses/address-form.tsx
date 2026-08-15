@@ -1,4 +1,4 @@
-import { Check, ChevronDown, MapPin } from "lucide-react";
+import { Check, ChevronDown, MapPin, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type { AddressLabel, DeliveryAddress } from "../../domain/storefront";
 
@@ -12,6 +12,7 @@ interface AddressFormProps {
 }
 
 const areas = ["Mandrem", "Arambol", "Ashwem", "Morjim"];
+const addressLabels: AddressLabel[] = ["Home", "Hotel", "Work", "Other"];
 const emptyDraft: AddressDraft = {
   label: "Home", recipientName: "", recipientPhone: "", line1: "", line2: "", locality: "Mandrem",
   city: "North Goa", state: "Goa", postalCode: "403527", landmark: "", instructions: "", isDefault: false,
@@ -55,49 +56,52 @@ export function AddressForm({ initialValue, mode, onCancel, onSave }: AddressFor
   }
 
   return (
-    <form className="address-form" aria-labelledby={titleId} onSubmit={submit} noValidate>
-      <div className="address-form__intro">
-        <p className="section-kicker">Delivery</p>
-        <h2 id={titleId}>{mode === "create" ? "Add an address" : "Edit address"}</h2>
-        <p>We calculate delivery only after you choose a precise area.</p>
-      </div>
-
-      <div className="form-grid">
-        <Field label="Recipient name" error={errors.recipientName}>
-          <input value={draft.recipientName} onChange={(event) => setField("recipientName", event.target.value)} autoComplete="name" />
-        </Field>
-        <Field label="Recipient phone" error={errors.recipientPhone}>
-          <div className="phone-input"><span>+91</span><input value={draft.recipientPhone} onChange={(event) => setField("recipientPhone", event.target.value)} inputMode="numeric" autoComplete="tel" placeholder="98765 43210" /></div>
-        </Field>
-        <Field label="Hotel, villa, hostel or street address" error={errors.line1}>
-          <input ref={lineOneRef} value={draft.line1} onChange={(event) => setField("line1", event.target.value)} placeholder="e.g. Palm Grove Guest House" autoComplete="address-line1" />
-        </Field>
-        <Field label="Room / flat" hint="Optional">
-          <input value={draft.line2} onChange={(event) => setField("line2", event.target.value)} placeholder="e.g. Room 204" autoComplete="address-line2" />
-        </Field>
-        <Field label="Area" error={errors.locality}>
-          <div className="area-picker">
-            <button type="button" className="area-picker__button" aria-expanded={isAreaPickerOpen} onClick={() => setIsAreaPickerOpen((open) => !open)}>
-              <MapPin aria-hidden="true" size={18} /><span>{draft.locality || "Select area"}</span><ChevronDown aria-hidden="true" size={18} />
-            </button>
-            {isAreaPickerOpen ? <div className="area-picker__list" role="radiogroup" aria-label="Delivery area">
-              {areas.map((area) => <button key={area} role="radio" aria-checked={draft.locality === area} type="button" onClick={() => { setField("locality", area); setIsAreaPickerOpen(false); }}><span>{area}</span>{draft.locality === area ? <Check aria-hidden="true" size={18} /> : null}</button>)}
-            </div> : null}
-          </div>
-        </Field>
-        <div className="address-form__split">
-          <Field label="City"><input value={draft.city} onChange={(event) => setField("city", event.target.value)} autoComplete="address-level2" /></Field>
-          <Field label="Postal code"><input value={draft.postalCode} onChange={(event) => setField("postalCode", event.target.value)} inputMode="numeric" autoComplete="postal-code" /></Field>
+    <>
+      <div className="sheet-title-row">
+        <div>
+          <p className="section-kicker">Delivery</p>
+          <h2 id={titleId}>{mode === "create" ? "Add an address" : "Edit address"}</h2>
+          <p>We calculate delivery only after you choose a precise area.</p>
         </div>
-        <Field label="Nearby landmark" hint="Optional"><input value={draft.landmark} onChange={(event) => setField("landmark", event.target.value)} placeholder="e.g. Opposite Mandrem Church" /></Field>
-        <Field label="Delivery instructions" hint="Optional"><textarea value={draft.instructions} onChange={(event) => setField("instructions", event.target.value)} placeholder="Anything that helps us find you?" rows={2} /></Field>
+        <button aria-label="Close address form" className="icon-button sheet-close" type="button" onClick={onCancel}><X aria-hidden="true" size={20} /></button>
       </div>
+      <form className="address-form" aria-labelledby={titleId} onSubmit={submit} noValidate>
+        <div className="address-form__fields">
+          <div className="form-row form-row--two">
+            <Field label="Name" error={errors.recipientName}>
+              <input value={draft.recipientName} onChange={(event) => setField("recipientName", event.target.value)} autoComplete="name" placeholder="Your name" />
+            </Field>
+            <Field label="Mobile" error={errors.recipientPhone}>
+              <input value={draft.recipientPhone} onChange={(event) => setField("recipientPhone", event.target.value)} inputMode="numeric" autoComplete="tel" placeholder="+91 98765 43210" />
+            </Field>
+          </div>
+          <Field label="Hotel, villa, hostel or street address" error={errors.line1}>
+            <input ref={lineOneRef} value={draft.line1} onChange={(event) => setField("line1", event.target.value)} placeholder="e.g. Palm Grove Guest House" autoComplete="address-line1" />
+          </Field>
+          <div className="form-row form-row--two">
+            <Field label="Room / flat" hint="Optional">
+              <input value={draft.line2} onChange={(event) => setField("line2", event.target.value)} placeholder="e.g. Room 204" autoComplete="address-line2" />
+            </Field>
+            <Field label="Area" error={errors.locality}>
+              <div className="custom-select">
+                <input type="hidden" value={draft.locality} readOnly />
+                <button type="button" className="custom-select__trigger" aria-expanded={isAreaPickerOpen} onClick={() => setIsAreaPickerOpen((open) => !open)}>
+                  <MapPin aria-hidden="true" size={18} /><span>{draft.locality || "Select area"}</span><ChevronDown aria-hidden="true" size={18} />
+                </button>
+                {isAreaPickerOpen ? <div className="custom-select__options" role="radiogroup" aria-label="Delivery area">
+                  {areas.map((area) => <button key={area} role="radio" aria-checked={draft.locality === area} type="button" onClick={() => { setField("locality", area); setIsAreaPickerOpen(false); }}><span>{area}</span>{draft.locality === area ? <Check aria-hidden="true" size={18} /> : null}</button>)}
+                </div> : null}
+              </div>
+            </Field>
+          </div>
+          <Field label="Nearby landmark" hint="Optional"><input value={draft.landmark} onChange={(event) => setField("landmark", event.target.value)} placeholder="e.g. Opposite Mandrem Church" /></Field>
+        </div>
 
-      <fieldset className="address-labels"><legend>Save as</legend><div>{(["Home", "Work", "Other"] as AddressLabel[]).map((label) => <label key={label}><input type="radio" name="address-label" checked={draft.label === label} onChange={() => setField("label", label)} /><span>{label}</span></label>)}</div></fieldset>
-      {draft.label === "Other" ? <Field label="Address label"><input value={draft.customLabel ?? ""} onChange={(event) => setField("customLabel", event.target.value)} placeholder="e.g. Beach house" /></Field> : null}
-      <label className="default-address"><input type="checkbox" checked={draft.isDefault} onChange={(event) => setField("isDefault", event.target.checked)} />Make this my default address</label>
-      <div className="address-form__actions"><button className="text-button" type="button" onClick={onCancel}>Cancel</button><button className="primary-button" type="submit">{mode === "create" ? "Save address" : "Save changes"}</button></div>
-    </form>
+        <fieldset className="address-labels"><legend>Save as</legend><div>{addressLabels.map((label) => <label key={label}><input type="radio" name="address-label" checked={draft.label === label} onChange={() => setField("label", label)} /><span>{label}</span></label>)}</div></fieldset>
+        {draft.label === "Other" ? <Field label="Address label"><input value={draft.customLabel ?? ""} onChange={(event) => setField("customLabel", event.target.value)} placeholder="e.g. Beach house" /></Field> : null}
+        <div className="address-form__actions"><button className="primary-button" type="submit">Save and check delivery</button></div>
+      </form>
+    </>
   );
 }
 

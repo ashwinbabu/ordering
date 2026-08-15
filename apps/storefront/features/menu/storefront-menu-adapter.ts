@@ -37,10 +37,13 @@ export function venueFromStorefrontMenu(storefrontMenu: StorefrontMenu): Venue {
     displayName: displayNameFor(storefrontMenu.business.name),
     locationName: storefrontMenu.location.name,
     locationDescription: `Order directly from ${storefrontMenu.location.name}.`,
-    // Address and ordering-status settings are deliberately outside the menu
-    // contract for now; this keeps the menu integration separate from checkout.
+    // Address settings are deliberately outside the menu contract for now; this
+    // keeps the menu integration separate from checkout.
     address: storefrontMenu.location.name,
-    orderingStatus: "Menu updated live",
+    orderingStatus: storefrontMenu.orderingEnabled
+      ? "Menu updated live"
+      : "Not accepting orders right now",
+    isAcceptingOrders: storefrontMenu.orderingEnabled,
     accentColor: "#9a3d28",
   };
 }
