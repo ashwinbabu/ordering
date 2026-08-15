@@ -156,9 +156,14 @@ function parseOrder(value: Json): Order {
 }
 
 export async function getOrdersForLocation(scope: OrderScope): Promise<Order[]> {
+  // p_from/p_to are intentionally omitted: the RPC defaults to "today" in
+  // the business's own timezone, scoping delivered/cancelled orders to
+  // today while always including every still-open order regardless of
+  // when it was placed.
   const { data, error } = await supabase.schema("ordering").rpc("list_orders_for_location", {
     p_business_id: scope.businessId,
     p_location_id: scope.locationId,
+    p_limit: 100,
   });
   throwIfError(error);
   if (!Array.isArray(data)) throw new Error("The order response is invalid.");

@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { formatMoney, nextOrderAction, type Order, type OrderStatus } from "./order-model";
+import { formatMoney, formatQueueDate, nextOrderAction, type Order, type OrderStatus } from "./order-model";
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   return <span className={`status-badge status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
@@ -173,7 +173,7 @@ export function OrdersPage({
   return (
     <div className="page orders-page">
       <div className="orders-command-row">
-        <div className="date-control"><CalendarDays size={17} />11–12 Aug 2026<ChevronDown size={15} /></div>
+        <div className="date-control"><CalendarDays size={17} />{formatQueueDate(new Date())}<ChevronDown size={15} /></div>
         <div className={`ordering-control ${orderingOpen ? "open" : "paused"}`}>
           <span className="ordering-control-status"><Store size={16} />{orderingOpen ? "Accepting orders" : "Orders paused"}</span>
           <div className="ordering-toggle-wrap">

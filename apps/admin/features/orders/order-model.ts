@@ -47,6 +47,14 @@ export function formatMoney(value: number) {
   return `₹${value.toLocaleString("en-IN")}`;
 }
 
+export function formatQueueDate(date: Date) {
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(date);
+}
+
 export function nextOrderAction(status: OrderStatus) {
   if (status === "New") return "Accept order";
   if (status === "Preparing") return "Mark out for delivery";
