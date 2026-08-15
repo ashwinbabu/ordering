@@ -9,6 +9,7 @@ export interface Venue {
   locationDescription: string;
   address: string;
   orderingStatus: string;
+  isAcceptingOrders: boolean;
   accentColor: string;
 }
 
@@ -91,6 +92,7 @@ export interface StorefrontMenuCategory {
 
 export interface StorefrontMenu {
   schemaVersion: 1;
+  orderingEnabled: boolean;
   business: {
     id: string;
     name: string;
@@ -129,7 +131,7 @@ export interface CustomerDetails {
   phone: string;
 }
 
-export type AddressLabel = "Home" | "Work" | "Other";
+export type AddressLabel = "Home" | "Hotel" | "Work" | "Other";
 
 export interface DeliveryAddress {
   id: string;

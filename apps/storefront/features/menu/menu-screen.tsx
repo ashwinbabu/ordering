@@ -1,12 +1,14 @@
-import { ChevronDown, Clock3, Grid2X2, List, Menu as MenuIcon, Sparkle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Clock3, Grid2X2, List, Menu as MenuIcon, Minus, Plus, Sparkle } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  formatRupees,
   productById,
   productsForCategory,
   type Menu,
   type MenuPresentation,
   type MenuProduct,
 } from "../../domain/storefront";
+import { categoryGlyphAt } from "./category-glyph";
 import { CategoryNavigator } from "./category-navigator";
 import { MenuImage } from "./menu-image";
 import { MenuProductCard } from "./menu-product-card";
@@ -14,23 +16,19 @@ import { MenuProductCard } from "./menu-product-card";
 interface MenuScreenProps {
   cartQuantities: Record<string, number>;
   cartItemCount: number;
+  cartTotal: number;
+  footer: ReactNode;
+  isAcceptingOrders: boolean;
   menu: Menu;
   onGoToCart: () => void;
   onAddProduct: (product: MenuProduct) => void;
   onQuantityChange: (productId: string, quantity: number) => void;
+  onViewProduct: (product: MenuProduct) => void;
   orderingStatus: string;
   locationName: string;
 }
 
-const categorySymbols: Record<string, string> = {
-  "south-indian": "◒",
-  "goan-mains": "✦",
-  "quick-bites": "◇",
-  beverages: "◡",
-  desserts: "○",
-};
-
-export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, onAddProduct, onGoToCart, onQuantityChange, orderingStatus }: MenuScreenProps) {
+export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, isAcceptingOrders, locationName, menu, onAddProduct, onGoToCart, onQuantityChange, onViewProduct, orderingStatus }: MenuScreenProps) {
   const initialCategoryId = menu.categories[0]?.id ?? "";
   const [activeCategoryId, setActiveCategoryId] = useState(initialCategoryId);
   const [isNavigatorOpen, setIsNavigatorOpen] = useState(false);
@@ -111,10 +109,12 @@ export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, 
   }
 
   return (
-    <section className="menu-page" aria-labelledby="menu-title">
+    <main className="menu-page" aria-labelledby="menu-title">
       <div className="menu-shell">
-        <section className="menu-intro content-width">
-          <p className="service-status"><span aria-hidden="true" />{orderingStatus}</p>
+        <section className="menu-intro">
+          {/* role="status" so the change is announced when the operator pauses
+              ordering mid-session, since it happens without any user action. */}
+          <p className={`service-status${isAcceptingOrders ? "" : " service-status--paused"}`} role="status"><span aria-hidden="true" />{orderingStatus}</p>
           <h1 id="menu-title">What are you craving?</h1>
           <p className="menu-intro__message">Made fresh in {locationName}. Choose delivery or pickup in your cart.</p>
           <p className="menu-intro__delivery-note">
@@ -123,9 +123,9 @@ export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, 
           </p>
         </section>
 
-        <section className="category-discovery content-width" aria-label="Menu categories" ref={categoryRowRef}>
+        <section className="category-discovery" aria-label="Menu categories" ref={categoryRowRef}>
           <div className="category-boxes">
-            {menu.categories.map((category) => (
+            {menu.categories.map((category, index) => (
               <button
                 className="category-box"
                 data-active={activeCategoryId === category.id}
@@ -134,17 +134,17 @@ export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, 
                 onClick={() => selectCategory(category.id)}
               >
                 <span className="category-box__icon" aria-hidden="true">
-                  {categorySymbols[category.id] ?? "•"}
+                  {categoryGlyphAt(index)}
                 </span>
                 <span>{category.name}</span>
-                <small>{productCounts[category.id] ?? 0} dishes</small>
+                <small>{productCounts[category.id] ?? 0} items</small>
               </button>
             ))}
           </div>
         </section>
 
         {featuredProducts.length ? (
-          <section className="featured-section content-width" aria-labelledby="featured-title">
+          <section className="featured-section" aria-labelledby="featured-title">
             <div className="section-heading">
               <div>
                 <p className="section-kicker">From our kitchen</p>
@@ -160,26 +160,30 @@ export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, 
 
                 return (
                   <article className="featured-card" key={product.id}>
-                    <MenuImage src={product.imageUrl} alt={product.name} className="featured-card__image" />
-                    <div className="featured-card__gradient" />
-                    <div className="featured-card__content">
-                      <p>
-                        {editorialLabel === "A Mandrem favourite" ? <Sparkle aria-hidden="true" size={12} /> : null}
-                        {editorialLabel}
-                      </p>
-                      <h3>{product.name}</h3>
-                      <span>From ₹{product.price}</span>
-                    </div>
+                    <button aria-label={`View ${product.name}`} className="featured-card__surface" type="button" onClick={() => onViewProduct(product)}>
+                      <MenuImage src={product.imageUrl} alt={product.name} className="featured-card__image" />
+                      <span className="featured-card__gradient" />
+                      <span className="featured-card__content">
+                        {editorialLabel ? (
+                          <span className="featured-card__tag">
+                            {editorialLabel === "A Mandrem favourite" ? <Sparkle aria-hidden="true" size={12} /> : null}
+                            {editorialLabel}
+                          </span>
+                        ) : null}
+                        <strong>{product.name}</strong>
+                        <span className="product-price">From ₹{product.price}</span>
+                      </span>
+                    </button>
                     {product.availability === "available" && (product.optionGroups?.length ?? 0) > 0 ? (
-                      <button className="featured-card__add" type="button" onClick={() => onAddProduct(product)}>Configure</button>
+                      <button className="featured-card__add" type="button" disabled={!isAcceptingOrders} onClick={() => onAddProduct(product)}>Configure</button>
                     ) : product.availability === "available" ? (
                       cartQuantities[product.id] ? (
                         <div className="featured-card__add quantity-control" aria-label={`Quantity of ${product.name}`}>
                           <button type="button" aria-label={`Remove one ${product.name}`} onClick={() => onQuantityChange(product.id, cartQuantities[product.id] - 1)}><Minus aria-hidden="true" size={15} /></button>
                           <span>{cartQuantities[product.id]}</span>
-                          <button type="button" aria-label={`Add one ${product.name}`} onClick={() => onQuantityChange(product.id, cartQuantities[product.id] + 1)}><Plus aria-hidden="true" size={15} /></button>
+                          <button type="button" aria-label={`Add one ${product.name}`} disabled={!isAcceptingOrders} onClick={() => onQuantityChange(product.id, cartQuantities[product.id] + 1)}><Plus aria-hidden="true" size={15} /></button>
                         </div>
-                      ) : <button className="featured-card__add" type="button" onClick={() => onAddProduct(product)}>Add</button>
+                      ) : <button className="featured-card__add" type="button" disabled={!isAcceptingOrders} onClick={() => onAddProduct(product)}>Add</button>
                     ) : null}
                   </article>
                 );
@@ -188,10 +192,10 @@ export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, 
           </section>
         ) : null}
 
-        <section className="full-menu content-width" aria-labelledby="full-menu-title">
-          <div className="full-menu__heading">
+        <section className="full-menu" aria-labelledby="full-menu-title">
+          <div className="section-heading full-menu__heading">
             <div>
-              <p className="section-kicker">Made with love in {locationName}</p>
+              <p className="full-menu__note">Made with love in {locationName}</p>
               <h2 id="full-menu-title">Full menu</h2>
             </div>
             {menu.allowPresentationChange ? (
@@ -241,8 +245,10 @@ export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, 
                 {products.map((product) => (
                   <MenuProductCard
                     key={product.id}
+                    isAcceptingOrders={isAcceptingOrders}
                     onAdd={onAddProduct}
                     onQuantityChange={onQuantityChange}
+                    onView={onViewProduct}
                     presentation={presentation}
                     product={product}
                     quantity={cartQuantities[product.id] ?? 0}
@@ -253,6 +259,7 @@ export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, 
           );
         })}
         </section>
+        {footer}
       </div>
 
       {showFloatingNavigator ? (
@@ -272,12 +279,17 @@ export function MenuScreen({ cartItemCount, cartQuantities, locationName, menu, 
         productCounts={productCounts}
       />
       {cartItemCount > 0 ? (
-        <button className="go-to-cart" type="button" onClick={onGoToCart}>
-          <span>{cartItemCount}</span>
-          <strong>Go to Cart</strong>
-          <small>Review your order</small>
-        </button>
+        <div className="cart-dock">
+          <button type="button" onClick={onGoToCart}>
+            <span className="cart-dock__count">{cartItemCount}</span>
+            <span className="cart-dock__label">
+              <strong>Go to Cart</strong>
+              <small>{formatRupees(cartTotal)}</small>
+            </span>
+            <ChevronRight aria-hidden="true" size={20} />
+          </button>
+        </div>
       ) : null}
-    </section>
+    </main>
   );
 }

@@ -32,22 +32,26 @@ Required outcomes:
 
 Do not modify `apps/admin/` during Storefront work unless a later prompt explicitly requires it.
 
-## No backend work
+## Backend work
 
-There is no Supabase implementation in the demo Site, and no backend work is authorised for this rebuild.
+The original rebuild authorised no backend work at all. That blanket prohibition has since been **superseded for the menu catalogue only**, by approved work that shipped a real, location-scoped Supabase read path:
 
-Do not add or configure:
+- `lib/supabase/client.ts` and the generated `lib/supabase/database.types.ts`;
+- `@supabase/supabase-js` in this workspace's `package.json`;
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in `.env.local`;
+- the `get_storefront_menu` RPC and its migrations under `supabase/`;
+- `features/menu/api/storefront-menu-api.ts` reading that boundary.
 
-- Supabase clients or packages;
+Everything outside the menu catalogue remains unauthorised. Do not add or configure:
+
 - authentication;
-- database types;
-- SQL, migrations, RLS, RPCs or Edge Functions;
-- Realtime, Storage or backend APIs;
-- environment variables or secrets;
+- Realtime, Storage or other backend APIs;
+- new SQL, migrations, RLS, RPCs or Edge Functions;
+- new environment variables or secrets;
 - real payment processing;
 - live order, refund or delivery integrations.
 
-TanStack Query is the intended future server-state layer. Do not introduce artificial queries, fake remote APIs or no-op hooks merely to use it. Use replaceable local data boundaries only where the current frontend needs them.
+TanStack Query is now the storefront's server-state layer, wired in `lib/query-client.tsx` and used by `features/menu/storefront-menu-query.ts` for the menu RPC. It is for **real** remote state only. Do not introduce artificial queries, fake remote APIs or no-op hooks merely to use it, and keep demo/seed data (`demo/a2-mandrem.ts`) as local state rather than wrapping it in queries.
 
 ## Architecture
 

@@ -1,13 +1,6 @@
 import { Check, ChevronRight, X } from "lucide-react";
 import type { MenuCategory } from "../../domain/storefront";
-
-const categorySymbols: Record<string, string> = {
-  "south-indian": "◒",
-  "goan-mains": "✦",
-  "quick-bites": "◇",
-  beverages: "◡",
-  desserts: "○",
-};
+import { categoryGlyphAt } from "./category-glyph";
 
 interface CategoryNavigatorProps {
   activeCategoryId: string;
@@ -50,7 +43,7 @@ export function CategoryNavigator({
           </button>
         </div>
         <div className="category-navigator-list">
-          {categories.map((category) => {
+          {categories.map((category, index) => {
             const isSelected = activeCategoryId === category.id;
 
             return (
@@ -61,12 +54,12 @@ export function CategoryNavigator({
                 onClick={() => onSelect(category.id)}
               >
                 <span className="category-nav-icon" aria-hidden="true">
-                  {categorySymbols[category.id] ?? "•"}
+                  {categoryGlyphAt(index)}
                 </span>
                 <span className="category-nav-copy">
                   <strong>{category.name}</strong>
                   <small>
-                    {productCounts[category.id] ?? 0} {productCounts[category.id] === 1 ? "dish" : "dishes"}
+                    {productCounts[category.id] ?? 0} {productCounts[category.id] === 1 ? "item" : "items"}
                   </small>
                 </span>
                 {isSelected ? <Check aria-hidden="true" size={19} /> : <ChevronRight aria-hidden="true" size={18} />}
