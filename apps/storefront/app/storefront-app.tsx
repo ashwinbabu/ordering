@@ -1,9 +1,11 @@
-import { a2MandremAddresses, a2MandremCustomer, a2MandremOrders } from "../demo/a2-mandrem";
+import { a2MandremAddresses, a2MandremOrders } from "../demo/a2-mandrem";
 import { useMemo, useState } from "react";
-import type { CartLine, CartLineOptionSelection, CheckoutRequest, CustomerDetails, CustomerProfile, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
+import { defaultCountryCode } from "../domain/phone";
+import type { CartLine, CartLineOptionSelection, CheckoutRequest, CustomerDetails, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
 import { AccountScreen } from "../features/account/account-screen";
 import { SavedAddressesScreen } from "../features/addresses/saved-addresses-screen";
 import { AuthFlowSheet, type AuthFlowRequest } from "../features/auth/auth-flow-sheet";
+import { useCustomerSession } from "../features/auth/customer-session";
 import { CartScreen } from "../features/cart/cart-screen";
 import { PaymentFlowScreen } from "../features/checkout/payment-flow-screen";
 import { useCheckoutFlow } from "../features/checkout/use-checkout-flow";
@@ -34,7 +36,8 @@ const currentOrderStatuses = new Set<StorefrontOrder["status"]>(["placed", "acce
 
 export function StorefrontApp() {
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [customer, setCustomer] = useState<CustomerProfile>(a2MandremCustomer);
+  const customerSession = useCustomerSession();
+  const customer = customerSession.customer;
   const [savedAddresses, setSavedAddresses] = useState<DeliveryAddress[]>(a2MandremAddresses);
   const [orders] = useState<StorefrontOrder[]>(a2MandremOrders);
   const checkout = useCheckoutFlow();
@@ -57,7 +60,9 @@ export function StorefrontApp() {
   const cartQuantities = useMemo(() => Object.fromEntries(cart.map((line) => [line.productId, line.quantity])), [cart]);
   const cartItemCount = useMemo(() => cart.reduce((count, line) => count + line.quantity, 0), [cart]);
   const cartTotal = useMemo(() => cart.reduce((total, line) => total + line.unitPrice * line.quantity, 0), [cart]);
-  const customerDetails: CustomerDetails = { name: customer.name, countryCode: customer.countryCode, phone: customer.phone };
+  const customerDetails: CustomerDetails = customer
+    ? { name: customer.name, countryCode: customer.countryCode, phone: customer.phone }
+    : { name: "", countryCode: defaultCountryCode, phone: "" };
   const restaurantOrders = orders.filter((order) => order.restaurantId === "a2-mandrem");
   const currentOrders = restaurantOrders.filter((order) => currentOrderStatuses.has(order.status));
   const pastOrders = restaurantOrders.filter((order) => !currentOrderStatuses.has(order.status)).slice().sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt));
@@ -167,8 +172,21 @@ export function StorefrontApp() {
 
   return <>
     {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={() => { setScreen("cart"); window.scrollTo({ top: 0 }); }} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onGoToCart={() => { setScreen("cart"); window.scrollTo({ top: 0 }); }} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
-    {screen === "cart" ? <CartScreen cart={cart} customerDetails={customerDetails} isCustomerVerified={customer.isPhoneVerified} menu={menu} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const line = cart.find((candidate) => candidate.id === lineId); if (line) setConfigurationTarget({ productId: line.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
-    {screen === "account" ? <AccountScreen addressCount={savedAddresses.length} customer={customer} onBack={() => setScreen("menu")} onOpenAddresses={() => setScreen("addresses")} onOpenOrders={() => setScreen("orders")} onRequestPhoneChange={() => openAuth({ context: "account", initialStep: "phone", phone: { countryCode: customer.countryCode, phone: customer.phone }, onSuccess: (phone) => setCustomer((current) => ({ ...current, ...phone, isPhoneVerified: true })) })} onSaveCustomer={setCustomer} onSignOut={() => setScreen("menu")} venue={venue} /> : null}
+    {screen === "cart" ? <CartScreen cart={cart} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} menu={menu} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const line = cart.find((candidate) => candidate.id === lineId); if (line) setConfigurationTarget({ productId: line.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
+    {/*
+      Known limitation: verifying a different number here re-runs the full
+      MSG91 + customer-auth-msg91 exchange, which finds-or-creates a customer
+      keyed by that phone_e164. That signs the browser into whichever
+      identity the new number resolves to, rather than renaming the phone on
+      the currently signed-in customer - core.customers has no "reassign
+      phone_e164" operation. The session context picks up the new identity
+      on its own via onAuthStateChange, so no local merge is needed here,
+      but this is a real product gap worth a deliberate fix, not something
+      this task covers.
+    */}
+    {screen === "account" ? (customer
+      ? <AccountScreen addressCount={savedAddresses.length} customer={customer} onBack={() => setScreen("menu")} onOpenAddresses={() => setScreen("addresses")} onOpenOrders={() => setScreen("orders")} onRequestPhoneChange={() => openAuth({ context: "account", initialStep: "phone", phone: { countryCode: customer.countryCode, phone: customer.phone }, onSuccess: () => {} })} onSaveCustomer={customerSession.updateLocalProfile} onSignOut={() => { void customerSession.signOut(); setScreen("menu"); }} venue={venue} />
+      : <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading your account</h1></section></main>) : null}
     {screen === "addresses" ? <SavedAddressesScreen addresses={savedAddresses} onBack={() => setScreen("account")} onDelete={(id) => setSavedAddresses((current) => current.filter((address) => address.id !== id))} onSave={saveAddress} venue={venue} /> : null}
     {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} venue={venue} /> : null}
     {screen === "order-details" && selectedOrder ? <OrderDetailsScreen order={selectedOrder} onBack={() => setScreen("orders")} onOrderAgain={orderAgain} venue={venue} /> : null}

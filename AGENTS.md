@@ -138,6 +138,8 @@ Do not connect, switch, rename, or modify a Supabase project unless the current 
 
 Do not modify database schema, migrations, RLS, RPCs, Edge Functions, Auth configuration, Storage configuration, or production data unless explicitly requested.
 
+This blanket restriction has been explicitly authorized for one additional boundary: the MSG91 OTP customer-authentication integration (Storefront sign-in and checkout verification). That authorization covers the `core.customer_auth_verifications` table and its RLS, the `customer-auth-msg91` Edge Function, and the Supabase Auth session bridge (synthetic-email magic-link exchange) it depends on. It does not extend to any other schema, RPC, Edge Function, or Auth configuration change.
+
 Do not invent environment values.
 
 Never expose a Supabase service-role key or other server-only credential to frontend code.

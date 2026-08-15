@@ -34,7 +34,9 @@ Do not modify `apps/admin/` during Storefront work unless a later prompt explici
 
 ## Backend work
 
-The original rebuild authorised no backend work at all. That blanket prohibition has since been **superseded for the menu catalogue only**, by approved work that shipped a real, location-scoped Supabase read path:
+The original rebuild authorised no backend work at all. That blanket prohibition has since been superseded for two boundaries by approved work:
+
+**The menu catalogue**, which shipped a real, location-scoped Supabase read path:
 
 - `lib/supabase/client.ts` and the generated `lib/supabase/database.types.ts`;
 - `@supabase/supabase-js` in this workspace's `package.json`;
@@ -42,12 +44,21 @@ The original rebuild authorised no backend work at all. That blanket prohibition
 - the `get_storefront_menu` RPC and its migrations under `supabase/`;
 - `features/menu/api/storefront-menu-api.ts` reading that boundary.
 
-Everything outside the menu catalogue remains unauthorised. Do not add or configure:
+**MSG91 OTP customer authentication**, covering both the sign-in entry point (header/account) and the checkout verification entry point:
 
-- authentication;
-- Realtime, Storage or other backend APIs;
-- new SQL, migrations, RLS, RPCs or Edge Functions;
-- new environment variables or secrets;
+- `core.customer_auth_verifications` (replay guard) and its RLS, under `supabase/migrations/`;
+- the `customer-auth-msg91` Edge Function under `supabase/functions/`, which holds the MSG91 authkey as a server secret and never exposes it to the client;
+- the Supabase Auth session bridge it mints (deterministic synthetic-email magic-link exchange via `admin.generateLink` + client-side `auth.verifyOtp({ token_hash })`) — this is the sanctioned way to turn an MSG91-verified phone into a real Supabase session; do not invent a second one;
+- `VITE_MSG91_WIDGET_ID` and `VITE_MSG91_TOKEN_AUTH` in `.env.local` (client-safe by MSG91's own design — the authkey is not);
+- `features/auth/msg91/`, `features/auth/api/customer-auth-api.ts`, `features/auth/use-otp-verification.ts`, `features/auth/customer-session.tsx`, and the `auth-flow-sheet.tsx` / `cart-screen.tsx` / `storefront-app.tsx` wiring that consumes them.
+
+SMS via MSG91 for Indian (+91) numbers only, for now. Email OTP for non-Indian customers is a deliberate seam (`domain/phone.ts`'s country table, MSG91's own email-channel support) but is not implemented — do not build it speculatively.
+
+Everything outside these two boundaries remains unauthorised. Do not add or configure:
+
+- Supabase's own phone/email OTP auth (Realtime and Storage stay unauthorised too);
+- new SQL, migrations, RLS, RPCs or Edge Functions beyond the two boundaries above;
+- new environment variables or secrets beyond the two boundaries above;
 - real payment processing;
 - live order, refund or delivery integrations.
 
