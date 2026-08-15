@@ -52,7 +52,7 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
           ...featuredProduct,
           product: productById(menu, featuredProduct.productId),
         }))
-        .filter((featuredProduct) => featuredProduct.product !== undefined),
+        .filter((featuredProduct) => featuredProduct.product !== undefined && featuredProduct.product.availability === "available"),
     [menu],
   );
 

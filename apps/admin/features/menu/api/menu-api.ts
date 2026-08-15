@@ -556,17 +556,50 @@ export async function saveMenuChanges({
       p_location_id: scope.locationId,
       p_baseline: rpcBaseline,
       p_menu: menu,
-    });
-  throwIfError(error);
-  const { error: featuredError } = await supabase
-    .schema("ordering")
-    .rpc("save_featured_product_ids", {
-      p_business_id: scope.businessId,
-      p_location_id: scope.locationId,
-      p_product_ids: products
+      p_featured_product_ids: products
         .filter((product) => product.featured)
         .map((product) => product.id),
     });
-  throwIfError(featuredError);
+  throwIfError(error);
   return parseMenuBaseline(data);
+}
+
+export async function setCategoryAvailability(input: {
+  businessId: string;
+  locationId: string;
+  categoryId: string;
+  isActive: boolean;
+}): Promise<{ categoryId: string; updatedAt: string }> {
+  // updated_at is not set here: an ordering.menu_categories trigger stamps
+  // it with the server's now() on every update, so a client-supplied value
+  // would only be overwritten.
+  const { data, error } = await supabase
+    .schema("ordering")
+    .from("menu_categories")
+    .update({ is_active: input.isActive })
+    .eq("id", input.categoryId)
+    .eq("business_id", input.businessId)
+    .eq("location_id", input.locationId)
+    .select("id, updated_at")
+    .single();
+  throwIfError(error);
+  if (!data) throw new Error("Could not update category availability.");
+  return { categoryId: data.id, updatedAt: data.updated_at };
+}
+
+export async function setProductAvailabilityAtLocation(input: {
+  locationId: string;
+  productId: string;
+  isAvailable: boolean;
+}): Promise<void> {
+  const { data, error } = await supabase
+    .schema("ordering")
+    .from("product_locations")
+    .update({ is_available: input.isAvailable })
+    .eq("product_id", input.productId)
+    .eq("location_id", input.locationId)
+    .select("product_id")
+    .single();
+  throwIfError(error);
+  if (!data) throw new Error("Could not update product availability.");
 }

@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { formatMoney, nextOrderAction, type Order, type OrderStatus } from "./order-model";
+import { formatMoney, formatQueueDate, isOnLocalDay, nextOrderAction, type Order, type OrderStatus } from "./order-model";
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   return <span className={`status-badge status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
@@ -168,12 +168,18 @@ export function OrdersPage({
   });
   const newCount = orders.filter((order) => order.status === "New").length;
   const activeCount = orders.filter((order) => ["New", "Preparing", "Out for delivery"].includes(order.status)).length;
-  const delivered = orders.filter((order) => order.status === "Delivered");
+  // Scoped by each order's own delivered_at, not by list membership: the
+  // queue deliberately shows every recent order regardless of age, so
+  // counting the list itself would report far more than today's work.
+  const deliveredToday = orders.filter(
+    (order) => order.status === "Delivered" && isOnLocalDay(order.deliveredAt),
+  );
+  const salesToday = deliveredToday.reduce((sum, order) => sum + order.total, 0);
 
   return (
     <div className="page orders-page">
       <div className="orders-command-row">
-        <div className="date-control"><CalendarDays size={17} />11–12 Aug 2026<ChevronDown size={15} /></div>
+        <div className="date-control"><CalendarDays size={17} />{formatQueueDate(new Date())}<ChevronDown size={15} /></div>
         <div className={`ordering-control ${orderingOpen ? "open" : "paused"}`}>
           <span className="ordering-control-status"><Store size={16} />{orderingOpen ? "Accepting orders" : "Orders paused"}</span>
           <div className="ordering-toggle-wrap">
@@ -186,17 +192,20 @@ export function OrdersPage({
       <section className="snapshot-strip" aria-label="Today’s snapshot">
         <div><span>New</span><strong>{newCount}</strong></div>
         <div><span>Open orders</span><strong>{activeCount}</strong></div>
-        <div><span>Completed today</span><strong>{delivered.length}</strong></div>
-        <div><span>Today’s sales</span><strong>{formatMoney(orders.filter((order) => order.status !== "Cancelled").reduce((sum, order) => sum + order.total, 0))}</strong></div>
+        <div><span>Completed today</span><strong>{deliveredToday.length}</strong></div>
+        <div><span>Today’s sales</span><strong>{formatMoney(salesToday)}</strong></div>
       </section>
 
       <div className="queue-toolbar">
         <div className="status-tabs" role="tablist" aria-label="Order status">
           {tabs.map((tab) => {
+            // Counts are totals for the tab, deliberately not narrowed by the
+            // search box, and always rendered -- including zero, so an empty
+            // status reads as "nothing here" rather than as a missing count.
             const count = orders.filter((order) => tab === "All" || order.status === tab).length;
             return (
               <button key={tab} role="tab" aria-selected={statusFilter === tab} className={statusFilter === tab ? "active" : ""} onClick={() => setStatusFilter(tab)}>
-                {tab}{(tab === "New" || tab === "Preparing") && count > 0 ? <span>{count}</span> : null}
+                {tab}<span aria-label={`${count} orders`}>{count}</span>
               </button>
             );
           })}

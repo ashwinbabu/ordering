@@ -1830,9 +1830,11 @@ export type Database = {
           p_before_created_at?: string
           p_before_id?: string
           p_business_id: string
+          p_from?: string
           p_limit?: number
           p_location_id: string
           p_statuses?: string[]
+          p_to?: string
         }
         Returns: Json
       }
@@ -1955,6 +1957,7 @@ export type Database = {
         Args: {
           p_baseline: Json
           p_business_id: string
+          p_featured_product_ids?: string[]
           p_location_id: string
           p_menu: Json
         }

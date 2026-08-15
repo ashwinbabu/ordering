@@ -32,7 +32,6 @@ import {
   createMenuId,
   DAYS,
   duplicateMenuProduct,
-  INITIAL_CATEGORIES,
   scheduleSummaryFor,
   type Category,
   type CategoryDialog,
@@ -44,7 +43,12 @@ import {
   MenuEditor,
   ProductEditorOverlay,
 } from "@/features/menu/menu-screen";
-import { useMenuQuery, useSaveMenuMutation } from "@/features/menu/menu-query";
+import {
+  useMenuQuery,
+  useSaveMenuMutation,
+  useSetCategoryAvailabilityMutation,
+  useSetProductAvailabilityMutation,
+} from "@/features/menu/menu-query";
 import type { MenuBaseline, MenuData } from "@/features/menu/api/menu-api";
 import { BusinessSettings } from "@/features/business-settings/business-settings-screen";
 
@@ -84,6 +88,8 @@ export function AdminApp() {
   );
   const transitionOrderMutation = useTransitionOrderMutation();
   const saveMenuMutation = useSaveMenuMutation();
+  const setCategoryAvailabilityMutation = useSetCategoryAvailabilityMutation();
+  const setProductAvailabilityMutation = useSetProductAvailabilityMutation();
   const [view, setView] = useState<View>("orders");
   const [menuState, setMenuState] = useState<LocalMenuState | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState("");
@@ -143,13 +149,9 @@ export function AdminApp() {
   const scopedMenuState =
     menuState?.scopeKey === menuScopeKey ? menuState : null;
   const categories =
-    scopedMenuState?.categories ??
-    menuQuery.data?.categories ??
-    INITIAL_CATEGORIES;
+    scopedMenuState?.categories ?? menuQuery.data?.categories ?? [];
   const savedCategories =
-    scopedMenuState?.savedCategories ??
-    menuQuery.data?.categories ??
-    INITIAL_CATEGORIES;
+    scopedMenuState?.savedCategories ?? menuQuery.data?.categories ?? [];
   const menuBaseline =
     scopedMenuState?.baseline ?? menuQuery.data?.baseline ?? null;
   const currentSelectedCategoryId = categories.some(
@@ -169,6 +171,13 @@ export function AdminApp() {
       document.body.style.overflow = "";
     };
   }, [productDraft]);
+
+  // A product draft is scoped to the outlet it was opened against. Switching
+  // outlets while it's open would otherwise let a save seed the new outlet's
+  // (still-loading) menu state from this draft alone.
+  useEffect(() => {
+    closeProductEditor();
+  }, [menuScopeKey]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -192,13 +201,9 @@ export function AdminApp() {
     setMenuState((current) => {
       const scoped = current?.scopeKey === menuScopeKey ? current : null;
       const currentCategories =
-        scoped?.categories ??
-        menuQuery.data?.categories ??
-        cloneCategories(INITIAL_CATEGORIES);
+        scoped?.categories ?? menuQuery.data?.categories ?? [];
       const currentSavedCategories =
-        scoped?.savedCategories ??
-        menuQuery.data?.categories ??
-        cloneCategories(INITIAL_CATEGORIES);
+        scoped?.savedCategories ?? menuQuery.data?.categories ?? [];
       const currentBaseline = scoped?.baseline ??
         menuQuery.data?.baseline ?? { categories: [], products: [] };
       return {
@@ -432,20 +437,94 @@ export function AdminApp() {
     }
   }
 
+  // Availability toggles write a single row directly (RLS-scoped, not the
+  // whole-menu RPC) and patch this local staged copy on success -- menuState
+  // is what the screens actually render, so a mutation-cache patch alone
+  // (see useSetCategoryAvailabilityMutation) isn't enough on its own.
+  function commitCategoryAvailability(
+    categoryId: string,
+    isActive: boolean,
+    updatedAt: string,
+  ) {
+    if (!menuScopeKey) return;
+    setMenuState((current) => {
+      const scoped = current?.scopeKey === menuScopeKey ? current : null;
+      const patch = (list: Category[]) =>
+        list.map((item) =>
+          item.id === categoryId ? { ...item, available: isActive } : item,
+        );
+      const baseCategories =
+        scoped?.categories ?? menuQuery.data?.categories ?? [];
+      const baseSaved =
+        scoped?.savedCategories ?? menuQuery.data?.categories ?? [];
+      const baseBaseline = scoped?.baseline ??
+        menuQuery.data?.baseline ?? { categories: [], products: [] };
+      return {
+        scopeKey: menuScopeKey,
+        categories: patch(baseCategories),
+        savedCategories: patch(baseSaved),
+        baseline: {
+          ...baseBaseline,
+          categories: baseBaseline.categories.map((entry) =>
+            entry.id === categoryId ? { ...entry, updatedAt } : entry,
+          ),
+        },
+      };
+    });
+  }
+
+  function commitProductAvailability(
+    categoryId: string,
+    productId: string,
+    isAvailable: boolean,
+  ) {
+    if (!menuScopeKey) return;
+    setMenuState((current) => {
+      const scoped = current?.scopeKey === menuScopeKey ? current : null;
+      const patch = (list: Category[]) =>
+        list.map((item) =>
+          item.id === categoryId
+            ? {
+                ...item,
+                products: item.products.map((entry) =>
+                  entry.id === productId
+                    ? { ...entry, available: isAvailable }
+                    : entry,
+                ),
+              }
+            : item,
+        );
+      const baseCategories =
+        scoped?.categories ?? menuQuery.data?.categories ?? [];
+      const baseSaved =
+        scoped?.savedCategories ?? menuQuery.data?.categories ?? [];
+      const baseBaseline = scoped?.baseline ??
+        menuQuery.data?.baseline ?? { categories: [], products: [] };
+      return {
+        scopeKey: menuScopeKey,
+        categories: patch(baseCategories),
+        savedCategories: patch(baseSaved),
+        baseline: baseBaseline,
+      };
+    });
+  }
+
   async function toggleCategoryAvailability(category: Category) {
+    if (!activeBusiness || !activeLocation) return;
+    const nextActive = !category.available;
     setBusyAvailability(category.id);
-    const previousCategories = categories;
-    const nextCategories = categories.map((item) =>
-      item.id === category.id ? { ...item, available: !item.available } : item,
-    );
-    setCategories(nextCategories);
     try {
-      await persistMenu(nextCategories, false);
+      const result = await setCategoryAvailabilityMutation.mutateAsync({
+        businessId: activeBusiness.id,
+        locationId: activeLocation.id,
+        categoryId: category.id,
+        isActive: nextActive,
+      });
+      commitCategoryAvailability(category.id, nextActive, result.updatedAt);
       showToast(
         `${category.name} ${category.available ? "made unavailable" : "is available"}.`,
       );
     } catch (error) {
-      setCategories(previousCategories);
       showToast(
         error instanceof Error
           ? error.message
@@ -480,28 +559,21 @@ export function AdminApp() {
       setUnsavedMenu(true);
       return;
     }
+    if (!activeBusiness || !activeLocation) return;
+    const nextAvailable = !product.available;
     setBusyAvailability(product.id);
-    const previousCategories = categories;
-    const nextCategories = categories.map((item) =>
-      item.id === category.id
-        ? {
-            ...item,
-            products: item.products.map((entry) =>
-              entry.id === product.id
-                ? { ...entry, available: !entry.available }
-                : entry,
-            ),
-          }
-        : item,
-    );
-    setCategories(nextCategories);
     try {
-      await persistMenu(nextCategories, false);
+      await setProductAvailabilityMutation.mutateAsync({
+        businessId: activeBusiness.id,
+        locationId: activeLocation.id,
+        productId: product.id,
+        isAvailable: nextAvailable,
+      });
+      commitProductAvailability(category.id, product.id, nextAvailable);
       showToast(
         `${product.name} ${product.available ? "made unavailable" : "is available"}.`,
       );
     } catch (error) {
-      setCategories(previousCategories);
       showToast(
         error instanceof Error
           ? error.message
@@ -650,11 +722,7 @@ export function AdminApp() {
         setCategoryError("Select at least one day.");
         return;
       }
-      const template =
-        categories.find((category) => category.id === categoryDialog.categoryId)
-          ?.products[0] || INITIAL_CATEGORIES[0].products[0];
       const summary = scheduleSummaryFor({
-        ...template,
         scheduleMode: categoryScheduleMode,
         scheduleStart: categoryScheduleStart,
         scheduleEnd: categoryScheduleEnd,

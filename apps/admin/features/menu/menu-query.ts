@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getMenu,
   saveMenuChanges,
+  setCategoryAvailability,
+  setProductAvailabilityAtLocation,
   type MenuBaseline,
   type MenuData,
 } from "@/features/menu/api/menu-api";
@@ -67,6 +69,74 @@ export function useSaveMenuMutation() {
         categories: cloneCategories(input.categories),
         baseline,
       }));
+    },
+  });
+}
+
+// Availability toggles are single-row writes (RLS-scoped, not baseline-
+// checked against the whole menu) and skip the save_menu_changes RPC
+// entirely -- see setCategoryAvailability / setProductAvailabilityAtLocation
+// in menu-api.ts. Cache updates here are targeted patches, not a refetch.
+export function useSetCategoryAvailabilityMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: setCategoryAvailability,
+    onSuccess: (result, input) => {
+      const queryKey = menuQueryKey(input.businessId, input.locationId);
+      queryClient.setQueryData<MenuData>(queryKey, (current) =>
+        current
+          ? {
+              categories: current.categories.map((category) =>
+                category.id === result.categoryId
+                  ? { ...category, available: input.isActive }
+                  : category,
+              ),
+              baseline: {
+                ...current.baseline,
+                categories: current.baseline.categories.map((entry) =>
+                  entry.id === result.categoryId
+                    ? { ...entry, updatedAt: result.updatedAt }
+                    : entry,
+                ),
+              },
+            }
+          : current,
+      );
+    },
+  });
+}
+
+export function useSetProductAvailabilityMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      businessId: string;
+      locationId: string;
+      productId: string;
+      isAvailable: boolean;
+    }) =>
+      setProductAvailabilityAtLocation({
+        locationId: input.locationId,
+        productId: input.productId,
+        isAvailable: input.isAvailable,
+      }),
+    onSuccess: (_result, input) => {
+      const queryKey = menuQueryKey(input.businessId, input.locationId);
+      queryClient.setQueryData<MenuData>(queryKey, (current) =>
+        current
+          ? {
+              ...current,
+              categories: current.categories.map((category) => ({
+                ...category,
+                products: category.products.map((product) =>
+                  product.id === input.productId
+                    ? { ...product, available: input.isAvailable }
+                    : product,
+                ),
+              })),
+            }
+          : current,
+      );
     },
   });
 }

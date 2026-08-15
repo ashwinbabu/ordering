@@ -1,5 +1,6 @@
 import type { Json } from "../../../lib/supabase/database.types";
 import { getSupabaseClient } from "../../../lib/supabase/client";
+import { readArray, readBoolean, readNullableString, readNumber, readRecord, readString } from "../../../lib/supabase/json-parsing";
 import type {
   FeaturedProduct,
   StorefrontMenu,
@@ -12,53 +13,6 @@ import type {
 interface FeaturedProductRow {
   product_id: string;
   sort_order: number;
-}
-
-type JsonRecord = { [key: string]: Json | undefined };
-
-function readRecord(value: Json | undefined, context: string): JsonRecord {
-  if (!value || Array.isArray(value) || typeof value !== "object") {
-    throw new Error(`${context} is invalid.`);
-  }
-
-  return value;
-}
-
-function readArray(value: Json | undefined, context: string): Json[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`${context} is invalid.`);
-  }
-
-  return value;
-}
-
-function readString(value: Json | undefined, context: string): string {
-  if (typeof value !== "string") {
-    throw new Error(`${context} is invalid.`);
-  }
-
-  return value;
-}
-
-function readNullableString(value: Json | undefined, context: string): string | null {
-  if (value === null) return null;
-  return readString(value, context);
-}
-
-function readNumber(value: Json | undefined, context: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${context} is invalid.`);
-  }
-
-  return value;
-}
-
-function readBoolean(value: Json | undefined, context: string): boolean {
-  if (typeof value !== "boolean") {
-    throw new Error(`${context} is invalid.`);
-  }
-
-  return value;
 }
 
 function parseOption(value: Json): StorefrontMenuOption {

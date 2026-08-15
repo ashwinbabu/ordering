@@ -1,6 +1,7 @@
 import { Check, ChevronDown, MapPin, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type { AddressLabel, DeliveryAddress } from "../../domain/storefront";
+import { areaCoordinates } from "./area-coordinates";
 
 export type AddressDraft = Omit<DeliveryAddress, "id">;
 
@@ -16,6 +17,7 @@ const addressLabels: AddressLabel[] = ["Home", "Hotel", "Work", "Other"];
 const emptyDraft: AddressDraft = {
   label: "Home", recipientName: "", recipientPhone: "", line1: "", line2: "", locality: "Mandrem",
   city: "North Goa", state: "Goa", postalCode: "403527", landmark: "", instructions: "", isDefault: false,
+  ...areaCoordinates.Mandrem,
 };
 
 function toDraft(address?: DeliveryAddress): AddressDraft {
@@ -25,6 +27,7 @@ function toDraft(address?: DeliveryAddress): AddressDraft {
     recipientPhone: address.recipientPhone, line1: address.line1, line2: address.line2,
     locality: address.locality, city: address.city, state: address.state, postalCode: address.postalCode,
     landmark: address.landmark, instructions: address.instructions, isDefault: address.isDefault,
+    latitude: address.latitude, longitude: address.longitude,
   };
 }
 
@@ -89,7 +92,7 @@ export function AddressForm({ initialValue, mode, onCancel, onSave }: AddressFor
                   <MapPin aria-hidden="true" size={18} /><span>{draft.locality || "Select area"}</span><ChevronDown aria-hidden="true" size={18} />
                 </button>
                 {isAreaPickerOpen ? <div className="custom-select__options" role="radiogroup" aria-label="Delivery area">
-                  {areas.map((area) => <button key={area} role="radio" aria-checked={draft.locality === area} type="button" onClick={() => { setField("locality", area); setIsAreaPickerOpen(false); }}><span>{area}</span>{draft.locality === area ? <Check aria-hidden="true" size={18} /> : null}</button>)}
+                  {areas.map((area) => <button key={area} role="radio" aria-checked={draft.locality === area} type="button" onClick={() => { setField("locality", area); setDraft((current) => ({ ...current, ...areaCoordinates[area] })); setIsAreaPickerOpen(false); }}><span>{area}</span>{draft.locality === area ? <Check aria-hidden="true" size={18} /> : null}</button>)}
                 </div> : null}
               </div>
             </Field>

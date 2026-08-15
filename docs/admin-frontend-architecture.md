@@ -263,6 +263,8 @@ Authorization remains a backend/database concern enforced through Supabase Auth,
 
 The outlet context should be narrowly scoped and should not become a general application-state container.
 
+**Authorization is business-scoped, not location-scoped, and that is deliberate.** `core.business_users` records membership per business only; there is no per-location membership table. Any active `owner`/`admin`/`manager` of a business can read and write every outlet belonging to that business through the database's RLS policies and RPC checks (`private.can_manage_catalog_at_location`, `private.is_active_location_member`, `private.can_manage_sensitive_location_configuration`, etc. all resolve the location to its business and check business-level membership, despite the location-scoped names). This matches the product's expectations for a small multi-outlet restaurant, where staff operate any of their outlets. `activeLocation` here is purely which outlet the operator is currently viewing — never a narrower authorization boundary. The database would allow the same operator to act on any other outlet of the same business regardless of what is selected. If per-outlet staff assignment is ever required, it needs a `business_user_locations` join table and a narrowing of the three helper functions above, not a frontend change.
+
 ---
 
 ### 9.3 `ordering-status`

@@ -148,6 +148,11 @@ export interface DeliveryAddress {
   landmark: string;
   instructions: string;
   isDefault: boolean;
+  // Approximate area-centroid coordinates used to price delivery via the
+  // real ordering.get_delivery_quote boundary. Absent for addresses saved
+  // before this field existed or for an area outside the known lookup.
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface CustomerProfile {

@@ -1,17 +1,21 @@
 import { a2MandremAddresses, a2MandremCustomer, a2MandremOrders } from "../demo/a2-mandrem";
 import { useMemo, useState } from "react";
-import type { CartLine, CartLineOptionSelection, CheckoutRequest, CustomerDetails, CustomerProfile, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
+import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, CustomerProfile, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
 import { AccountScreen } from "../features/account/account-screen";
 import { SavedAddressesScreen } from "../features/addresses/saved-addresses-screen";
 import { AuthFlowSheet, type AuthFlowRequest } from "../features/auth/auth-flow-sheet";
 import { CartScreen } from "../features/cart/cart-screen";
+import { cartLineKey } from "../lib/storefront/cart-line-identity";
+import { reconcileCartLines, selectionsFromServerItem } from "../features/cart/cart-reconciliation";
+import { useRemoveCartItemMutation, useSetCartItemMutation } from "../features/cart/storefront-cart-mutations";
+import { useStorefrontCartQuery } from "../features/cart/storefront-cart-query";
+import { useStorefrontSettingsQuery } from "../features/cart/storefront-settings-query";
 import { PaymentFlowScreen } from "../features/checkout/payment-flow-screen";
 import { useCheckoutFlow } from "../features/checkout/use-checkout-flow";
 import { MenuScreen } from "../features/menu/menu-screen";
 import { ProductConfigurationSheet } from "../features/menu/product-configuration-sheet";
 import { ProductDetailSheet } from "../features/menu/product-detail-sheet";
 import { menuFromStorefrontMenu, venueFromStorefrontMenu } from "../features/menu/storefront-menu-adapter";
-import { storefrontLocationId } from "../features/menu/storefront-location";
 import { useStorefrontMenuQuery } from "../features/menu/storefront-menu-query";
 import { useOrderingStatusChannel } from "../features/ordering-status/use-ordering-status-channel";
 import { OrderDetailsScreen } from "../features/orders/order-details-screen";
@@ -21,6 +25,7 @@ import { LinkUnavailablePage } from "../features/venue/link-unavailable-page";
 import { VenueFooter } from "../features/venue/venue-footer";
 import { VenueHeader } from "../features/venue/venue-header";
 import type { AddressDraft } from "../features/addresses/address-form";
+import { storefrontContext } from "../lib/storefront/storefront-context";
 
 function requestedOrderIdFromUrl() {
   const match = window.location.pathname.match(/^\/orders\/([^/]+)$/);
@@ -33,7 +38,6 @@ interface ConfigurationTarget { productId: string; lineId?: string; }
 const currentOrderStatuses = new Set<StorefrontOrder["status"]>(["placed", "accepted", "preparing", "out-for-delivery"]);
 
 export function StorefrontApp() {
-  const [cart, setCart] = useState<CartLine[]>([]);
   const [customer, setCustomer] = useState<CustomerProfile>(a2MandremCustomer);
   const [savedAddresses, setSavedAddresses] = useState<DeliveryAddress[]>(a2MandremAddresses);
   const [orders] = useState<StorefrontOrder[]>(a2MandremOrders);
@@ -44,8 +48,13 @@ export function StorefrontApp() {
   const [selectedOrderId, setSelectedOrderId] = useState<string>();
   const [configurationTarget, setConfigurationTarget] = useState<ConfigurationTarget>();
   const [viewingProductId, setViewingProductId] = useState<string>();
-  const storefrontMenuResource = useStorefrontMenuQuery(storefrontLocationId);
-  useOrderingStatusChannel(storefrontLocationId);
+  const [cartActionError, setCartActionError] = useState<string>();
+  const storefrontMenuResource = useStorefrontMenuQuery(storefrontContext.locationId);
+  const cartResource = useStorefrontCartQuery();
+  const settingsResource = useStorefrontSettingsQuery();
+  const setCartItem = useSetCartItemMutation();
+  const removeCartItem = useRemoveCartItemMutation();
+  useOrderingStatusChannel(storefrontContext.locationId);
   const menu = useMemo(
     () => storefrontMenuResource.data ? menuFromStorefrontMenu(storefrontMenuResource.data) : null,
     [storefrontMenuResource.data],
@@ -54,9 +63,15 @@ export function StorefrontApp() {
     () => storefrontMenuResource.data ? venueFromStorefrontMenu(storefrontMenuResource.data) : null,
     [storefrontMenuResource.data],
   );
-  const cartQuantities = useMemo(() => Object.fromEntries(cart.map((line) => [line.productId, line.quantity])), [cart]);
-  const cartItemCount = useMemo(() => cart.reduce((count, line) => count + line.quantity, 0), [cart]);
-  const cartTotal = useMemo(() => cart.reduce((total, line) => total + line.unitPrice * line.quantity, 0), [cart]);
+  const cart = cartResource.data;
+  const lines = useMemo(() => reconcileCartLines(cart, menu), [cart, menu]);
+  const cartQuantities = useMemo(() => {
+    const quantities: Record<string, number> = {};
+    for (const item of cart?.items ?? []) quantities[item.productId] = (quantities[item.productId] ?? 0) + item.quantity;
+    return quantities;
+  }, [cart]);
+  const cartItemCount = useMemo(() => lines.reduce((count, line) => count + line.quantity, 0), [lines]);
+  const cartTotal = cart?.estimatedFoodSubtotal ?? 0;
   const customerDetails: CustomerDetails = { name: customer.name, countryCode: customer.countryCode, phone: customer.phone };
   const restaurantOrders = orders.filter((order) => order.restaurantId === "a2-mandrem");
   const currentOrders = restaurantOrders.filter((order) => currentOrderStatuses.has(order.status));
@@ -64,36 +79,93 @@ export function StorefrontApp() {
   const selectedOrder = orders.find((order) => order.id === selectedOrderId);
 
   const configurationProduct = configurationTarget ? menu?.products.find((product) => product.id === configurationTarget.productId) : undefined;
-  const configurationLine = configurationTarget?.lineId ? cart.find((line) => line.id === configurationTarget.lineId) : undefined;
+  const configurationServerItem = configurationTarget?.lineId ? cart?.items.find((item) => item.id === configurationTarget.lineId) : undefined;
+  const configurationLine = configurationServerItem && configurationProduct ? selectionsFromServerItem(configurationServerItem, configurationProduct) : undefined;
   const viewingProduct = viewingProductId ? menu?.products.find((product) => product.id === viewingProductId) : undefined;
 
-  function changeSimpleProductQuantity(productId: string, quantity: number) {
-    setCart((current) => {
-      const existing = current.find((line) => line.productId === productId && line.selectedOptions.length === 0);
-      if (quantity <= 0) return existing ? current.filter((line) => line.id !== existing.id) : current;
-      if (existing) return current.map((line) => line.id === existing.id ? { ...line, quantity } : line);
-      const product = menu?.products.find((item) => item.id === productId);
-      return product ? [...current, { id: `simple-${product.id}`, productId, quantity, unitPrice: product.price, selectedOptions: [] }] : current;
-    });
+  function reportCartError(error: unknown, fallback: string) {
+    const message = (error as { message?: unknown } | null)?.message;
+    setCartActionError(typeof message === "string" && message.length > 0 ? message : fallback);
+  }
+
+  function openCart() {
+    setScreen("cart");
+    window.scrollTo({ top: 0 });
+  }
+
+  // `onAdded` is passed only by the add-to-cart entry points, never by the
+  // quantity stepper -- stepping a quantity must not navigate anywhere.
+  function changeSimpleProductQuantity(productId: string, quantity: number, onAdded?: () => void) {
+    if (!cart) return;
+    const lineId = cartLineKey(cart.id, productId, []);
+    if (quantity <= 0) {
+      if (cart.items.some((item) => item.id === lineId)) removeCartItem.mutate({ cartItemId: lineId }, { onError: (error) => reportCartError(error, "Couldn't update your cart.") });
+      return;
+    }
+    setCartItem.mutate(
+      { cartItemId: lineId, productId, quantity, selections: [] },
+      { onError: (error) => reportCartError(error, "This item couldn't be added right now."), onSettled: onAdded },
+    );
   }
 
   function changeCartLineQuantity(lineId: string, quantity: number) {
-    setCart((current) => quantity <= 0
-      ? current.filter((line) => line.id !== lineId)
-      : current.map((line) => line.id === lineId ? { ...line, quantity } : line));
+    if (!cart) return;
+    if (quantity <= 0) {
+      removeCartItem.mutate({ cartItemId: lineId }, { onError: (error) => reportCartError(error, "Couldn't update your cart.") });
+      return;
+    }
+    const item = cart.items.find((candidate) => candidate.id === lineId);
+    if (!item) return;
+    setCartItem.mutate(
+      { cartItemId: lineId, productId: item.productId, quantity, customerNote: item.customerNote ?? undefined, selections: item.options.map((option) => ({ optionId: option.optionId })) },
+      { onError: (error) => reportCartError(error, "This item couldn't be updated right now.") },
+    );
   }
 
   function openProductConfiguration(product: MenuProduct) {
-    if ((product.optionGroups?.length ?? 0) > 0) setConfigurationTarget({ productId: product.id });
-    else changeSimpleProductQuantity(product.id, (cart.find((line) => line.productId === product.id && line.selectedOptions.length === 0)?.quantity ?? 0) + 1);
+    if ((product.optionGroups?.length ?? 0) > 0) { setConfigurationTarget({ productId: product.id }); return; }
+    if (!cart) return;
+    const lineId = cartLineKey(cart.id, product.id, []);
+    const existingQuantity = cart.items.find((item) => item.id === lineId)?.quantity ?? 0;
+    changeSimpleProductQuantity(product.id, existingQuantity + 1, openCart);
   }
 
   function saveConfiguration(selections: CartLineOptionSelection[]) {
-    if (!configurationProduct) return;
-    const unitPrice = configurationProduct.price + selections.reduce((total, selection) => total + selection.priceDelta, 0);
-    setCart((current) => configurationTarget?.lineId
-      ? current.map((line) => line.id === configurationTarget.lineId ? { ...line, selectedOptions: selections, unitPrice } : line)
-      : [...current, { id: `configuration-${Date.now()}`, productId: configurationProduct.id, quantity: 1, unitPrice, selectedOptions: selections }]);
+    if (!configurationProduct || !cart) return;
+    const newLineId = cartLineKey(cart.id, configurationProduct.id, selections);
+    const optionInputs = selections.map((selection) => ({ optionId: selection.optionId }));
+    const onError = (error: unknown) => reportCartError(error, "This item couldn't be added right now.");
+
+    if (configurationTarget?.lineId) {
+      const editingItem = cart.items.find((item) => item.id === configurationTarget.lineId);
+      const quantity = editingItem?.quantity ?? 1;
+
+      if (newLineId === configurationTarget.lineId) {
+        setCartItem.mutate({ cartItemId: newLineId, productId: configurationProduct.id, quantity, selections: optionInputs }, { onError });
+      } else {
+        const collidingQuantity = cart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
+        removeCartItem.mutate({ cartItemId: configurationTarget.lineId }, {
+          onError,
+          onSuccess: () => setCartItem.mutate(
+            { cartItemId: newLineId, productId: configurationProduct.id, quantity: quantity + collidingQuantity, selections: optionInputs },
+            { onError },
+          ),
+        });
+      }
+    } else {
+      // Adding a new line is the only branch reached from the menu; the edit
+      // branches above are only reachable from the cart screen, which the
+      // customer is already looking at. Navigating on settle (rather than
+      // immediately) means the cart renders the new line straight away
+      // instead of flashing its empty state, and a server rejection lands on
+      // the screen that actually shows the error banner.
+      const existingQuantity = cart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
+      setCartItem.mutate(
+        { cartItemId: newLineId, productId: configurationProduct.id, quantity: existingQuantity + 1, selections: optionInputs },
+        { onError, onSettled: openCart },
+      );
+    }
+
     setConfigurationTarget(undefined);
   }
 
@@ -144,11 +216,23 @@ export function StorefrontApp() {
   }
 
   function orderAgain(order: StorefrontOrder) {
-    const lines = order.items.flatMap((item) => {
-      const product = item.productId ? menu?.products.find((candidate) => candidate.id === item.productId) : undefined;
-      return product ? [{ id: `reorder-${item.id}`, productId: product.id, quantity: item.quantity, unitPrice: product.price, selectedOptions: [] }] : [];
-    });
-    setCart(lines);
+    if (!cart) return;
+    const cartId = cart.id;
+    const existingItemIds = cart.items.map((item) => item.id);
+
+    async function replaceCartWithOrder() {
+      for (const itemId of existingItemIds) {
+        await removeCartItem.mutateAsync({ cartItemId: itemId });
+      }
+      for (const item of order.items) {
+        const product = item.productId ? menu?.products.find((candidate) => candidate.id === item.productId) : undefined;
+        if (!product) continue;
+        const lineId = cartLineKey(cartId, product.id, []);
+        await setCartItem.mutateAsync({ cartItemId: lineId, productId: product.id, quantity: item.quantity, selections: [] });
+      }
+    }
+
+    replaceCartWithOrder().catch((error: unknown) => reportCartError(error, "Couldn't reorder this order right now."));
     setScreen("menu");
     requestAnimationFrame(() => window.scrollTo({ top: 0 }));
   }
@@ -166,15 +250,15 @@ export function StorefrontApp() {
   }
 
   return <>
-    {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={() => { setScreen("cart"); window.scrollTo({ top: 0 }); }} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onGoToCart={() => { setScreen("cart"); window.scrollTo({ top: 0 }); }} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
-    {screen === "cart" ? <CartScreen cart={cart} customerDetails={customerDetails} isCustomerVerified={customer.isPhoneVerified} menu={menu} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const line = cart.find((candidate) => candidate.id === lineId); if (line) setConfigurationTarget({ productId: line.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
+    {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={openCart} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onGoToCart={openCart} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
+    {screen === "cart" ? <CartScreen cart={cart} cartError={cartActionError} onDismissCartError={() => setCartActionError(undefined)} isCartLoading={cartResource.isPending} lines={lines} settings={settingsResource.data ?? null} customerDetails={customerDetails} isCustomerVerified={customer.isPhoneVerified} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const item = cart?.items.find((candidate) => candidate.id === lineId); if (item) setConfigurationTarget({ productId: item.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
     {screen === "account" ? <AccountScreen addressCount={savedAddresses.length} customer={customer} onBack={() => setScreen("menu")} onOpenAddresses={() => setScreen("addresses")} onOpenOrders={() => setScreen("orders")} onRequestPhoneChange={() => openAuth({ context: "account", initialStep: "phone", phone: { countryCode: customer.countryCode, phone: customer.phone }, onSuccess: (phone) => setCustomer((current) => ({ ...current, ...phone, isPhoneVerified: true })) })} onSaveCustomer={setCustomer} onSignOut={() => setScreen("menu")} venue={venue} /> : null}
     {screen === "addresses" ? <SavedAddressesScreen addresses={savedAddresses} onBack={() => setScreen("account")} onDelete={(id) => setSavedAddresses((current) => current.filter((address) => address.id !== id))} onSave={saveAddress} venue={venue} /> : null}
     {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} venue={venue} /> : null}
     {screen === "order-details" && selectedOrder ? <OrderDetailsScreen order={selectedOrder} onBack={() => setScreen("orders")} onOrderAgain={orderAgain} venue={venue} /> : null}
     {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onProviderReturn={checkout.returnFromProvider} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
     {screen === "tracking" && checkout.order ? <OrderTrackingScreen onBackToRestaurant={returnToRestaurant} order={checkout.order} venue={venue} /> : null}
-    {configurationProduct ? <ProductConfigurationSheet initialSelections={configurationLine?.selectedOptions} product={configurationProduct} onClose={() => setConfigurationTarget(undefined)} onConfirm={saveConfiguration} /> : null}
+    {configurationProduct ? <ProductConfigurationSheet initialSelections={configurationLine} product={configurationProduct} onClose={() => setConfigurationTarget(undefined)} onConfirm={saveConfiguration} /> : null}
     {viewingProduct ? <ProductDetailSheet locationName={venue.locationName} product={viewingProduct} onAdd={openProductConfiguration} onClose={() => setViewingProductId(undefined)} /> : null}
     {authRequest ? <AuthFlowSheet request={authRequest} /> : null}
   </>;
