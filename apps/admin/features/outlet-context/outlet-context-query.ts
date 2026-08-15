@@ -6,7 +6,6 @@ export function useOutletContextQuery(authUserId: string | null) {
     queryKey: ["outlet-context", authUserId],
     queryFn: getOperatorOutletContext,
     enabled: Boolean(authUserId),
-    retry: false,
     staleTime: 60_000,
   });
 }
