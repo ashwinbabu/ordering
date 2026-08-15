@@ -6,6 +6,7 @@ import { AddressSelectorSheet } from "../addresses/address-selector-sheet";
 import { SelectedAddressCard } from "../addresses/selected-address-card";
 import type { AuthFlowRequest } from "../auth/auth-flow-sheet";
 import { MenuImage } from "../menu/menu-image";
+import { defaultCountryCode, type PhoneNumber } from "../../domain/phone";
 import { formatRupees, type CheckoutRequest, type CustomerDetails, type DeliveryAddress, type FulfilmentType, type Venue } from "../../domain/storefront";
 import type { CartLineView, ServerCart, StorefrontSettings } from "../../domain/cart";
 import { checkoutEligibilityMessage, evaluateCheckoutEligibility } from "./cart-eligibility";
@@ -146,13 +147,19 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
       taxes,
     };
     if (isCustomerVerified) { onCheckoutAttempt(checkoutRequest); return; }
-    onRequestAuthentication({
-      context: "checkout",
-      initialStep: "otp",
-      onChangePhone: () => {},
-      onSuccess: () => onCheckoutAttempt(checkoutRequest),
-      phone: { countryCode: customerDetails.countryCode, phone: customerDetails.phone },
-    });
+    // The address form's recipientPhone is the number the customer just typed
+    // for this delivery, so that's who gets texted (needsAddress above
+    // guarantees selectedAddress is set once fulfilment is "delivery").
+    // Pickup has no address to draw from - fall back to their account
+    // contact number, or straight to the phone step if we don't have one.
+    const contactPhone: PhoneNumber | undefined = fulfilment === "delivery" && selectedAddress
+      ? { countryCode: defaultCountryCode, phone: selectedAddress.recipientPhone }
+      : customerDetails.phone
+        ? { countryCode: customerDetails.countryCode, phone: customerDetails.phone }
+        : undefined;
+    onRequestAuthentication(contactPhone
+      ? { context: "checkout", initialStep: "otp", onSuccess: () => onCheckoutAttempt(checkoutRequest), phone: contactPhone }
+      : { context: "checkout", onSuccess: () => onCheckoutAttempt(checkoutRequest) });
   }
   function selectAddress(address: DeliveryAddress) { setSelectedAddressId(address.id); setAddressSheet(null); setAddressInvalid(false); }
 
