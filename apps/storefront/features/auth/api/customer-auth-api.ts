@@ -26,29 +26,37 @@ export interface VerifiedCustomer {
   phoneE164: string;
 }
 
+/**
+ * Mirrors what customer-auth-msg91 actually returns: it performs the
+ * Supabase session exchange server-side and hands back the resulting
+ * session, rather than a single-use token for the browser to redeem.
+ */
 interface EdgeFunctionSuccessBody {
-  tokenHash: string;
-  email: string;
-  customer: { id: string; phoneE164: string };
+  access_token: string;
+  refresh_token: string;
+  customer: { id: string; phone_e164: string; auth_user_id: string | null };
 }
 
+/** The function reports failures as a plain string, not a coded object. */
 interface EdgeFunctionErrorBody {
-  error?: { code?: string; message?: string };
+  error?: string;
 }
 
-function isKnownCode(code: string | undefined): code is CustomerAuthErrorCode {
-  return Boolean(code) && [
-    "expired_code", "identifier_missing", "incorrect_code", "invalid_request",
-    "network_error", "provider_unreachable", "rate_limited", "replayed_token", "server_error",
-  ].includes(code as string);
+/** Derives a UI-facing reason from the HTTP status, since the function reports errors as prose. */
+function codeFromStatus(status: number | undefined): CustomerAuthErrorCode {
+  if (status === 409) return "replayed_token";
+  if (status === 429) return "rate_limited";
+  if (status === 401) return "incorrect_code";
+  if (status === 400) return "invalid_request";
+  if (status === 502 || status === 503) return "provider_unreachable";
+  if (status && status >= 500) return "server_error";
+  return "network_error";
 }
 
 /**
- * Sends an MSG91 access token to customer-auth-msg91 and, on success,
- * completes the exchange into a real Supabase Auth session for this
- * browser's client instance. The Edge Function never hands back a session
- * directly - only a single-use hashed token - so this is the one call site
- * that finishes the handshake.
+ * Sends an MSG91 access token to customer-auth-msg91, which verifies it
+ * against MSG91 server-side and returns a Supabase session. Adopting that
+ * session into this browser's client is what actually signs the customer in.
  */
 export async function exchangeMsg91AccessToken(accessToken: string): Promise<VerifiedCustomer> {
   const client = getSupabaseClient();
@@ -58,26 +66,30 @@ export async function exchangeMsg91AccessToken(accessToken: string): Promise<Ver
 
   if (error) {
     const context = (error as { context?: Response }).context;
-    let code: CustomerAuthErrorCode = "network_error";
+    const status = context instanceof Response ? context.status : undefined;
     let message = "Something went wrong. Please try again.";
 
     if (context instanceof Response) {
       try {
         const body = (await context.clone().json()) as EdgeFunctionErrorBody;
-        if (isKnownCode(body.error?.code)) code = body.error!.code as CustomerAuthErrorCode;
-        if (body.error?.message) message = body.error.message;
+        if (typeof body.error === "string" && body.error) message = body.error;
       } catch {
-        // Non-JSON error body - keep the generic network_error.
+        // Non-JSON error body - keep the generic message.
       }
     }
 
-    throw new CustomerAuthError(code, message);
+    throw new CustomerAuthError(codeFromStatus(status), message);
   }
 
-  if (!data) throw new CustomerAuthError("server_error", "Something went wrong. Please try again.");
+  if (!data?.access_token || !data.refresh_token) {
+    throw new CustomerAuthError("server_error", "Something went wrong. Please try again.");
+  }
 
-  const { error: verifyError } = await client.auth.verifyOtp({ token_hash: data.tokenHash, type: "magiclink" });
-  if (verifyError) throw new CustomerAuthError("server_error", "Could not complete sign-in. Please try again.");
+  const { error: sessionError } = await client.auth.setSession({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+  });
+  if (sessionError) throw new CustomerAuthError("server_error", "Could not complete sign-in. Please try again.");
 
-  return { customerId: data.customer.id, phoneE164: data.customer.phoneE164 };
+  return { customerId: data.customer.id, phoneE164: data.customer.phone_e164 };
 }
