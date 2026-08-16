@@ -1,18 +1,29 @@
 // Single centralized business/location boundary. Every data-layer module
-// (menu, cart, settings, coupons) reads the active outlet from here instead
-// of hardcoding IDs. A future URL/domain/slug resolver replaces this module's
-// internals without touching any caller.
+// (menu, cart, settings, addresses, orders, checkout, coupons) reads the
+// active outlet from here instead of resolving it independently.
 export interface StorefrontContext {
   businessId: string;
   locationId: string;
+  businessName: string;
+  locationName: string;
 }
 
-// Development routing seam: A2 / Arambol. Production host/route resolution
-// replaces these values without affecting menu, cart, or settings call sites.
-const a2BusinessId = "71667212-8437-4a40-a6fa-de869ca8f1b5";
-const arambolLocationId = "23ca53d8-5e39-42af-acfb-b2e5c50b3c8b";
-
+// This is a mutable singleton, not a plain constant. Every call site below
+// menu/cart/settings/addresses/orders reads it as a default parameter --
+// `context: StorefrontContext = storefrontContext` -- which is evaluated
+// fresh on every call. `setStorefrontContext` mutates this same object
+// in place (rather than reassigning the export) so all of those call sites
+// keep working unchanged. `StorefrontBootstrap` is the only caller, and only
+// once `ordering.resolve_storefront_context` has actually resolved the
+// hostname -- it gates rendering of everything that reads this default, so
+// nothing ever observes the empty placeholder below.
 export const storefrontContext: StorefrontContext = {
-  businessId: import.meta.env.VITE_STOREFRONT_BUSINESS_ID ?? a2BusinessId,
-  locationId: import.meta.env.VITE_STOREFRONT_LOCATION_ID ?? arambolLocationId,
+  businessId: "",
+  locationId: "",
+  businessName: "",
+  locationName: "",
 };
+
+export function setStorefrontContext(resolved: StorefrontContext): void {
+  Object.assign(storefrontContext, resolved);
+}

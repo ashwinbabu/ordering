@@ -3,6 +3,8 @@ import { createContext, useContext, useEffect, useMemo, useState, type ReactNode
 import { splitE164, type PhoneNumber } from "../../domain/phone";
 import type { CustomerProfile } from "../../domain/storefront";
 import { getSupabaseClient } from "../../lib/supabase/client";
+import { storefrontContext } from "../../lib/storefront/storefront-context";
+import { resolveCustomerBusinessId } from "./api/customer-business-api";
 
 interface CustomerRow {
   id: string;
@@ -99,6 +101,11 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
         setCustomerId(row.id);
         setBaseProfile(profileFromRow(row));
         setDemoProfile(null); // a real session supersedes any demo sign-in
+        // Idempotent (DB-level upsert on business_id+customer_id) -- safe to
+        // call on every session resolution, not just the first sign-in.
+        resolveCustomerBusinessId(storefrontContext.businessId, row.id).catch((linkError: unknown) => {
+          console.error("Could not link this customer to the current business.", linkError);
+        });
       }
       setLocalOverride({});
       setCustomerLoaded(true);

@@ -20,6 +20,7 @@ export type OtpMode = "demo" | "live" | "unconfigured";
 export function otpMode(): OtpMode {
   if (widgetId && tokenAuth) return "live";
   if (demoModeRequested) return "demo";
+  
   return "unconfigured";
 }
 
