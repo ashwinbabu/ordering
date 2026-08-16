@@ -22,13 +22,14 @@ interface MenuScreenProps {
   menu: Menu;
   onGoToCart: () => void;
   onAddProduct: (product: MenuProduct) => void;
+  onAdjustQuantity: (productId: string, delta: number) => void;
   onQuantityChange: (productId: string, quantity: number) => void;
   onViewProduct: (product: MenuProduct) => void;
   orderingStatus: string;
   locationName: string;
 }
 
-export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, isAcceptingOrders, locationName, menu, onAddProduct, onGoToCart, onQuantityChange, onViewProduct, orderingStatus }: MenuScreenProps) {
+export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, isAcceptingOrders, locationName, menu, onAddProduct, onAdjustQuantity, onGoToCart, onQuantityChange, onViewProduct, orderingStatus }: MenuScreenProps) {
   const initialCategoryId = menu.categories[0]?.id ?? "";
   const [activeCategoryId, setActiveCategoryId] = useState(initialCategoryId);
   const [isNavigatorOpen, setIsNavigatorOpen] = useState(false);
@@ -175,7 +176,13 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
                       </span>
                     </button>
                     {product.availability === "available" && (product.optionGroups?.length ?? 0) > 0 ? (
-                      <button className="featured-card__add" type="button" disabled={!isAcceptingOrders} onClick={() => onAddProduct(product)}>Configure</button>
+                      cartQuantities[product.id] ? (
+                        <div className="featured-card__add quantity-control" aria-label={`Quantity of ${product.name}`}>
+                          <button type="button" aria-label={`Remove one ${product.name}`} onClick={() => onAdjustQuantity(product.id, -1)}><Minus aria-hidden="true" size={15} /></button>
+                          <span>{cartQuantities[product.id]}</span>
+                          <button type="button" aria-label={`Add one ${product.name}`} disabled={!isAcceptingOrders} onClick={() => onAdjustQuantity(product.id, 1)}><Plus aria-hidden="true" size={15} /></button>
+                        </div>
+                      ) : <button className="featured-card__add" type="button" disabled={!isAcceptingOrders} onClick={() => onAddProduct(product)}>Add</button>
                     ) : product.availability === "available" ? (
                       cartQuantities[product.id] ? (
                         <div className="featured-card__add quantity-control" aria-label={`Quantity of ${product.name}`}>
@@ -247,6 +254,7 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
                     key={product.id}
                     isAcceptingOrders={isAcceptingOrders}
                     onAdd={onAddProduct}
+                    onAdjustQuantity={onAdjustQuantity}
                     onQuantityChange={onQuantityChange}
                     onView={onViewProduct}
                     presentation={presentation}

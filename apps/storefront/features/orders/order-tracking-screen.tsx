@@ -16,6 +16,7 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
   }, [order.createdAt]);
   const isDelivery = order.fulfilment === "delivery";
   const address = order.trackingOrder.deliveryAddress;
+  const isCashOnDelivery = order.trackingOrder.paymentMethod === "Cash on delivery";
 
   if (cancelled) {
     return <main className="tracking-page">
@@ -68,7 +69,7 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
       <section className="order-timeline" aria-labelledby="order-status-title">
         <div className="cart-section__title"><h2 id="order-status-title">Order status</h2><span>Updates automatically</span></div>
         <ol>
-          <StatusStep active icon={<Check size={15} />} title="Order received" body={`Payment confirmed and sent to ${venue.displayName}.`} tag="Now" />
+          <StatusStep active icon={<Check size={15} />} title="Order received" body={isCashOnDelivery ? `Sent to ${venue.displayName}. Pay cash when it arrives.` : `Payment confirmed and sent to ${venue.displayName}.`} tag="Now" />
           <StatusStep icon={<CircleCheck size={15} />} title="Accepted" body="The kitchen has accepted your order." />
           <StatusStep icon={<Clock3 size={15} />} title="Preparing" body="Your food is being made fresh." />
           {isDelivery ? <StatusStep icon={<Truck size={15} />} title="Out for delivery" body="Your order is on its way." /> : <StatusStep icon={<Check size={15} />} title="Ready for pickup" body="Collect your order from the outlet." />}

@@ -5,7 +5,7 @@ import { demoCheckoutService } from "./services/demo-checkout-service";
 export type CheckoutPhase =
   | "idle" | "quoting" | "quote_changed" | "creating_order" | "preparing_payment"
   | "awaiting_provider" | "confirming" | "confirmed" | "pending" | "failed"
-  | "cancelled" | "verification_error" | "start_error";
+  | "cancelled" | "verification_error" | "start_error" | "placing_order";
 
 interface PersistedCheckout {
   order: PaymentPendingOrder;
@@ -95,6 +95,30 @@ export function useCheckoutFlow() {
     }
   }, [preparePayment]);
 
+  // Cash on delivery skips the quote-recheck and payment-provider hand-off
+  // entirely -- there is no online payment to prepare, so this goes straight
+  // from order creation to the confirmed tracking screen.
+  const beginCashOnDelivery = useCallback(async (checkoutRequest: CheckoutRequest) => {
+    if (activeRequest.current) return;
+    activeRequest.current = true;
+    setRequest(checkoutRequest);
+    setPhase("placing_order");
+    try {
+      const nextOrder = await demoCheckoutService.createPaymentPendingOrder(checkoutRequest, checkoutRequest.displayedTotal);
+      const cashOrder: PaymentPendingOrder = {
+        ...nextOrder,
+        paymentStatus: "confirmed",
+        trackingOrder: { ...nextOrder.trackingOrder, paymentStatus: "pending", paymentMethod: "Cash on delivery" },
+      };
+      setOrder(cashOrder);
+      setPhase("confirmed");
+    } catch {
+      setPhase("start_error");
+    } finally {
+      activeRequest.current = false;
+    }
+  }, []);
+
   const acceptUpdatedQuote = useCallback(() => {
     if (request && updatedAmount !== null) void preparePayment(request, updatedAmount);
   }, [preparePayment, request, updatedAmount]);
@@ -122,5 +146,5 @@ export function useCheckoutFlow() {
     if (phase === "confirming" && order && !activeRequest.current) void verify(order);
   }, [order, phase, verify]);
 
-  return { acceptUpdatedQuote, begin, order, phase, restored: Boolean(restored), returnFromProvider, retryPayment, updatedAmount, verify };
+  return { acceptUpdatedQuote, begin, beginCashOnDelivery, order, phase, restored: Boolean(restored), returnFromProvider, retryPayment, updatedAmount, verify };
 }
