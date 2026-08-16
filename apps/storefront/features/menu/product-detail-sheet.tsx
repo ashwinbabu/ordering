@@ -36,16 +36,18 @@ export function ProductDetailSheet({ locationName, onAdd, onClose, product }: Pr
     <div className="sheet-layer" role="presentation">
       <button aria-label={`Close ${product.name} details`} className="sheet-scrim" type="button" onClick={onClose} />
       <section aria-labelledby="product-detail-title" aria-modal="true" className="bottom-sheet product-detail-sheet" role="dialog">
-        <div className="detail-image-wrap">
-          {product.imageUrl ? (
+        {product.imageUrl ? (
+          <div className="detail-image-wrap">
             <MenuImage alt={product.name} className="detail-image" src={product.imageUrl} />
-          ) : (
-            <span aria-hidden="true" className="detail-image food-image--fallback">✦</span>
-          )}
-          <button aria-label="Close details" className="icon-button sheet-close" type="button" onClick={onClose}>
+            <button aria-label="Close details" className="icon-button sheet-close" type="button" onClick={onClose}>
+              <X aria-hidden="true" size={20} />
+            </button>
+          </div>
+        ) : (
+          <button aria-label="Close details" className="icon-button sheet-close sheet-close--floating" type="button" onClick={onClose}>
             <X aria-hidden="true" size={20} />
           </button>
-        </div>
+        )}
         <div className="detail-content">
           <div className="detail-title-row">
             <div className="detail-name-line">

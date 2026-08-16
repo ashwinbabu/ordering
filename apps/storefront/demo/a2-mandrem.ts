@@ -1,4 +1,5 @@
 import type { CustomerProfile, DeliveryAddress, StorefrontDemo, StorefrontOrder } from "../domain/storefront";
+import { areaCoordinates } from "../features/addresses/area-coordinates";
 
 export const a2MandremStorefront: StorefrontDemo = {
   venue: {
@@ -197,11 +198,13 @@ export const a2MandremAddresses: DeliveryAddress[] = [
     id: "home-beach-road", label: "Home", recipientName: "Ashwin Babu", recipientPhone: "9025117533",
     line1: "41 Beach Road", line2: "", locality: "Arambol", city: "North Goa", state: "Goa", postalCode: "403524",
     landmark: "Near the beach entrance", instructions: "Leave at reception", isDefault: true,
+    ...areaCoordinates.Arambol,
   },
   {
     id: "work-mandrem", label: "Work", recipientName: "Ashwin Babu", recipientPhone: "9025117533",
     line1: "Mandrem Market Road", line2: "", locality: "Mandrem", city: "North Goa", state: "Goa", postalCode: "403527",
     landmark: "", instructions: "", isDefault: false,
+    ...areaCoordinates.Mandrem,
   },
 ];
 

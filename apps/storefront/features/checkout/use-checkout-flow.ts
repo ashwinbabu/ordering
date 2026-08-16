@@ -9,7 +9,7 @@ import type { CheckoutRequest, PaymentPendingOrder } from "../../domain/storefro
 export type CheckoutPhase =
   | "idle" | "quoting" | "quote_changed" | "creating_order" | "preparing_payment"
   | "awaiting_provider" | "confirming" | "confirmed" | "pending" | "failed"
-  | "cancelled" | "verification_error" | "start_error";
+  | "cancelled" | "verification_error" | "start_error" | "placing_order";
 
 /** Payment outcomes from which nothing further happens without the customer acting. */
 const terminalPaymentStatuses = new Set(["confirmed", "cancelled"]);
@@ -153,6 +153,30 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     }
   }, [cartId, createOrder]);
 
+  // Cash on delivery skips the quote-recheck and payment-provider hand-off
+  // entirely -- there is no online payment to prepare, so this goes straight
+  // from order creation to the confirmed tracking screen.
+  const beginCashOnDelivery = useCallback(async (checkoutRequest: CheckoutRequest) => {
+    if (activeRequest.current) return;
+    activeRequest.current = true;
+    setRequest(checkoutRequest);
+    setPhase("placing_order");
+    try {
+      const nextOrder = await demoCheckoutService.createPaymentPendingOrder(checkoutRequest, checkoutRequest.displayedTotal);
+      const cashOrder: PaymentPendingOrder = {
+        ...nextOrder,
+        paymentStatus: "confirmed",
+        trackingOrder: { ...nextOrder.trackingOrder, paymentStatus: "pending", paymentMethod: "Cash on delivery" },
+      };
+      setOrder(cashOrder);
+      setPhase("confirmed");
+    } catch {
+      setPhase("start_error");
+    } finally {
+      activeRequest.current = false;
+    }
+  }, []);
+
   const acceptUpdatedQuote = useCallback(() => {
     if (!request || activeRequest.current) return;
     activeRequest.current = true;
@@ -190,5 +214,5 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [phase, verify]);
 
-  return { acceptUpdatedQuote, begin, order, phase, restored, returnFromProvider, retryPayment, startError, updatedAmount, verify };
+  return { acceptUpdatedQuote, begin, beginCashOnDelivery, order, phase, restored, returnFromProvider, retryPayment, startError, updatedAmount, verify };
 }

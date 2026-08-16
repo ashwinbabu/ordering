@@ -6,6 +6,7 @@ import { areaCoordinates } from "./area-coordinates";
 export type AddressDraft = Omit<DeliveryAddress, "id">;
 
 interface AddressFormProps {
+  defaultRecipientPhone?: string;
   initialValue?: DeliveryAddress;
   mode: "create" | "edit";
   onCancel: () => void;
@@ -20,8 +21,8 @@ const emptyDraft: AddressDraft = {
   ...areaCoordinates.Mandrem,
 };
 
-function toDraft(address?: DeliveryAddress): AddressDraft {
-  if (!address) return emptyDraft;
+function toDraft(address?: DeliveryAddress, defaultRecipientPhone?: string): AddressDraft {
+  if (!address) return defaultRecipientPhone ? { ...emptyDraft, recipientPhone: defaultRecipientPhone } : emptyDraft;
   return {
     label: address.label, customLabel: address.customLabel, recipientName: address.recipientName,
     recipientPhone: address.recipientPhone, line1: address.line1, line2: address.line2,
@@ -31,8 +32,8 @@ function toDraft(address?: DeliveryAddress): AddressDraft {
   };
 }
 
-export function AddressForm({ initialValue, mode, onCancel, onSave }: AddressFormProps) {
-  const [draft, setDraft] = useState(() => toDraft(initialValue));
+export function AddressForm({ defaultRecipientPhone, initialValue, mode, onCancel, onSave }: AddressFormProps) {
+  const [draft, setDraft] = useState(() => toDraft(initialValue, defaultRecipientPhone));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isAreaPickerOpen, setIsAreaPickerOpen] = useState(false);
   const lineOneRef = useRef<HTMLInputElement>(null);
