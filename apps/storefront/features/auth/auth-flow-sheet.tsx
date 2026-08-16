@@ -37,22 +37,23 @@ export interface DirectOtpAuthRequest extends AuthFlowBase {
 
 export type AuthFlowRequest = DirectOtpAuthRequest | PhoneAuthRequest;
 
-const resendDelaySeconds = 24;
-
-function defaultCopy(context: AuthContext): Required<AuthFlowCopy> {
+function defaultCopy(context: AuthContext, otpLength: number): Required<AuthFlowCopy> {
   return {
     phoneDescription: context === "account" || context === "orders" || context === "addresses"
       ? "Enter your phone number to view your orders and saved details."
       : "Enter your phone number to continue.",
     phoneTitle: "Welcome",
-    otpDescription: "We sent a 6-digit code to",
+    otpDescription: `We sent a ${otpLength}-digit code to`,
     otpTitle: context === "checkout" ? "One last step" : "Verify your phone",
     verifyLabel: "Verify & continue",
   };
 }
 
 export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
-  const copy = { ...defaultCopy(request.context), ...request.copy };
+  // Called first: its returned otpLength/resendDelaySeconds seed several of
+  // the useState calls below.
+  const otpVerification = useOtpVerification();
+  const copy = { ...defaultCopy(request.context, otpVerification.otpLength), ...request.copy };
   const isDirectOtp = request.initialStep === "otp";
   const [step, setStep] = useState<AuthStep>(isDirectOtp ? "otp" : "phone");
   const [phone, setPhone] = useState<PhoneNumber>(() => request.phone ?? { countryCode: defaultCountryCode, phone: "" });
@@ -60,18 +61,19 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   const [requestState, setRequestState] = useState<AuthRequestState>(isDirectOtp ? "sending" : "idle");
   const [otp, setOtp] = useState("");
   const [verificationState, setVerificationState] = useState<VerificationState>("idle");
-  const [resendRemainingSeconds, setResendRemainingSeconds] = useState(resendDelaySeconds);
+  const [resendRemainingSeconds, setResendRemainingSeconds] = useState(otpVerification.resendDelaySeconds);
+  const [resendAttempts, setResendAttempts] = useState(0);
   const [isResending, setIsResending] = useState(false);
   const dialogTitleId = useId();
   const dialogDescriptionId = useId();
   const priorFocusRef = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const previousAutoSubmittedOtpRef = useRef<string | undefined>(undefined);
   const initialSendCancelledRef = useRef(false);
-  const otpVerification = useOtpVerification();
 
   const isSending = requestState === "sending";
   const isVerifying = verificationState === "verifying";
   const otpError = verificationState === "incorrect" ? "That code isn't right. Try again." : verificationState === "expired" ? "This code has expired. Request a new code to continue." : verificationState === "rate-limited" ? "Too many attempts. Please try again shortly." : undefined;
+  const resendLimitReached = resendAttempts >= otpVerification.maxResendAttempts;
 
   useEffect(() => {
     if (step !== "otp" || resendRemainingSeconds <= 0) return;
@@ -100,7 +102,8 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
     otpVerification.sendOtp(request.phone).then(() => {
       if (initialSendCancelledRef.current) return;
       setRequestState("idle");
-      setResendRemainingSeconds(resendDelaySeconds);
+      setResendRemainingSeconds(otpVerification.resendDelaySeconds);
+      setResendAttempts(0);
     }).catch(() => {
       if (initialSendCancelledRef.current) return;
       setRequestState("request-failed");
@@ -129,7 +132,8 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
       setOtp("");
       previousAutoSubmittedOtpRef.current = undefined;
       setVerificationState("idle");
-      setResendRemainingSeconds(resendDelaySeconds);
+      setResendRemainingSeconds(otpVerification.resendDelaySeconds);
+      setResendAttempts(0);
       setRequestState("idle");
       setStep("otp");
     } catch {
@@ -138,7 +142,7 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   }
 
   const verifyOtp = useCallback(async (value: string) => {
-    if (value.length !== 6 || isVerifying) return;
+    if (value.length !== otpVerification.otpLength || isVerifying) return;
 
     setVerificationState("verifying");
     try {
@@ -151,18 +155,19 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   }, [isVerifying, otpVerification, phone, request]);
 
   useEffect(() => {
-    if (step !== "otp" || otp.length !== 6 || isVerifying || previousAutoSubmittedOtpRef.current === otp) return;
+    if (step !== "otp" || otp.length !== otpVerification.otpLength || isVerifying || previousAutoSubmittedOtpRef.current === otp) return;
     previousAutoSubmittedOtpRef.current = otp;
     verifyOtp(otp);
-  }, [isVerifying, otp, step, verifyOtp]);
+  }, [isVerifying, otp, otpVerification.otpLength, step, verifyOtp]);
 
   async function resendOtp() {
-    if (resendRemainingSeconds > 0 || isResending) return;
+    if (resendRemainingSeconds > 0 || isResending || resendLimitReached) return;
     setIsResending(true);
     // Started unconditionally, before we know the outcome: a resend that
     // keeps failing (e.g. a transport/config error) must not let the
     // customer hammer the button in a retry storm.
-    setResendRemainingSeconds(resendDelaySeconds);
+    setResendRemainingSeconds(otpVerification.resendDelaySeconds);
+    setResendAttempts((count) => count + 1);
     try {
       await otpVerification.resendOtp(phone);
       setOtp("");
@@ -205,12 +210,12 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
         {phoneError ? <p className="auth-error" id="auth-phone-error" role="alert">{phoneError}</p> : requestState === "request-failed" ? <p className="auth-error" role="alert">Unable to send a code right now. Please try again.</p> : null}
         <button className="primary-button auth-sheet__primary" disabled={isSending} type="submit">{isSending ? "Sending code…" : "Continue"}</button>
       </form> : <div className="auth-sheet__body">
-        <div className="auth-sheet__intro"><p className="section-kicker">{request.context === "checkout" ? "Checkout" : "Your details"}</p><h2 id={dialogTitleId}>{copy.otpTitle}</h2><p id={dialogDescriptionId}>{isInitialSend ? "Sending a 6-digit code to " : copy.otpDescription}<strong>{maskPhoneNumber(phone)}</strong></p></div>
+        <div className="auth-sheet__intro"><p className="section-kicker">{request.context === "checkout" ? "Checkout" : "Your details"}</p><h2 id={dialogTitleId}>{copy.otpTitle}</h2><p id={dialogDescriptionId}>{isInitialSend ? `Sending a ${otpVerification.otpLength}-digit code to ` : copy.otpDescription}<strong>{maskPhoneNumber(phone)}</strong></p></div>
         {isInitialSend ? null : <>
-          <OtpInput describedBy={otpError ? "auth-otp-error" : undefined} disabled={isVerifying} hasError={Boolean(otpError)} onChange={(nextOtp) => { if (nextOtp !== otp) previousAutoSubmittedOtpRef.current = undefined; setOtp(nextOtp); if (verificationState !== "idle") setVerificationState("idle"); }} value={otp} />
+          <OtpInput describedBy={otpError ? "auth-otp-error" : undefined} disabled={isVerifying} hasError={Boolean(otpError)} length={otpVerification.otpLength} onChange={(nextOtp) => { if (nextOtp !== otp) previousAutoSubmittedOtpRef.current = undefined; setOtp(nextOtp); if (verificationState !== "idle") setVerificationState("idle"); }} value={otp} />
           {otpError ? <p className="auth-error" id="auth-otp-error" role="alert">{otpError}</p> : requestState === "request-failed" ? <p className="auth-error" role="alert">Unable to send a code right now. Please try again.</p> : null}
-          <OtpResendTimer disabled={isVerifying} isResending={isResending} onResend={resendOtp} remainingSeconds={resendRemainingSeconds} />
-          <button className="primary-button auth-sheet__primary" disabled={otp.length !== 6 || isVerifying} onClick={() => verifyOtp(otp)} type="button">{isVerifying ? "Verifying…" : copy.verifyLabel}</button>
+          <OtpResendTimer disabled={isVerifying} isResending={isResending} limitReached={resendLimitReached} onResend={resendOtp} remainingSeconds={resendRemainingSeconds} />
+          <button className="primary-button auth-sheet__primary" disabled={otp.length !== otpVerification.otpLength || isVerifying} onClick={() => verifyOtp(otp)} type="button">{isVerifying ? "Verifying…" : copy.verifyLabel}</button>
         </>}
         <button className="text-button auth-sheet__change-phone" disabled={isVerifying || isResending} onClick={returnToPhone} type="button">Change phone number</button>
       </div>}

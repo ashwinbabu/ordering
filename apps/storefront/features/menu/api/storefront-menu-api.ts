@@ -112,6 +112,9 @@ function parseStorefrontMenu(value: Json): StorefrontMenu {
       name: readString(business.name, "The storefront menu business name"),
       slug: readString(business.slug, "The storefront menu business slug"),
       currency: readString(business.currency, "The storefront menu currency"),
+      // Read leniently so the client stays deployable ahead of the migration that
+      // adds this field. Absent means no logo, matching the current "no logo" UI.
+      logoUrl: typeof business.logoUrl === "string" ? business.logoUrl : null,
     },
     location: {
       id: readString(location.id, "The storefront menu location ID"),

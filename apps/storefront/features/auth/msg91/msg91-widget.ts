@@ -52,6 +52,67 @@ declare global {
   }
 }
 
+export interface Msg91WidgetConfig {
+  /** Digits in the OTP MSG91 actually sends. Dashboard-configurable - do not assume 6. */
+  otpLength: number;
+  /** Seconds the customer must wait before "Resend" is enabled. */
+  resendDelaySeconds: number;
+  /** How many times MSG91 will resend before refusing further retries. Infinity when unknown (nothing to cap against). */
+  maxResendAttempts: number;
+}
+
+/** Used until the widget has loaded (or in demo mode) - matches the app's previous hardcoded behaviour. */
+export const defaultMsg91WidgetConfig: Msg91WidgetConfig = {
+  otpLength: 6,
+  resendDelaySeconds: 24,
+  maxResendAttempts: Infinity,
+};
+
+/**
+ * Reads the widget's dashboard-configured OTP length and resend rules via
+ * getWidgetData(). There is no documented schema for this return value, so
+ * every field is read defensively and falls back to the previous hardcoded
+ * defaults rather than propagating a bad shape into the UI.
+ */
+export function getMsg91WidgetConfig(): Msg91WidgetConfig {
+  if (typeof window.getWidgetData !== "function") return defaultMsg91WidgetConfig;
+
+  try {
+    const data = window.getWidgetData() as Record<string, unknown> | undefined;
+    if (!data) return defaultMsg91WidgetConfig;
+
+    const otpLength = typeof data.otpLength === "number" && data.otpLength > 0
+      ? data.otpLength
+      : defaultMsg91WidgetConfig.otpLength;
+    const resendDelaySeconds = typeof data.retryTime === "number" && data.retryTime > 0
+      ? data.retryTime
+      : defaultMsg91WidgetConfig.resendDelaySeconds;
+    const maxResendAttempts = typeof data.retryCount === "number" && data.retryCount >= 0
+      ? data.retryCount
+      : defaultMsg91WidgetConfig.maxResendAttempts;
+
+    return { otpLength, resendDelaySeconds, maxResendAttempts };
+  } catch {
+    return defaultMsg91WidgetConfig;
+  }
+}
+
+// Send/verify/retry calls only settle via MSG91's own success/failure
+// callbacks - if the widget never calls either (e.g. blocked on an
+// unsolved captcha, or a stalled network request) the returned promise
+// hangs forever with no way for the UI to recover. This bounds every call.
+const requestTimeoutMs = 20000;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMessage: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(timeoutMessage)), requestTimeoutMs);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 export class Msg91NotConfiguredError extends Error {
   constructor() {
     super("MSG91 widget is not configured (VITE_MSG91_WIDGET_ID / VITE_MSG91_TOKEN_AUTH missing).");
@@ -144,9 +205,12 @@ export function sendMsg91Otp(identifier: string): Promise<void> {
   lastSendIdentifier = identifier;
   lastSendAt = now;
 
-  return new Promise((resolve, reject) => {
-    window.sendOtp!(identifier, () => resolve(), (error) => reject(error));
-  });
+  return withTimeout(
+    new Promise((resolve, reject) => {
+      window.sendOtp!(identifier, () => resolve(), (error) => reject(error));
+    }),
+    "Could not send the code. Please try again.",
+  );
 }
 
 export interface Msg91VerifiedToken {
@@ -172,17 +236,20 @@ function extractAccessToken(data: unknown): string | null {
 }
 
 export function verifyMsg91Otp(otp: string): Promise<Msg91VerifiedToken> {
-  return new Promise((resolve, reject) => {
-    window.verifyOtp!(
-      otp,
-      (data) => {
-        const accessToken = extractAccessToken(data);
-        if (accessToken) resolve({ accessToken });
-        else reject(new Error("MSG91 did not return an access token."));
-      },
-      (error) => reject(error),
-    );
-  });
+  return withTimeout(
+    new Promise((resolve, reject) => {
+      window.verifyOtp!(
+        otp,
+        (data) => {
+          const accessToken = extractAccessToken(data);
+          if (accessToken) resolve({ accessToken });
+          else reject(new Error("MSG91 did not return an access token."));
+        },
+        (error) => reject(error),
+      );
+    }),
+    "Could not verify the code. Please try again.",
+  );
 }
 
 // MSG91 retryOtp channel codes: SMS='11', Voice='4', Email='3', WhatsApp='12'.
@@ -192,7 +259,10 @@ export function verifyMsg91Otp(otp: string): Promise<Msg91VerifiedToken> {
 const smsRetryChannel = "11";
 
 export function retryMsg91Otp(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    window.retryOtp!(smsRetryChannel, () => resolve(), (error) => reject(error));
-  });
+  return withTimeout(
+    new Promise((resolve, reject) => {
+      window.retryOtp!(smsRetryChannel, () => resolve(), (error) => reject(error));
+    }),
+    "Could not resend the code. Please try again.",
+  );
 }

@@ -1,9 +1,9 @@
-import { useId, useRef } from "react";
+import { useId, useRef, useState } from "react";
 import { toMsg91Identifier, type PhoneNumber } from "../../domain/phone";
 import { CustomerAuthError, exchangeMsg91AccessToken } from "./api/customer-auth-api";
 import { useCustomerSession } from "./customer-session";
 import { classifyMsg91VerifyFailure, msg91FailureMessage, type Msg91VerifyFailureReason } from "./msg91/msg91-errors";
-import { initializeMsg91Widget, missingMsg91Config, otpMode, retryMsg91Otp, sendMsg91Otp, verifyMsg91Otp } from "./msg91/msg91-widget";
+import { defaultMsg91WidgetConfig, getMsg91WidgetConfig, initializeMsg91Widget, missingMsg91Config, otpMode, retryMsg91Otp, sendMsg91Otp, verifyMsg91Otp } from "./msg91/msg91-widget";
 
 export class OtpVerifyError extends Error {
   reason: Msg91VerifyFailureReason;
@@ -41,6 +41,10 @@ export function useOtpVerification() {
   const isLiveVerification = mode === "live";
   const widgetInitializedRef = useRef(false);
   const { completeDemoSignIn } = useCustomerSession();
+  // Dashboard-configured OTP length / resend rules - unknown until the
+  // widget has actually loaded, so this starts at the same defaults the
+  // app always used and is refreshed once initialization completes.
+  const [widgetConfig, setWidgetConfig] = useState(defaultMsg91WidgetConfig);
 
   function assertConfigured() {
     if (mode !== "unconfigured") return;
@@ -56,6 +60,7 @@ export function useOtpVerification() {
     if (widgetInitializedRef.current) return;
     await initializeMsg91Widget({ captchaRenderId: captchaContainerId });
     widgetInitializedRef.current = true;
+    setWidgetConfig(getMsg91WidgetConfig());
   }
 
   async function sendOtp(phone: PhoneNumber) {
@@ -67,6 +72,11 @@ export function useOtpVerification() {
 
     await ensureWidgetInitialized();
     await sendMsg91Otp(toMsg91Identifier(phone));
+    // getWidgetData() doesn't reliably report the real otpLength/retryTime
+    // right when sendOtp first becomes callable - re-reading it now (cheap,
+    // no network call) catches the config once MSG91 has actually populated
+    // it, instead of leaving the code-entry screen stuck on the defaults.
+    setWidgetConfig(getMsg91WidgetConfig());
   }
 
   async function resendOtp(phone: PhoneNumber) {
@@ -78,6 +88,7 @@ export function useOtpVerification() {
 
     await ensureWidgetInitialized();
     await retryMsg91Otp();
+    setWidgetConfig(getMsg91WidgetConfig());
     void phone; // resend targets whatever identifier the widget was last configured with
   }
 
@@ -110,5 +121,14 @@ export function useOtpVerification() {
     }
   }
 
-  return { captchaContainerId, isLiveVerification, resendOtp, sendOtp, verifyOtp };
+  return {
+    captchaContainerId,
+    isLiveVerification,
+    maxResendAttempts: widgetConfig.maxResendAttempts,
+    otpLength: widgetConfig.otpLength,
+    resendDelaySeconds: widgetConfig.resendDelaySeconds,
+    resendOtp,
+    sendOtp,
+    verifyOtp,
+  };
 }

@@ -3,21 +3,29 @@ import {
   getOrdersForLocation,
   transitionOrderAtLocation,
 } from "@/features/orders/api/orders-api";
+import { ordersDateRangeQueryWindow, type OrdersDateRange } from "@/features/orders/order-model";
 
 export function ordersQueryKey(
   businessId: string | null,
   locationId: string | null,
+  dateRange: OrdersDateRange,
 ) {
-  return ["orders", businessId, locationId] as const;
+  const window = ordersDateRangeQueryWindow(dateRange);
+  return ["orders", businessId, locationId, window.from, window.to] as const;
 }
 
 export function useOrdersQuery(
   businessId: string | null,
   locationId: string | null,
+  dateRange: OrdersDateRange,
 ) {
   return useQuery({
-    queryKey: ordersQueryKey(businessId, locationId),
-    queryFn: () => getOrdersForLocation({ businessId: businessId!, locationId: locationId! }),
+    queryKey: ordersQueryKey(businessId, locationId, dateRange),
+    queryFn: () =>
+      getOrdersForLocation(
+        { businessId: businessId!, locationId: locationId! },
+        ordersDateRangeQueryWindow(dateRange),
+      ),
     enabled: Boolean(businessId && locationId),
     staleTime: 15_000,
   });
@@ -29,7 +37,7 @@ export function useTransitionOrderMutation() {
     mutationFn: transitionOrderAtLocation,
     onSuccess: async (_data, input) => {
       await queryClient.invalidateQueries({
-        queryKey: ordersQueryKey(input.businessId, input.locationId),
+        queryKey: ["orders", input.businessId, input.locationId],
       });
     },
   });

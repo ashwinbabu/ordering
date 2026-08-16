@@ -11,6 +11,7 @@ export interface Venue {
   orderingStatus: string;
   isAcceptingOrders: boolean;
   accentColor: string;
+  logoUrl: string | null;
 }
 
 export interface MenuCategory {
@@ -98,6 +99,7 @@ export interface StorefrontMenu {
     name: string;
     slug: string;
     currency: string;
+    logoUrl: string | null;
   };
   location: {
     id: string;

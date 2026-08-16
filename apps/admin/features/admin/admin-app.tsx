@@ -13,10 +13,12 @@ import { useAuth } from "@/features/auth/auth-context";
 import { useOutletContext } from "@/features/outlet-context/outlet-context";
 import { useOrderingStatus } from "@/features/ordering-status/ordering-status-context";
 import {
+  defaultOrdersDateRange,
   formatMoney as money,
   nextOrderStatus as nextStatus,
   type Order,
   type OrderStatus,
+  type OrdersDateRange,
 } from "@/features/orders/order-model";
 import {
   useOrdersQuery,
@@ -77,14 +79,18 @@ export function AdminApp() {
     selectLocation,
     retry: retryOutletContext,
   } = useOutletContext();
-  const { orderingOpen, pauseOrdering, resumeOrdering } = useOrderingStatus();
+  const { orderingOpen, pauseOrdering, resumeOrdering, scheduleLabel } = useOrderingStatus();
   const menuQuery = useMenuQuery(
     activeBusiness?.id ?? null,
     activeLocation?.id ?? null,
   );
+  const [ordersDateRange, setOrdersDateRange] = useState<OrdersDateRange>(() =>
+    defaultOrdersDateRange(),
+  );
   const ordersQuery = useOrdersQuery(
     activeBusiness?.id ?? null,
     activeLocation?.id ?? null,
+    ordersDateRange,
   );
   const transitionOrderMutation = useTransitionOrderMutation();
   const saveMenuMutation = useSaveMenuMutation();
@@ -1053,6 +1059,8 @@ export function AdminApp() {
         }}
         statusFilter={statusFilter}
         setStatusFilter={setStatusFilter}
+        dateRange={ordersDateRange}
+        setDateRange={setOrdersDateRange}
         busyOrderId={busyOrderId}
         onProgress={progressOrder}
         onOpen={openOrder}
@@ -1173,6 +1181,7 @@ export function AdminApp() {
         onNavigate={navigate}
         activeBranch={activeBranch}
         branches={branches}
+        businessLogoUrl={activeBusiness?.logoUrl}
         onBranchChange={requestLocationChange}
         onSignOut={() => {
           void signOut();
@@ -1235,7 +1244,7 @@ export function AdminApp() {
           <div className="modal-info-row">
             <Clock3 size={17} />
             <span>
-              <strong>Current schedule</strong>Open until 10:30 PM
+              <strong>Current schedule</strong>{scheduleLabel ?? "Loading…"}
             </span>
           </div>
         </Modal>
