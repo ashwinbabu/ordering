@@ -159,12 +159,19 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   async function resendOtp() {
     if (resendRemainingSeconds > 0 || isResending) return;
     setIsResending(true);
+    // Started unconditionally, before we know the outcome: a resend that
+    // keeps failing (e.g. a transport/config error) must not let the
+    // customer hammer the button in a retry storm.
+    setResendRemainingSeconds(resendDelaySeconds);
     try {
       await otpVerification.resendOtp(phone);
       setOtp("");
       previousAutoSubmittedOtpRef.current = undefined;
       setVerificationState("idle");
-      setResendRemainingSeconds(resendDelaySeconds);
+      setRequestState("idle");
+    } catch (error) {
+      console.error("Resend failed", error);
+      setRequestState("request-failed");
     } finally {
       setIsResending(false);
     }

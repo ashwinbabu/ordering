@@ -6,9 +6,29 @@ const widgetScriptUrl = "https://verify.msg91.com/otp-provider.js";
 
 const widgetId = import.meta.env.VITE_MSG91_WIDGET_ID as string | undefined;
 const tokenAuth = import.meta.env.VITE_MSG91_TOKEN_AUTH as string | undefined;
+const demoModeRequested = String(import.meta.env.VITE_MSG91_DEMO_MODE ?? "").toLowerCase() === "true";
 
-export function isMsg91Configured() {
-  return Boolean(widgetId && tokenAuth);
+/**
+ * "live" sends real SMS through MSG91. "demo" is the offline fallback with
+ * magic codes, and must be asked for explicitly - it is never what you get
+ * by accident. "unconfigured" is a hard error: silently degrading to demo
+ * on missing config made a real misconfiguration look like a working send,
+ * which is exactly how a broken env went unnoticed.
+ */
+export type OtpMode = "demo" | "live" | "unconfigured";
+
+export function otpMode(): OtpMode {
+  if (widgetId && tokenAuth) return "live";
+  if (demoModeRequested) return "demo";
+  return "unconfigured";
+}
+
+/** Names the specific missing variables so a misconfiguration is self-diagnosing. */
+export function missingMsg91Config(): string[] {
+  const missing: string[] = [];
+  if (!widgetId) missing.push("VITE_MSG91_WIDGET_ID");
+  if (!tokenAuth) missing.push("VITE_MSG91_TOKEN_AUTH");
+  return missing;
 }
 
 interface Msg91Configuration {
@@ -60,6 +80,29 @@ function loadWidgetScriptOnce(): Promise<void> {
   return scriptLoadPromise;
 }
 
+// initSendOTP() is fire-and-forget - it kicks off MSG91's own async setup
+// (including a third-party fingerprinting script) and returns before
+// sendOtp/verifyOtp/retryOtp actually exist on window. There is no
+// documented "ready" callback, so this polls for sendOtp to appear rather
+// than assuming initSendOTP finishing means the widget is usable.
+function waitForWidgetReady(timeoutMs = 8000, intervalMs = 100): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeoutMs;
+    const check = () => {
+      if (typeof window.sendOtp === "function") {
+        resolve();
+        return;
+      }
+      if (Date.now() >= deadline) {
+        reject(new Error("The verification widget did not finish loading. Please try again."));
+        return;
+      }
+      window.setTimeout(check, intervalMs);
+    };
+    check();
+  });
+}
+
 /**
  * (Re)configures the widget against a specific captcha container. Call this
  * every time a bottom sheet mounts a fresh captcha element - the previous
@@ -82,6 +125,8 @@ export async function initializeMsg91Widget(options: { captchaRenderId: string; 
     success: () => {},
     failure: () => {},
   });
+
+  await waitForWidgetReady();
 }
 
 // StrictMode-safe: an effect that calls sendMsg91Otp on mount fires twice in
@@ -140,8 +185,14 @@ export function verifyMsg91Otp(otp: string): Promise<Msg91VerifiedToken> {
   });
 }
 
+// MSG91 retryOtp channel codes: SMS='11', Voice='4', Email='3', WhatsApp='12'.
+// `null` is only valid when the widget is left on its default configuration;
+// a custom configuration (ours) rejects null with "Channel not provided in
+// retryOtp() method." - this integration is SMS-only, so SMS is hardcoded.
+const smsRetryChannel = "11";
+
 export function retryMsg91Otp(): Promise<void> {
   return new Promise((resolve, reject) => {
-    window.retryOtp!(null, () => resolve(), (error) => reject(error));
+    window.retryOtp!(smsRetryChannel, () => resolve(), (error) => reject(error));
   });
 }
