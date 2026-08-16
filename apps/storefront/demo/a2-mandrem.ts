@@ -11,6 +11,7 @@ export const a2MandremStorefront: StorefrontDemo = {
     orderingStatus: "Open today · Orders until 10:30 PM",
     isAcceptingOrders: true,
     accentColor: "#ad412d",
+    logoUrl: null,
   },
   menu: {
     defaultPresentation: "list",

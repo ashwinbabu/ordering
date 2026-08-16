@@ -37,7 +37,7 @@ export async function getOperatorOutletContext(): Promise<OperatorOutletContext>
   const businessIds = memberships.map((membership) => membership.business_id);
   const { data: businesses, error: businessError } = await core
     .from("businesses")
-    .select("id, name, currency, timezone")
+    .select("id, name, currency, timezone, logo_url")
     .in("id", businessIds)
     .eq("status", "active")
     .order("name");
@@ -45,7 +45,11 @@ export async function getOperatorOutletContext(): Promise<OperatorOutletContext>
 
   const roleByBusinessId = new Map(memberships.map((membership) => [membership.business_id, asBusinessRole(membership.role)]));
   const accessibleBusinesses: AccessibleBusiness[] = businesses.map((business) => ({
-    ...business,
+    id: business.id,
+    name: business.name,
+    currency: business.currency,
+    timezone: business.timezone,
+    logoUrl: business.logo_url,
     role: roleByBusinessId.get(business.id) ?? "staff",
   }));
 

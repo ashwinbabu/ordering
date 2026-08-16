@@ -10,7 +10,7 @@ import {
   Utensils,
   type LucideIcon,
 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export type AdminView =
   | "orders"
@@ -63,7 +63,16 @@ interface AppShellProps {
   onSignOut: () => void;
   orderingOpen: boolean;
   onKillSwitch: () => void;
+  businessLogoUrl?: string | null;
   children: ReactNode;
+}
+
+function BrandMark({ logoUrl }: { logoUrl?: string | null }) {
+  return (
+    <span className="brand-mark">
+      {logoUrl ? <img src={logoUrl} alt="" /> : "A2"}
+    </span>
+  );
 }
 
 export function AppShell({
@@ -75,16 +84,29 @@ export function AppShell({
   onSignOut,
   orderingOpen,
   onKillSwitch,
+  businessLogoUrl,
   children,
 }: AppShellProps) {
   const [accountOpen, setAccountOpen] = useState(false);
   const activeNav = activeNavigationView(view);
+  const accountWrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!accountOpen) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (!accountWrapRef.current?.contains(event.target as Node)) {
+        setAccountOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [accountOpen]);
 
   return (
     <div className="app-shell">
       <aside className="sidebar no-print">
         <div className="brand-lockup shell-brand">
-          <span className="brand-mark">A2</span>
+          <BrandMark logoUrl={businessLogoUrl} />
           <span>A2</span>
         </div>
         <nav aria-label="Primary navigation">
@@ -114,13 +136,13 @@ export function AppShell({
       <div className="shell-content">
         <header className="topbar no-print">
           <div className="mobile-brand">
-            <span className="brand-mark">A2</span>
+            <BrandMark logoUrl={businessLogoUrl} />
             <span>A2</span>
           </div>
           <div className="topbar-context">
             <p>{pageTitles[view]}</p>
           </div>
-          <div className="account-wrap">
+          <div className="account-wrap" ref={accountWrapRef}>
             <button
               className="account-button"
               onClick={() => setAccountOpen((open) => !open)}

@@ -2,6 +2,7 @@
 
 import { CircleAlert, MapPin, Plus, Store, Truck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Toggle } from "@/components/ui/toggle";
 import {
   cloneBusinessSettingsDraft,
@@ -14,6 +15,7 @@ import {
   useSaveBusinessSettingsMutation,
 } from "@/features/business-settings/business-settings-query";
 import type { BusinessSettingsData } from "@/features/business-settings/api/business-settings-api";
+import { LogoUploader } from "@/features/business-settings/logo-uploader";
 import type { BusinessRole } from "@/features/outlet-context/outlet-context-model";
 
 interface BusinessSettingsProps {
@@ -210,6 +212,7 @@ function BusinessSettingsEditor({
   settingsQuery: ReturnType<typeof useBusinessSettingsQuery>;
 }) {
   const saveMutation = useSaveBusinessSettingsMutation();
+  const queryClient = useQueryClient();
   const [activeSection, setActiveSection] = useState("general");
   const [draft, setDraft] = useState<BusinessSettingsDraft>(() =>
     cloneBusinessSettingsDraft(initialData.draft),
@@ -286,6 +289,11 @@ function BusinessSettingsEditor({
         return next;
       });
       setZoneError("");
+      if (target.has("hours")) {
+        await queryClient.invalidateQueries({
+          queryKey: ["ordering-status-today-hours", locationId],
+        });
+      }
       onSaved(label);
     } catch (error) {
       setZoneError(
@@ -333,6 +341,21 @@ function BusinessSettingsEditor({
                 </p>
               </div>
             </div>
+            <LogoUploader
+              businessId={businessId}
+              logoUrl={draft.general.logoUrl}
+              fallback={<span className="brand-mark">A2</span>}
+              onChange={(logoUrl) =>
+                setDraft((current) => ({
+                  ...current,
+                  general: { ...current.general, logoUrl },
+                }))
+              }
+              onSaved={() => {
+                void queryClient.invalidateQueries({ queryKey: ["outlet-context"] });
+                onSaved("Logo");
+              }}
+            />
             <div className="settings-grid">
               <label className="field-label">
                 Business name

@@ -100,7 +100,7 @@ export async function getBusinessSettings(
   ] = await Promise.all([
     core
       .from("businesses")
-      .select("id, name, currency, timezone, updated_at")
+      .select("id, name, currency, timezone, logo_url, updated_at")
       .eq("id", scope.businessId)
       .single(),
     core
@@ -198,6 +198,7 @@ export async function getBusinessSettings(
         postalCode: location.postal_code ?? "",
         latitude: location.latitude,
         longitude: location.longitude,
+        logoUrl: business.logo_url,
       },
       restaurant: {
         orderingMode: asOrderingMode(restaurant.ordering_mode),
@@ -300,4 +301,77 @@ export async function saveBusinessSettings({
       p_settings: payload,
     });
   throwIfError(error);
+}
+
+const LOGO_BUCKET = "business-logos";
+
+function logoPathFromUrl(businessId: string, logoUrl: string): string | null {
+  const marker = `/${LOGO_BUCKET}/`;
+  const index = logoUrl.indexOf(marker);
+  if (index === -1) return null;
+  const path = logoUrl.slice(index + marker.length).split("?")[0];
+  return path.startsWith(`${businessId}/`) ? path : null;
+}
+
+export async function uploadBusinessLogo(
+  businessId: string,
+  file: Blob,
+  extension: string,
+): Promise<string> {
+  const path = `${businessId}/logo-${Date.now()}.${extension}`;
+  const { error: uploadError } = await supabase.storage
+    .from(LOGO_BUCKET)
+    .upload(path, file, { contentType: file.type, upsert: false });
+  throwIfError(uploadError);
+
+  const { data: existing, error: fetchError } = await supabase
+    .schema("core")
+    .from("businesses")
+    .select("logo_url")
+    .eq("id", businessId)
+    .single();
+  throwIfError(fetchError);
+
+  const { data: publicUrlData } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(path);
+  const logoUrl = publicUrlData.publicUrl;
+
+  const { error: updateError } = await supabase
+    .schema("core")
+    .from("businesses")
+    .update({ logo_url: logoUrl })
+    .eq("id", businessId);
+  throwIfError(updateError);
+
+  const previousPath = existing?.logo_url
+    ? logoPathFromUrl(businessId, existing.logo_url)
+    : null;
+  if (previousPath) {
+    await supabase.storage.from(LOGO_BUCKET).remove([previousPath]);
+  }
+
+  return logoUrl;
+}
+
+export async function deleteBusinessLogo(businessId: string): Promise<void> {
+  const { data: existing, error: fetchError } = await supabase
+    .schema("core")
+    .from("businesses")
+    .select("logo_url")
+    .eq("id", businessId)
+    .single();
+  throwIfError(fetchError);
+
+  const { error: updateError } = await supabase
+    .schema("core")
+    .from("businesses")
+    .update({ logo_url: null })
+    .eq("id", businessId);
+  throwIfError(updateError);
+
+  const previousPath = existing?.logo_url
+    ? logoPathFromUrl(businessId, existing.logo_url)
+    : null;
+  if (previousPath) {
+    await supabase.storage.from(LOGO_BUCKET).remove([previousPath]);
+  }
 }

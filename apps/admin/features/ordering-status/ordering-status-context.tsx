@@ -4,6 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getOrderingStatus,
+  getTodayOpeningHours,
   setOrderingStatus,
 } from "@/features/ordering-status/api/ordering-status-api";
 import { useOutletContext } from "@/features/outlet-context/outlet-context";
@@ -12,8 +13,25 @@ interface OrderingStatusContextValue {
   orderingOpen: boolean;
   loading: boolean;
   canManage: boolean;
+  scheduleLabel: string | null;
   pauseOrdering: () => Promise<void>;
   resumeOrdering: () => Promise<void>;
+}
+
+function formatClockTime(hhmm: string) {
+  const [hourStr, minuteStr] = hhmm.split(":");
+  const hour24 = Number(hourStr);
+  const minute = Number(minuteStr);
+  const period = hour24 >= 12 ? "PM" : "AM";
+  const hour12 = ((hour24 + 11) % 12) + 1;
+  return `${hour12}:${minute.toString().padStart(2, "0")} ${period}`;
+}
+
+function scheduleLabelFor(
+  hours: { isClosed: boolean; opensAt: string | null; closesAt: string | null } | null | undefined,
+) {
+  if (!hours || hours.isClosed || !hours.closesAt) return "Closed today";
+  return `Open until ${formatClockTime(hours.closesAt)}`;
 }
 
 const OrderingStatusContext = createContext<OrderingStatusContextValue | null>(
@@ -31,6 +49,12 @@ export function OrderingStatusProvider({ children }: { children: ReactNode }) {
     queryFn: () => getOrderingStatus(locationId!),
     enabled: Boolean(locationId && canManage),
     staleTime: 15_000,
+  });
+  const scheduleQuery = useQuery({
+    queryKey: ["ordering-status-today-hours", locationId],
+    queryFn: () => getTodayOpeningHours(locationId!),
+    enabled: Boolean(locationId && canManage),
+    staleTime: 60_000,
   });
   const statusMutation = useMutation({
     mutationFn: (orderingEnabled: boolean) =>
@@ -60,6 +84,7 @@ export function OrderingStatusProvider({ children }: { children: ReactNode }) {
         orderingOpen: statusQuery.data ?? true,
         loading: statusQuery.isPending || statusMutation.isPending,
         canManage,
+        scheduleLabel: scheduleQuery.data ? scheduleLabelFor(scheduleQuery.data) : null,
         pauseOrdering: () => setStatus(false),
         resumeOrdering: () => setStatus(true),
       }}

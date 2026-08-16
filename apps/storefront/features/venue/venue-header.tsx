@@ -20,7 +20,7 @@ export function VenueHeader({ cartItemCount, onGoToCart, onOpenAccount, venue }:
             className="brand-mark"
             aria-hidden="true"
           >
-            {venue.displayName}
+            {venue.logoUrl ? <img src={venue.logoUrl} alt="" /> : venue.displayName}
           </span>
           <div>
             <p className="brand-name">{venue.displayName}</p>
