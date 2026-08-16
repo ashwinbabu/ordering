@@ -62,7 +62,7 @@ export function LoginScreen() {
 
   async function submitEmail(event: React.FormEvent) {
     event.preventDefault();
-    if (!email.includes("@") || password.length < 4) {
+    if (!email.includes("@") || !password) {
       setError("Check your email and password, then try again.");
       return;
     }
