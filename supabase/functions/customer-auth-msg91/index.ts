@@ -6,49 +6,38 @@
 // service-role key to the browser.
 //
 // Trust model: the client sends only an access token. This function decides
-// which phone number that token proves by asking MSG91 - it never trusts a
-// client-claimed identifier. If MSG91's response does not clearly report a
-// verified identifier, the request is rejected outright (fail closed) rather
-// than falling back to anything the client said. See "Unknown 1" in the
-// integration plan - the exact response shape is unconfirmed against a real
-// MSG91 account, so `extractVerifiedIdentifier` below is the piece most
-// likely to need adjustment once a live response has been captured.
-import { createClient } from "jsr:@supabase/supabase-js@2";
+// which phone number that token proves by asking MSG91's own
+// verifyAccessToken endpoint - it never trusts a client-claimed identifier.
+// If MSG91's response does not report exactly one unambiguous verified
+// identity, the request is rejected outright (fail closed).
+//
+// Response shape: failures are reported as { error: "<prose>" } and the
+// browser derives its UI reason from the HTTP status - see codeFromStatus()
+// in apps/storefront/features/auth/api/customer-auth-api.ts. Do not switch
+// this to a coded object without changing that file in the same commit.
+import { createClient } from "npm:@supabase/supabase-js@2";
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const msg91AuthKey = Deno.env.get("MSG91_AUTHKEY");
-const phoneEmailDomain = Deno.env.get("CUSTOMER_PHONE_EMAIL_DOMAIN") ?? "phone-customers.invalid";
 const configuredOrigins = (Deno.env.get("STOREFRONT_ALLOWED_ORIGINS") ?? "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 // Dev fallbacks so a local `vite` server keeps working without extra setup.
-// Add the real deployed origin(s) via STOREFRONT_ALLOWED_ORIGINS before shipping.
-const devOrigins = ["http://localhost:5173", "http://127.0.0.1:5173", "https://terminal.local"];
+// The real deployed origin(s) must be added via STOREFRONT_ALLOWED_ORIGINS -
+// a browser calling from an origin that is not listed here gets no
+// Access-Control-Allow-Origin header back and the sign-in fails in the
+// client before it ever reaches this code.
+const devOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
 const allowedOrigins = new Set([...configuredOrigins, ...devOrigins]);
 
+// Bounds how often one phone number can burn verified tokens, independently
+// of whatever throttling MSG91 applies on its side.
 const identifierAttemptsPerWindow = 8;
 const identifierWindowMinutes = 10;
-
-interface VerifyRequestBody {
-  accessToken?: unknown;
-}
-
-type ErrorCode =
-  | "invalid_request"
-  | "provider_unreachable"
-  | "incorrect_code"
-  | "expired_code"
-  | "rate_limited"
-  | "identifier_missing"
-  | "replayed_token"
-  | "server_error";
 
 function corsHeaders(origin: string | null) {
   const headers = new Headers({
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "content-type",
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
     Vary: "Origin",
   });
   if (origin && allowedOrigins.has(origin)) headers.set("Access-Control-Allow-Origin", origin);
@@ -61,8 +50,81 @@ function jsonResponse(body: unknown, status: number, origin: string | null) {
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-function errorResponse(code: ErrorCode, message: string, status: number, origin: string | null) {
-  return jsonResponse({ error: { code, message } }, status, origin);
+/**
+ * Supabase's newer API-key scheme exposes keys as a JSON map under
+ * SUPABASE_SECRET_KEYS / SUPABASE_PUBLISHABLE_KEYS rather than the legacy
+ * single-value env vars. Both are read so this keeps working either way.
+ */
+function getNamedKey(raw: string | undefined, name = "default") {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, string>;
+    return parsed[name];
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizePhone(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.includes("@")) return null;
+  const digits = trimmed.replace(/\D/g, "");
+  if (!/^[1-9][0-9]{7,14}$/.test(digits)) return null;
+  return `+${digits}`;
+}
+
+function decodeJwtPayload(token: string): unknown {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    let base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (base64.length % 4) base64 += "=";
+    const decoded = atob(base64);
+    const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch {
+    return null;
+  }
+}
+
+const identityKeys = new Set([
+  "identifier",
+  "mobile",
+  "mobileno",
+  "mobile_number",
+  "mobilenumber",
+  "phone",
+  "phone_number",
+  "phonenumber",
+  "user_identifier",
+  "useridentifier",
+]);
+
+/**
+ * MSG91 has no documented, stable response schema for verifyAccessToken, so
+ * rather than guessing one field name this walks the whole response and
+ * collects every value that both sits under an identity-ish key and parses
+ * as a phone number. The caller requires exactly one distinct result: zero
+ * means we cannot prove who this is, and more than one means the response is
+ * ambiguous. Either way we refuse rather than pick.
+ */
+function collectIdentityCandidates(value: unknown, depth = 0, out = new Set<string>()): Set<string> {
+  if (depth > 5 || value == null) return out;
+  if (Array.isArray(value)) {
+    for (const item of value) collectIdentityCandidates(item, depth + 1, out);
+    return out;
+  }
+  if (typeof value !== "object") return out;
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const normalizedKey = key.toLowerCase().replace(/[\s-]/g, "_");
+    if (identityKeys.has(normalizedKey) && typeof child === "string") {
+      const phone = normalizePhone(child);
+      if (phone) out.add(phone);
+    }
+    if (child && typeof child === "object") collectIdentityCandidates(child, depth + 1, out);
+  }
+  return out;
 }
 
 async function sha256Hex(value: string) {
@@ -70,56 +132,43 @@ async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/**
- * Normalizes whatever MSG91 reports as the verified identifier into E.164.
- * Accepts a bare phone (digits, optionally with a leading "+") or an email.
- * Returns null if the value cannot be confidently normalized - callers must
- * treat that as a failure, never as "assume it's fine".
- */
-function normalizeVerifiedIdentifier(raw: string): { kind: "phone"; e164: string } | { kind: "email"; email: string } | null {
-  const trimmed = raw.trim();
-  if (trimmed.includes("@")) {
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed) ? { kind: "email", email: trimmed.toLowerCase() } : null;
+async function verifyMsg91AccessToken(authKey: string, accessToken: string) {
+  const response = await fetch("https://control.msg91.com/api/v5/widget/verifyAccessToken", {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ authkey: authKey, "access-token": accessToken }),
+  });
+
+  let body: unknown = null;
+  try {
+    body = await response.json();
+  } catch {
+    // Fail closed below if MSG91 did not return a usable JSON response.
   }
 
-  const digits = trimmed.replace(/[^\d]/g, "");
-  if (digits.length < 8 || digits.length > 15) return null;
-  return { kind: "phone", e164: `+${digits}` };
-}
-
-/**
- * MSG91's documented pattern elsewhere is {"type":"success","message":"..."}.
- * This checks the handful of field names that plausibly carry the verified
- * identifier in that shape. Confirm the real shape in Phase 0 and tighten
- * this to match exactly - do not ship this unconfirmed to a production
- * MSG91 account without checking it against a real response first.
- */
-function extractVerifiedIdentifier(body: Record<string, unknown>): string | null {
-  const candidateKeys = ["identifier", "mobile", "phone", "message"];
-  for (const key of candidateKeys) {
-    const value = body[key];
-    if (typeof value === "string" && value.length > 0) return value;
+  if (!response.ok || !body || typeof body !== "object") {
+    return { ok: false as const, status: response.status || 502 };
   }
 
-  if (body.data && typeof body.data === "object") {
-    return extractVerifiedIdentifier(body.data as Record<string, unknown>);
+  const record = body as Record<string, unknown>;
+  const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
+  const status = typeof record.status === "string" ? record.status.toLowerCase() : "";
+  if (type === "error" || type === "failed" || type === "failure" || status === "failed" || record.success === false) {
+    return { ok: false as const, status: 401 };
   }
 
-  return null;
-}
+  const candidates = collectIdentityCandidates(body);
+  // Only inspect the access token's own claims after MSG91's server-side
+  // endpoint has accepted it - the token is untrusted input until then.
+  if (candidates.size === 0) {
+    collectIdentityCandidates(decodeJwtPayload(accessToken), 0, candidates);
+  }
 
-function isMsg91Success(body: Record<string, unknown>): boolean {
-  if (typeof body.type === "string") return body.type.toLowerCase() === "success";
-  if (typeof body.success === "boolean") return body.success;
-  return false;
-}
+  if (candidates.size !== 1) {
+    return { ok: false as const, status: 401, reason: "verified identity was missing or ambiguous" };
+  }
 
-/** Best-effort mapping so the sheet can show its existing per-reason copy. Unmatched failures fall back to "incorrect_code". */
-function classifyMsg91Failure(body: Record<string, unknown>): ErrorCode {
-  const text = [body.message, body.error].filter((value): value is string => typeof value === "string").join(" ").toLowerCase();
-  if (text.includes("expire")) return "expired_code";
-  if (text.includes("limit") || text.includes("attempt")) return "rate_limited";
-  return "incorrect_code";
+  return { ok: true as const, phoneE164: [...candidates][0] };
 }
 
 Deno.serve(async (request) => {
@@ -128,163 +177,240 @@ Deno.serve(async (request) => {
   if (request.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(origin) });
   }
-
   if (request.method !== "POST") {
-    return errorResponse("invalid_request", "Use POST.", 405, origin);
+    return jsonResponse({ error: "Method not allowed" }, 405, origin);
   }
 
-  if (!msg91AuthKey) {
-    console.error("customer-auth-msg91: MSG91_AUTHKEY secret is not configured.");
-    return errorResponse("server_error", "Verification is not configured yet.", 500, origin);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const adminKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? getNamedKey(Deno.env.get("SUPABASE_SECRET_KEYS"));
+  const publicKey = Deno.env.get("SUPABASE_ANON_KEY") ?? getNamedKey(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"));
+  const msg91AuthKey = Deno.env.get("MSG91_AUTHKEY");
+
+  if (!supabaseUrl || !adminKey || !publicKey || !msg91AuthKey) {
+    console.error("customer-auth-msg91: required server configuration is missing");
+    return jsonResponse({ error: "Authentication service is not configured." }, 500, origin);
   }
 
-  let body: VerifyRequestBody;
+  let payload: Record<string, unknown>;
   try {
-    body = await request.json();
+    payload = await request.json();
   } catch {
-    return errorResponse("invalid_request", "Expected a JSON body.", 400, origin);
+    return jsonResponse({ error: "Invalid JSON body." }, 400, origin);
   }
 
-  const accessToken = body.accessToken;
-  if (typeof accessToken !== "string" || accessToken.length === 0 || accessToken.length > 8000) {
-    return errorResponse("invalid_request", "accessToken is required.", 400, origin);
+  const accessToken = [payload.accessToken, payload.access_token, payload.token].find(
+    (value): value is string => typeof value === "string" && value.length > 20 && value.length <= 8000,
+  );
+  if (!accessToken) {
+    return jsonResponse({ error: "Missing MSG91 access token." }, 400, origin);
   }
 
-  let providerBody: Record<string, unknown>;
-  try {
-    const providerResponse = await fetch("https://control.msg91.com/api/v5/widget/verifyAccessToken", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ authkey: msg91AuthKey, "access-token": accessToken }),
-    });
-    providerBody = await providerResponse.json();
-  } catch (error) {
-    console.error("customer-auth-msg91: MSG91 request failed", error);
-    return errorResponse("provider_unreachable", "Could not verify the code right now. Please try again.", 502, origin);
+  const verified = await verifyMsg91AccessToken(msg91AuthKey, accessToken);
+  if (!verified.ok) {
+    console.warn(`customer-auth-msg91: MSG91 access-token verification failed (${verified.status})`);
+    return jsonResponse({ error: "OTP verification could not be confirmed." }, 401, origin);
   }
 
-  if (!isMsg91Success(providerBody)) {
-    const code = classifyMsg91Failure(providerBody);
-    const message = code === "expired_code"
-      ? "This code has expired. Request a new code to continue."
-      : code === "rate_limited"
-        ? "Too many attempts. Please try again shortly."
-        : "That code isn't right. Try again.";
-    return errorResponse(code, message, 401, origin);
+  const phoneE164 = verified.phoneE164;
+  const suppliedIdentifier = typeof payload.identifier === "string" ? normalizePhone(payload.identifier) : null;
+  if (suppliedIdentifier && suppliedIdentifier !== phoneE164) {
+    console.warn("customer-auth-msg91: client identifier did not match MSG91 verified identity");
+    return jsonResponse({ error: "Verified phone number mismatch." }, 401, origin);
   }
 
-  const rawIdentifier = extractVerifiedIdentifier(providerBody);
-  const normalized = rawIdentifier ? normalizeVerifiedIdentifier(rawIdentifier) : null;
-  if (!normalized) {
-    console.error("customer-auth-msg91: could not extract a verified identifier from MSG91's response", providerBody);
-    return errorResponse("identifier_missing", "Could not confirm your phone number. Please try again.", 502, origin);
-  }
-  if (normalized.kind === "email") {
-    // Email OTP is a deliberate future seam (non-Indian customers) - not wired yet.
-    return errorResponse("invalid_request", "Email verification is not available yet.", 400, origin);
-  }
+  const admin = createClient(supabaseUrl, adminKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const publicClient = createClient(supabaseUrl, publicKey, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
 
-  const identifierE164 = normalized.e164;
-  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { autoRefreshToken: false, persistSession: false } });
-  const core = supabase.schema("core");
-
+  // Burn the token before anything is created or touched on its behalf, so a
+  // replayed token cannot re-stamp phone_verified_at or mint a second session.
   const tokenHash = await sha256Hex(accessToken);
-  const { error: replayInsertError } = await core
+  const replayInsert = await admin
+    .schema("core")
     .from("customer_auth_verifications")
-    .insert({ token_hash: tokenHash, identifier_e164: identifierE164, channel: "sms" });
+    .insert({ token_hash: tokenHash, identifier_e164: phoneE164, channel: "sms" });
 
-  if (replayInsertError) {
-    if (replayInsertError.code === "23505") {
-      return errorResponse("replayed_token", "This verification has already been used.", 409, origin);
+  if (replayInsert.error) {
+    if (replayInsert.error.code === "23505") {
+      console.warn("customer-auth-msg91: rejected replayed MSG91 access token");
+      return jsonResponse({ error: "This verification has already been used. Please request a new code." }, 409, origin);
     }
-    console.error("customer-auth-msg91: failed to record verification", replayInsertError);
-    return errorResponse("server_error", "Something went wrong. Please try again.", 500, origin);
+    console.error("customer-auth-msg91: replay guard insert failed", replayInsert.error.code);
+    return jsonResponse({ error: "Unable to complete authentication safely." }, 500, origin);
   }
 
   const windowStart = new Date(Date.now() - identifierWindowMinutes * 60_000).toISOString();
-  const { count: recentAttempts } = await core
+  const { count: recentAttempts } = await admin
+    .schema("core")
     .from("customer_auth_verifications")
     .select("id", { count: "exact", head: true })
-    .eq("identifier_e164", identifierE164)
+    .eq("identifier_e164", phoneE164)
     .gte("created_at", windowStart);
 
   if ((recentAttempts ?? 0) > identifierAttemptsPerWindow) {
-    return errorResponse("rate_limited", "Too many attempts. Please try again shortly.", 429, origin);
+    console.warn("customer-auth-msg91: identifier exceeded the verification rate limit");
+    return jsonResponse({ error: "Too many attempts. Please try again shortly." }, 429, origin);
   }
 
-  const { data: existingCustomer, error: lookupError } = await core
+  let { data: customer, error: customerLookupError } = await admin
+    .schema("core")
     .from("customers")
-    .select("id, auth_user_id")
-    .eq("phone_e164", identifierE164)
+    .select("id, auth_user_id, phone_e164")
+    .eq("phone_e164", phoneE164)
     .maybeSingle();
 
-  if (lookupError) {
-    console.error("customer-auth-msg91: customer lookup failed", lookupError);
-    return errorResponse("server_error", "Something went wrong. Please try again.", 500, origin);
+  if (customerLookupError) {
+    console.error("customer-auth-msg91: customer lookup failed", customerLookupError.code);
+    return jsonResponse({ error: "Unable to resolve customer account." }, 500, origin);
   }
 
-  let customerId = existingCustomer?.id as string | undefined;
-  let authUserId = existingCustomer?.auth_user_id as string | null | undefined;
-
-  if (!customerId) {
-    const { data: createdCustomer, error: createCustomerError } = await core
+  if (!customer) {
+    const inserted = await admin
+      .schema("core")
       .from("customers")
-      .insert({ phone_e164: identifierE164, phone_verified_at: new Date().toISOString() })
-      .select("id, auth_user_id")
+      .insert({ phone_e164: phoneE164, phone_verified_at: new Date().toISOString() })
+      .select("id, auth_user_id, phone_e164")
       .single();
 
-    if (createCustomerError || !createdCustomer) {
-      console.error("customer-auth-msg91: failed to create customer", createCustomerError);
-      return errorResponse("server_error", "Something went wrong. Please try again.", 500, origin);
+    if (inserted.error) {
+      // Most likely a concurrent request already created this row - re-read
+      // rather than failing a legitimate sign-in.
+      const retry = await admin
+        .schema("core")
+        .from("customers")
+        .select("id, auth_user_id, phone_e164")
+        .eq("phone_e164", phoneE164)
+        .maybeSingle();
+      if (retry.error || !retry.data) {
+        console.error("customer-auth-msg91: customer creation failed", inserted.error.code);
+        return jsonResponse({ error: "Unable to create customer account." }, 500, origin);
+      }
+      customer = retry.data;
+    } else {
+      customer = inserted.data;
     }
-
-    customerId = createdCustomer.id;
-    authUserId = createdCustomer.auth_user_id;
   } else {
-    await core.from("customers").update({ phone_verified_at: new Date().toISOString() }).eq("id", customerId);
+    await admin
+      .schema("core")
+      .from("customers")
+      .update({ phone_verified_at: new Date().toISOString() })
+      .eq("id", customer.id);
   }
 
-  await core.from("customer_auth_verifications").update({ customer_id: customerId }).eq("token_hash", tokenHash);
+  await admin
+    .schema("core")
+    .from("customer_auth_verifications")
+    .update({ customer_id: customer.id })
+    .eq("token_hash", tokenHash);
 
-  // Deterministic so we never need to look an auth user up by email - the
-  // same phone always maps to the same synthetic identity.
-  const syntheticEmail = `p${identifierE164.replace("+", "")}@${phoneEmailDomain}`;
+  const digits = phoneE164.slice(1);
+  const syntheticEmail = `msg91_${digits}@auth.invalid`;
+  let authUserId: string | null = customer.auth_user_id;
+  let authEmail = syntheticEmail;
 
-  if (!authUserId) {
-    const { data: createdUser, error: createUserError } = await supabase.auth.admin.createUser({
-      email: syntheticEmail,
-      email_confirm: true,
-      phone: identifierE164.replace("+", ""),
-      phone_confirm: true,
-      user_metadata: { source: "msg91_otp", customer_id: customerId },
-    });
-
-    if (createUserError) {
-      // Most likely a concurrent request already created this auth user under
-      // the same deterministic email. Non-fatal: generateLink below still
-      // works against that existing user. Anything else, log for follow-up.
-      console.warn("customer-auth-msg91: createUser did not return a new user, continuing", createUserError.message);
-    } else if (createdUser.user) {
-      authUserId = createdUser.user.id;
-      await core.from("customers").update({ auth_user_id: authUserId }).eq("id", customerId);
+  if (authUserId) {
+    const existing = await admin.auth.admin.getUserById(authUserId);
+    if (existing.error || !existing.data.user) {
+      console.error("customer-auth-msg91: linked auth user is missing");
+      return jsonResponse({ error: "Customer authentication link is invalid." }, 500, origin);
+    }
+    if (existing.data.user.email) {
+      authEmail = existing.data.user.email;
+    } else {
+      const updated = await admin.auth.admin.updateUserById(authUserId, {
+        email: syntheticEmail,
+        email_confirm: true,
+        user_metadata: { phone_e164: phoneE164, auth_provider: "msg91_widget" },
+      });
+      if (updated.error) {
+        console.error("customer-auth-msg91: could not attach synthetic email to auth user", updated.error.code);
+        return jsonResponse({ error: "Unable to prepare customer session." }, 500, origin);
+      }
+      authEmail = syntheticEmail;
     }
   }
 
-  const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+  const generated = await admin.auth.admin.generateLink({
     type: "magiclink",
-    email: syntheticEmail,
+    email: authEmail,
+    options: { data: { phone_e164: phoneE164, auth_provider: "msg91_widget" } },
   });
 
-  if (linkError || !linkData.properties?.hashed_token) {
-    console.error("customer-auth-msg91: failed to mint a session link", linkError);
-    return errorResponse("server_error", "Something went wrong. Please try again.", 500, origin);
+  if (generated.error || !generated.data.user) {
+    console.error("customer-auth-msg91: Supabase magic-link generation failed", generated.error?.code ?? "unknown");
+    return jsonResponse({ error: "Unable to create customer session." }, 500, origin);
   }
+
+  authUserId = generated.data.user.id;
+  const properties = generated.data.properties as Record<string, unknown> | null;
+  let tokenHashForSupabase = properties && typeof properties.hashed_token === "string"
+    ? properties.hashed_token
+    : null;
+
+  if (!tokenHashForSupabase && properties && typeof properties.action_link === "string") {
+    try {
+      tokenHashForSupabase = new URL(properties.action_link).searchParams.get("token");
+    } catch {
+      tokenHashForSupabase = null;
+    }
+  }
+
+  if (!tokenHashForSupabase) {
+    console.error("customer-auth-msg91: Supabase did not return a token hash");
+    return jsonResponse({ error: "Unable to create customer session." }, 500, origin);
+  }
+
+  if (customer.auth_user_id !== authUserId) {
+    // The .or() guard is the anti-hijack condition: the link only lands if the
+    // row is still unclaimed (or already claimed by this same auth user).
+    const linked = await admin
+      .schema("core")
+      .from("customers")
+      .update({ auth_user_id: authUserId, phone_verified_at: new Date().toISOString() })
+      .eq("id", customer.id)
+      .or(`auth_user_id.is.null,auth_user_id.eq.${authUserId}`)
+      .select("id, auth_user_id, phone_e164")
+      .maybeSingle();
+
+    if (linked.error || !linked.data || linked.data.auth_user_id !== authUserId) {
+      console.error("customer-auth-msg91: refused or failed customer/auth-user link");
+      return jsonResponse({ error: "Unable to link customer authentication safely." }, 409, origin);
+    }
+    customer = linked.data;
+  }
+
+  // Redeeming the magic link server-side is what actually mints the session.
+  // The browser never sees the link; it receives the resulting tokens and
+  // adopts them via setSession().
+  const verifiedSession = await publicClient.auth.verifyOtp({
+    token_hash: tokenHashForSupabase,
+    type: "email",
+  });
+
+  if (verifiedSession.error || !verifiedSession.data.session || !verifiedSession.data.user) {
+    console.error("customer-auth-msg91: Supabase session exchange failed", verifiedSession.error?.code ?? "unknown");
+    return jsonResponse({ error: "Unable to establish customer session." }, 500, origin);
+  }
+
+  const session = verifiedSession.data.session;
+  console.log(`customer-auth-msg91: authenticated customer ${customer.id}`);
 
   return jsonResponse(
     {
-      tokenHash: linkData.properties.hashed_token,
-      email: syntheticEmail,
-      customer: { id: customerId, phoneE164: identifierE164 },
+      session,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in,
+      token_type: session.token_type,
+      user: verifiedSession.data.user,
+      customer: {
+        id: customer.id,
+        phone_e164: customer.phone_e164,
+        auth_user_id: customer.auth_user_id,
+      },
     },
     200,
     origin,
