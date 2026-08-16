@@ -18,9 +18,14 @@ const demoModeRequested = String(import.meta.env.VITE_MSG91_DEMO_MODE ?? "").toL
 export type OtpMode = "demo" | "live" | "unconfigured";
 
 export function otpMode(): OtpMode {
+  // Explicit demo request wins over configured credentials. The whole point
+  // of the flag is to stop live MSG91 traffic during development, which it
+  // cannot do if the presence of a widget ID silently overrides it - you
+  // would have to delete real credentials to get demo mode, and putting
+  // them back is exactly when you forget.
+  if (demoModeRequested) return "demo";
   if (widgetId && tokenAuth) return "live";
   if (demoModeRequested) return "demo";
-  
   return "unconfigured";
 }
 
