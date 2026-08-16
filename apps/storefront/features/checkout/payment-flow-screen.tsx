@@ -12,6 +12,12 @@ interface PaymentFlowScreenProps {
   onVerify: () => void;
   order: PaymentPendingOrder | null;
   phase: CheckoutPhase;
+  /**
+   * The reason quote_cart/checkout_cart refused, in the server's own wording
+   * ("delivery address is unserviceable", "restaurant minimum order value is
+   * not met"). Far more actionable than a generic retry prompt.
+   */
+  startError?: string;
   updatedAmount: number | null;
   venue: Venue;
 }
@@ -39,7 +45,7 @@ export function PaymentFlowScreen(props: PaymentFlowScreenProps) {
   if (phase === "failed") return <PaymentState icon={<AlertCircle />} title="Payment wasn't completed" body="Your payment was not successful." venue={venue} actions={<button className="primary-button" type="button" onClick={props.onRetry}>Try payment again</button>} />;
   if (phase === "cancelled") return <PaymentState icon={<AlertCircle />} title="Payment cancelled" body="Your order hasn't been paid yet." venue={venue} actions={<><button className="primary-button" type="button" onClick={props.onRetry}>Try payment again</button><button className="secondary-button" type="button" onClick={props.onBackToRestaurant}>Not now</button></>} />;
   if (phase === "verification_error") return <PaymentState icon={<AlertCircle />} title="Unable to confirm payment" body="We couldn't check your payment status right now. If you already completed the payment, don't pay again yet." venue={venue} actions={<><button className="primary-button" type="button" onClick={props.onVerify}>Check again</button><button className="secondary-button" type="button" onClick={props.onBackToRestaurant}>Back to restaurant</button></>} />;
-  return <PaymentState icon={<RefreshCw />} title="We couldn't start your payment" body={order ? "Your order details are safe. Please try again." : "Please try again."} venue={venue} actions={<button className="primary-button" type="button" onClick={props.onRetry}>Try again</button>} />;
+  return <PaymentState icon={<RefreshCw />} title="We couldn't start your payment" body={props.startError ?? (order ? "Your order details are safe. Please try again." : "Please try again.")} venue={venue} actions={<button className="primary-button" type="button" onClick={props.onRetry}>Try again</button>} />;
 }
 
 function PaymentPage({ children, venue }: { children: React.ReactNode; venue: Venue }) {

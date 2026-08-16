@@ -5,6 +5,7 @@ import { AddressForm, type AddressDraft } from "../addresses/address-form";
 import { AddressSelectorSheet } from "../addresses/address-selector-sheet";
 import { SelectedAddressCard } from "../addresses/selected-address-card";
 import type { AuthFlowRequest } from "../auth/auth-flow-sheet";
+import { useCustomerSession } from "../auth/customer-session";
 import { MenuImage } from "../menu/menu-image";
 import { defaultCountryCode, type PhoneNumber } from "../../domain/phone";
 import { formatRupees, type CheckoutRequest, type CustomerDetails, type DeliveryAddress, type FulfilmentType, type Venue } from "../../domain/storefront";
@@ -53,7 +54,11 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
   const [priceChangeNotice, setPriceChangeNotice] = useState(false);
   const previousLineTotals = useRef<Map<string, { quantity: number; lineTotal: number }>>(new Map());
   const queryClient = useQueryClient();
-  const setCartCoupon = useSetCartCouponMutation();
+  // Cart cache entries are keyed by identity, so coupon writes and the
+  // revalidate-on-open below have to target the same identity the cart was
+  // loaded under.
+  const { customerId } = useCustomerSession();
+  const setCartCoupon = useSetCartCouponMutation(customerId);
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
@@ -61,7 +66,7 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
     // Revalidate pricing/availability against Supabase as soon as the
     // customer opens the cart to review it (task: revalidate before
     // financial actions), without polling while they're just browsing.
-    void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(), exact: true });
+    void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId), exact: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -138,6 +143,7 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
     const checkoutRequest: CheckoutRequest = {
       cart: lines.map((line) => ({ id: line.id, productId: line.productId, quantity: line.quantity, unitPrice: line.unitPrice, selectedOptions: [] })),
       customer: customerDetails,
+      customerNote: specialInstructions.trim() || undefined,
       deliveryAddress: selectedAddress,
       displayedTotal: total,
       fulfilment,
