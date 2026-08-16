@@ -69,6 +69,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
   const [updatedAmount, setUpdatedAmount] = useState<number | null>(null);
   const [startError, setStartError] = useState<string>();
   const activeRequest = useRef(false);
+  const lastAttemptWasCash = useRef(false);
 
   const applyServerOrder = useCallback((result: ServerOrder) => {
     setOrder(result.order);
@@ -125,6 +126,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
   const begin = useCallback(async (checkoutRequest: CheckoutRequest) => {
     if (activeRequest.current || !cartId) return;
     activeRequest.current = true;
+    lastAttemptWasCash.current = false;
     setRequest(checkoutRequest);
     setStartError(undefined);
     setPhase("quoting");
@@ -153,29 +155,45 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     }
   }, [cartId, createOrder]);
 
-  // Cash on delivery skips the quote-recheck and payment-provider hand-off
-  // entirely -- there is no online payment to prepare, so this goes straight
-  // from order creation to the confirmed tracking screen.
+  // Cash on delivery still creates a real order through checkout_cart (same
+  // idempotent path as online checkout) -- it just skips the quote-recheck
+  // and payment-provider hand-off, since there is no online payment to
+  // prepare, going straight from order creation to the confirmed tracking
+  // screen.
   const beginCashOnDelivery = useCallback(async (checkoutRequest: CheckoutRequest) => {
-    if (activeRequest.current) return;
+    if (activeRequest.current || !cartId) return;
     activeRequest.current = true;
+    lastAttemptWasCash.current = true;
     setRequest(checkoutRequest);
+    setStartError(undefined);
     setPhase("placing_order");
     try {
-      const nextOrder = await demoCheckoutService.createPaymentPendingOrder(checkoutRequest, checkoutRequest.displayedTotal);
+      const orderId = beginCheckoutAttempt(storefrontContext);
+      const result = await checkoutCart({
+        orderId,
+        cartId,
+        fulfilment: checkoutRequest.fulfilment,
+        customerBusinessAddressId: checkoutRequest.deliveryAddress?.id ?? null,
+        customerNote: checkoutRequest.customerNote ?? null,
+      });
+
+      void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId), exact: true });
+
       const cashOrder: PaymentPendingOrder = {
-        ...nextOrder,
+        ...result.order,
         paymentStatus: "confirmed",
-        trackingOrder: { ...nextOrder.trackingOrder, paymentStatus: "pending", paymentMethod: "Cash on delivery" },
+        trackingOrder: { ...result.order.trackingOrder, paymentStatus: "pending", paymentMethod: "Cash on delivery" },
       };
       setOrder(cashOrder);
+      clearCheckoutAttempt(storefrontContext);
       setPhase("confirmed");
-    } catch {
+    } catch (error) {
+      setStartError(checkoutErrorMessage(error, "We couldn't place your order."));
       setPhase("start_error");
     } finally {
       activeRequest.current = false;
     }
-  }, []);
+  }, [cartId, customerId, queryClient]);
 
   const acceptUpdatedQuote = useCallback(() => {
     if (!request || activeRequest.current) return;
@@ -196,8 +214,9 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
    */
   const retryPayment = useCallback(() => {
     if (order) { void verify(); return; }
-    if (request) void begin(request);
-  }, [begin, order, request, verify]);
+    if (!request) return;
+    void (lastAttemptWasCash.current ? beginCashOnDelivery(request) : begin(request));
+  }, [begin, beginCashOnDelivery, order, request, verify]);
 
   /**
    * Coming back from the payment app is a prompt to re-read the server, never a
