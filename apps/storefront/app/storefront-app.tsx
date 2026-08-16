@@ -42,21 +42,27 @@ const currentOrderStatuses = new Set<StorefrontOrder["status"]>(["placed", "acce
 export function StorefrontApp() {
   const customerSession = useCustomerSession();
   const customer = customerSession.customer;
+  // Cart identity: null means this browser is still anonymous, which selects
+  // the anonymous cart path and its own cache entry.
+  const customerId = customerSession.customerId;
   const [savedAddresses, setSavedAddresses] = useState<DeliveryAddress[]>(a2MandremAddresses);
   const [orders] = useState<StorefrontOrder[]>(a2MandremOrders);
-  const checkout = useCheckoutFlow();
   const [requestedOrderId] = useState(requestedOrderIdFromUrl);
-  const [screen, setScreen] = useState<Screen>(() => checkout.order ? checkout.phase === "confirmed" ? "tracking" : "payment" : "menu");
   const [authRequest, setAuthRequest] = useState<AuthFlowRequest>();
   const [selectedOrderId, setSelectedOrderId] = useState<string>();
   const [configurationTarget, setConfigurationTarget] = useState<ConfigurationTarget>();
   const [viewingProductId, setViewingProductId] = useState<string>();
   const [cartActionError, setCartActionError] = useState<string>();
   const storefrontMenuResource = useStorefrontMenuQuery(storefrontContext.locationId);
-  const cartResource = useStorefrontCartQuery();
+  const cartResource = useStorefrontCartQuery(customerId);
   const settingsResource = useStorefrontSettingsQuery();
-  const setCartItem = useSetCartItemMutation();
-  const removeCartItem = useRemoveCartItemMutation();
+  const setCartItem = useSetCartItemMutation(customerId);
+  const removeCartItem = useRemoveCartItemMutation(customerId);
+  const checkout = useCheckoutFlow(cartResource.data?.id, customerId);
+  // A restored checkout only knows its order *id* synchronously; the order
+  // itself is re-read from the server, so the payment screen opens in its
+  // "confirming" state and resolves to tracking once the server answers.
+  const [screen, setScreen] = useState<Screen>(() => checkout.restored ? "payment" : "menu");
   useOrderingStatusChannel(storefrontContext.locationId);
   const menu = useMemo(
     () => storefrontMenuResource.data ? menuFromStorefrontMenu(storefrontMenuResource.data) : null,
@@ -283,7 +289,7 @@ export function StorefrontApp() {
     {screen === "addresses" ? <SavedAddressesScreen addresses={savedAddresses} onBack={() => setScreen("account")} onDelete={(id) => setSavedAddresses((current) => current.filter((address) => address.id !== id))} onSave={saveAddress} venue={venue} /> : null}
     {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} venue={venue} /> : null}
     {screen === "order-details" && selectedOrder ? <OrderDetailsScreen order={selectedOrder} onBack={() => setScreen("orders")} onOrderAgain={orderAgain} venue={venue} /> : null}
-    {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onProviderReturn={checkout.returnFromProvider} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
+    {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onProviderReturn={checkout.returnFromProvider} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} startError={checkout.startError} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
     {screen === "tracking" && checkout.order ? <OrderTrackingScreen onBackToRestaurant={returnToRestaurant} order={checkout.order} venue={venue} /> : null}
     {configurationProduct ? <ProductConfigurationSheet initialSelections={configurationLine} product={configurationProduct} onClose={() => setConfigurationTarget(undefined)} onConfirm={saveConfiguration} /> : null}
     {viewingProduct ? <ProductDetailSheet locationName={venue.locationName} product={viewingProduct} onAdd={openProductConfiguration} onClose={() => setViewingProductId(undefined)} /> : null}

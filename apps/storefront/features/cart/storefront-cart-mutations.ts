@@ -18,50 +18,44 @@ export function cartErrorMessage(error: unknown, fallback: string) {
   return typeof message === "string" && message.length > 0 ? message : fallback;
 }
 
-function currentCartId(queryClient: ReturnType<typeof useQueryClient>, context: StorefrontContext) {
-  const cart = queryClient.getQueryData<ServerCart>(storefrontCartQueryKey(context));
+/**
+ * Reads the cart the mutation is about to act on and derives how to prove
+ * ownership of it. Once a cart has been claimed by a signed-in customer it has
+ * no anonymous_session_id left, so it must be authorised through auth.uid() by
+ * sending null instead.
+ */
+function currentCartAccess(queryClient: ReturnType<typeof useQueryClient>, customerId: string | null, context: StorefrontContext) {
+  const cart = queryClient.getQueryData<ServerCart>(storefrontCartQueryKey(customerId, context));
   if (!cart) throw new Error("The cart has not loaded yet.");
-  return cart.id;
+  return { cartId: cart.id, anonymousSessionId: cart.isAuthenticated ? null : getAnonymousSessionId() };
 }
 
-export function useSetCartItemMutation(context: StorefrontContext = storefrontContext) {
+export function useSetCartItemMutation(customerId: string | null, context: StorefrontContext = storefrontContext) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: { cartItemId: string; productId: string; quantity: number; customerNote?: string; selections: CartOptionSelectionInput[] }) =>
-      setCartItem({
-        cartId: currentCartId(queryClient, context),
-        anonymousSessionId: getAnonymousSessionId(),
-        ...args,
-      }),
-    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(context), cart),
+      setCartItem({ ...currentCartAccess(queryClient, customerId, context), ...args }),
+    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(customerId, context), cart),
     retry: false,
   });
 }
 
-export function useRemoveCartItemMutation(context: StorefrontContext = storefrontContext) {
+export function useRemoveCartItemMutation(customerId: string | null, context: StorefrontContext = storefrontContext) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: { cartItemId: string }) =>
-      removeCartItem({
-        cartId: currentCartId(queryClient, context),
-        anonymousSessionId: getAnonymousSessionId(),
-        ...args,
-      }),
-    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(context), cart),
+      removeCartItem({ ...currentCartAccess(queryClient, customerId, context), ...args }),
+    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(customerId, context), cart),
     retry: false,
   });
 }
 
-export function useSetCartCouponMutation(context: StorefrontContext = storefrontContext) {
+export function useSetCartCouponMutation(customerId: string | null, context: StorefrontContext = storefrontContext) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: { code: string | null }) =>
-      setCartCoupon({
-        cartId: currentCartId(queryClient, context),
-        anonymousSessionId: getAnonymousSessionId(),
-        ...args,
-      }),
-    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(context), cart),
+      setCartCoupon({ ...currentCartAccess(queryClient, customerId, context), ...args }),
+    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(customerId, context), cart),
     retry: false,
   });
 }

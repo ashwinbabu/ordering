@@ -20,7 +20,7 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
 
   if (cancelled) {
     return <main className="tracking-page">
-      <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.id}</small></div></header>
+      <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.orderNumber}</small></div></header>
       <section className="order-cancelled-page">
         <span className="cancelled-icon"><ReceiptText aria-hidden="true" size={32} /></span>
         <h1>Your order was cancelled</h1>
@@ -31,7 +31,7 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
   }
 
   return <main className="tracking-page">
-    <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.id}</small></div><span className="live-pill"><i aria-hidden="true" />Live</span></header>
+    <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.orderNumber}</small></div><span className="live-pill"><i aria-hidden="true" />Live</span></header>
     <div className="tracking-content">
       <section className="tracking-hero">
         <span className="tracking-hero__icon"><ReceiptText aria-hidden="true" size={36} /></span>
