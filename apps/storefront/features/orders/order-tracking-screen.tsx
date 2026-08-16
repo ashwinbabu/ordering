@@ -16,10 +16,11 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
   }, [order.createdAt]);
   const isDelivery = order.fulfilment === "delivery";
   const address = order.trackingOrder.deliveryAddress;
+  const isCashOnDelivery = order.trackingOrder.paymentMethod === "Cash on delivery";
 
   if (cancelled) {
     return <main className="tracking-page">
-      <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.id}</small></div></header>
+      <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.orderNumber}</small></div></header>
       <section className="order-cancelled-page">
         <span className="cancelled-icon"><ReceiptText aria-hidden="true" size={32} /></span>
         <h1>Your order was cancelled</h1>
@@ -30,7 +31,7 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
   }
 
   return <main className="tracking-page">
-    <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.id}</small></div><span className="live-pill"><i aria-hidden="true" />Live</span></header>
+    <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.orderNumber}</small></div><span className="live-pill"><i aria-hidden="true" />Live</span></header>
     <div className="tracking-content">
       <section className="tracking-hero">
         <span className="tracking-hero__icon"><ReceiptText aria-hidden="true" size={36} /></span>
@@ -68,7 +69,7 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
       <section className="order-timeline" aria-labelledby="order-status-title">
         <div className="cart-section__title"><h2 id="order-status-title">Order status</h2><span>Updates automatically</span></div>
         <ol>
-          <StatusStep active icon={<Check size={15} />} title="Order received" body={`Payment confirmed and sent to ${venue.displayName}.`} tag="Now" />
+          <StatusStep active icon={<Check size={15} />} title="Order received" body={isCashOnDelivery ? `Sent to ${venue.displayName}. Pay cash when it arrives.` : `Payment confirmed and sent to ${venue.displayName}.`} tag="Now" />
           <StatusStep icon={<CircleCheck size={15} />} title="Accepted" body="The kitchen has accepted your order." />
           <StatusStep icon={<Clock3 size={15} />} title="Preparing" body="Your food is being made fresh." />
           {isDelivery ? <StatusStep icon={<Truck size={15} />} title="Out for delivery" body="Your order is on its way." /> : <StatusStep icon={<Check size={15} />} title="Ready for pickup" body="Collect your order from the outlet." />}

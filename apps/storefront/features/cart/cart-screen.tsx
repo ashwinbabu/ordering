@@ -1,10 +1,11 @@
-import { ArrowLeft, Check, ChevronDown, Minus, Pencil, Plus, ShoppingBag, Store, Tag, Truck } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Clock3, Minus, Pencil, Plus, ShoppingBag, Store, Tag, Truck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { AddressForm, type AddressDraft } from "../addresses/address-form";
 import { AddressSelectorSheet } from "../addresses/address-selector-sheet";
 import { SelectedAddressCard } from "../addresses/selected-address-card";
 import type { AuthFlowRequest } from "../auth/auth-flow-sheet";
+import { useCustomerSession } from "../auth/customer-session";
 import { MenuImage } from "../menu/menu-image";
 import { defaultCountryCode, type PhoneNumber } from "../../domain/phone";
 import { formatRupees, type CheckoutRequest, type CustomerDetails, type DeliveryAddress, type FulfilmentType, type Venue } from "../../domain/storefront";
@@ -24,6 +25,7 @@ interface CartScreenProps {
   isCustomerVerified: boolean;
   lines: CartLineView[];
   onBack: () => void;
+  onCashCheckoutAttempt: (request: CheckoutRequest) => void;
   onCheckoutAttempt: (request: CheckoutRequest) => void;
   onDismissCartError: () => void;
   onEditConfiguration: (lineId: string) => void;
@@ -41,8 +43,9 @@ function computeDisplayTax(netFood: number, settings: StorefrontSettings | null)
   return Math.round(netFood * settings.taxRate) / 100;
 }
 
-export function CartScreen({ cart, cartError, customerDetails, isCartLoading, isCustomerVerified, lines, onBack, onCheckoutAttempt, onDismissCartError, onEditConfiguration, onQuantityChange, onRequestAuthentication, onSavedAddressesChange, savedAddresses, settings, venue }: CartScreenProps) {
+export function CartScreen({ cart, cartError, customerDetails, isCartLoading, isCustomerVerified, lines, onBack, onCashCheckoutAttempt, onCheckoutAttempt, onDismissCartError, onEditConfiguration, onQuantityChange, onRequestAuthentication, onSavedAddressesChange, savedAddresses, settings, venue }: CartScreenProps) {
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("delivery");
+  const [isCashOnDelivery, setIsCashOnDelivery] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string>();
   const [addressSheet, setAddressSheet] = useState<"selector" | "form" | null>(null);
   const [editingAddress, setEditingAddress] = useState<DeliveryAddress>();
@@ -53,7 +56,11 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
   const [priceChangeNotice, setPriceChangeNotice] = useState(false);
   const previousLineTotals = useRef<Map<string, { quantity: number; lineTotal: number }>>(new Map());
   const queryClient = useQueryClient();
-  const setCartCoupon = useSetCartCouponMutation();
+  // Cart cache entries are keyed by identity, so coupon writes and the
+  // revalidate-on-open below have to target the same identity the cart was
+  // loaded under.
+  const { customerId } = useCustomerSession();
+  const setCartCoupon = useSetCartCouponMutation(customerId);
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
@@ -61,7 +68,7 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
     // Revalidate pricing/availability against Supabase as soon as the
     // customer opens the cart to review it (task: revalidate before
     // financial actions), without polling while they're just browsing.
-    void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(), exact: true });
+    void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId), exact: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -138,6 +145,7 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
     const checkoutRequest: CheckoutRequest = {
       cart: lines.map((line) => ({ id: line.id, productId: line.productId, quantity: line.quantity, unitPrice: line.unitPrice, selectedOptions: [] })),
       customer: customerDetails,
+      customerNote: specialInstructions.trim() || undefined,
       deliveryAddress: selectedAddress,
       displayedTotal: total,
       fulfilment,
@@ -146,7 +154,8 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
       deliveryFee: deliveryFee ?? 0,
       taxes,
     };
-    if (isCustomerVerified) { onCheckoutAttempt(checkoutRequest); return; }
+    const proceedToCheckout = () => isCashOnDelivery ? onCashCheckoutAttempt(checkoutRequest) : onCheckoutAttempt(checkoutRequest);
+    if (isCustomerVerified) { proceedToCheckout(); return; }
     // The address form's recipientPhone is the number the customer just typed
     // for this delivery, so that's who gets texted (needsAddress above
     // guarantees selectedAddress is set once fulfilment is "delivery").
@@ -158,8 +167,8 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
         ? { countryCode: customerDetails.countryCode, phone: customerDetails.phone }
         : undefined;
     onRequestAuthentication(contactPhone
-      ? { context: "checkout", initialStep: "otp", onSuccess: () => onCheckoutAttempt(checkoutRequest), phone: contactPhone }
-      : { context: "checkout", onSuccess: () => onCheckoutAttempt(checkoutRequest) });
+      ? { context: "checkout", initialStep: "otp", onSuccess: proceedToCheckout, phone: contactPhone }
+      : { context: "checkout", onSuccess: proceedToCheckout });
   }
   function selectAddress(address: DeliveryAddress) { setSelectedAddressId(address.id); setAddressSheet(null); setAddressInvalid(false); }
 
@@ -167,7 +176,18 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
     ? "Add a delivery address to continue"
     : !eligibility.canCheckout && eligibility.reason
       ? checkoutEligibilityMessage(eligibility.reason)
-      : "Continue to payment";
+      : isCashOnDelivery ? "Place order" : "Continue to payment";
+
+  // Placeholder estimate until real prep-time logic lands: a flat kitchen
+  // prep baseline plus a zone-distance bump (closer zones add less transit
+  // time). Only shown once we can actually resolve a zone (delivery with a
+  // serviceable address, or pickup which has no zone to resolve).
+  const kitchenPrepMinutes = 20;
+  const zoneExtraMinutes = deliveryDestination && deliveryQuoteQuery.data?.distanceKm !== undefined
+    ? deliveryQuoteQuery.data.distanceKm <= 2 ? 5 : deliveryQuoteQuery.data.distanceKm <= 5 ? 10 : 15
+    : 0;
+  const estimatedArrivalMinutes = fulfilment === "pickup" ? kitchenPrepMinutes : kitchenPrepMinutes + zoneExtraMinutes;
+  const showEstimatedArrival = !needsAddress && (fulfilment === "pickup" || (Boolean(deliveryDestination) && deliveryQuoteQuery.data?.serviceable === true));
 
   if (isCartLoading && !cart) {
     return <main className="cart-page"><section className="customer-empty-state" aria-busy="true"><h2>Loading your cart</h2><p>Getting your latest items and pricing.</p></section></main>;
@@ -199,7 +219,6 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
         <div className="cart-item-list">
           {lines.map((line) => (
             <article className="cart-item" style={line.isAvailable ? undefined : { opacity: 0.55 }} key={line.id}>
-              <MenuImage src={line.imageUrl} alt={line.productName} className="cart-item__image" />
               <div className="cart-item__body">
                 <div className="cart-item__top">
                   <div>
@@ -303,13 +322,17 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
         </dl>
         {settings && netFoodSubtotal < settings.minimumOrderValue ? <p className="address-error" role="alert">Add {formatRupees(settings.minimumOrderValue - netFoodSubtotal)} more to meet the {formatRupees(settings.minimumOrderValue)} minimum order.</p> : null}
         <p className="summary-note">Final prices are rechecked before the secure payment hand-off.</p>
+        <label className="cash-on-delivery-toggle">
+          <input type="checkbox" checked={isCashOnDelivery} onChange={(event) => setIsCashOnDelivery(event.target.checked)} />
+          <span>Pay cash upon delivery</span>
+        </label>
       </section>
     </div>
 
-    <div className="checkout-dock"><div className="checkout-dock__inner"><button className="primary-button" type="button" disabled={!needsAddress && !eligibility.canCheckout} onClick={continueToPayment}>{checkoutLabel}</button></div></div>
+    <div className="checkout-dock"><div className="checkout-dock__inner">{showEstimatedArrival ? <p className="checkout-dock__eta"><Clock3 aria-hidden="true" size={14} strokeWidth={1.9} />Estimated {fulfilment === "pickup" ? "ready" : "arrival"} in {estimatedArrivalMinutes}–{estimatedArrivalMinutes + 5} min</p> : null}<button className="primary-button" type="button" disabled={!needsAddress && !eligibility.canCheckout} onClick={continueToPayment}>{checkoutLabel}</button></div></div>
 
     {addressSheet === "selector" ? <AddressSelectorSheet addresses={savedAddresses} onAdd={() => openAddressForm()} onClose={() => setAddressSheet(null)} onSelect={selectAddress} selectedAddressId={effectiveAddressId} /> : null}
-    {addressSheet === "form" ? <div className="sheet-layer" role="presentation"><button aria-label="Close address form" className="sheet-scrim" type="button" onClick={() => setAddressSheet(null)} /><section className="bottom-sheet address-form-sheet" role="dialog" aria-modal="true" aria-label={editingAddress ? "Edit address" : "Add an address"}><AddressForm key={editingAddress?.id ?? "new-address"} initialValue={editingAddress} mode={editingAddress ? "edit" : "create"} onCancel={() => setAddressSheet(null)} onSave={saveAddress} /></section></div> : null}
+    {addressSheet === "form" ? <div className="sheet-layer" role="presentation"><button aria-label="Close address form" className="sheet-scrim" type="button" onClick={() => setAddressSheet(null)} /><section className="bottom-sheet address-form-sheet" role="dialog" aria-modal="true" aria-label={editingAddress ? "Edit address" : "Add an address"}><AddressForm key={editingAddress?.id ?? "new-address"} defaultRecipientPhone={customerDetails.phone || savedAddresses.find((address) => address.recipientPhone)?.recipientPhone} initialValue={editingAddress} mode={editingAddress ? "edit" : "create"} onCancel={() => setAddressSheet(null)} onSave={saveAddress} /></section></div> : null}
   </main>;
 }
 

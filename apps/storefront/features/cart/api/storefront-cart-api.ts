@@ -77,7 +77,42 @@ export async function openAnonymousCart(args: {
   return parseServerCart(result.data);
 }
 
-export async function getCart(args: { cartId: string; anonymousSessionId: string }): Promise<ServerCart> {
+/**
+ * Claims the browser's anonymous cart for a signed-in customer, and doubles as
+ * "open the customer's cart": ordering.attach_anonymous_cart merges an
+ * anonymous cart into an existing customer cart when both exist, adopts the
+ * anonymous one when only it exists, and creates a fresh cart when neither
+ * does. It also prunes lines no longer orderable at this location and
+ * revalidates any attached coupon, so the caller needs no merge logic of its
+ * own -- and ordering.open_customer_cart is never needed.
+ *
+ * `newCartId` is only consumed by the create-from-nothing branch; supplying a
+ * stable value keeps a retried call idempotent.
+ */
+export async function attachAnonymousCart(args: {
+  businessId: string;
+  locationId: string;
+  anonymousSessionId: string;
+  customerBusinessId: string;
+  newCartId: string;
+}): Promise<ServerCart> {
+  const result = await callUntypedRpc(cartRpc(), "attach_anonymous_cart", {
+    p_business_id: args.businessId,
+    p_location_id: args.locationId,
+    p_anonymous_session_id: args.anonymousSessionId,
+    p_customer_business_id: args.customerBusinessId,
+    p_new_cart_id: args.newCartId,
+  });
+  if (result.error) throw result.error;
+  return parseServerCart(result.data);
+}
+
+/**
+ * `anonymousSessionId` must be null once a cart belongs to a signed-in
+ * customer: private.can_access_cart authorises those through auth.uid()
+ * instead, and a claimed cart no longer has a session id to match.
+ */
+export async function getCart(args: { cartId: string; anonymousSessionId: string | null }): Promise<ServerCart> {
   const result = await callUntypedRpc(cartRpc(), "get_cart", {
     p_cart_id: args.cartId,
     p_anonymous_session_id: args.anonymousSessionId,
@@ -88,7 +123,7 @@ export async function getCart(args: { cartId: string; anonymousSessionId: string
 
 export async function setCartItem(args: {
   cartId: string;
-  anonymousSessionId: string;
+  anonymousSessionId: string | null;
   cartItemId: string;
   productId: string;
   quantity: number;
@@ -110,7 +145,7 @@ export async function setCartItem(args: {
 
 export async function removeCartItem(args: {
   cartId: string;
-  anonymousSessionId: string;
+  anonymousSessionId: string | null;
   cartItemId: string;
 }): Promise<ServerCart> {
   const result = await callUntypedRpc(cartRpc(), "remove_cart_item", {
@@ -124,7 +159,7 @@ export async function removeCartItem(args: {
 
 export async function setCartCoupon(args: {
   cartId: string;
-  anonymousSessionId: string;
+  anonymousSessionId: string | null;
   code: string | null;
 }): Promise<ServerCart> {
   const result = await callUntypedRpc(cartRpc(), "set_cart_coupon", {

@@ -42,21 +42,27 @@ const currentOrderStatuses = new Set<StorefrontOrder["status"]>(["placed", "acce
 export function StorefrontApp() {
   const customerSession = useCustomerSession();
   const customer = customerSession.customer;
+  // Cart identity: null means this browser is still anonymous, which selects
+  // the anonymous cart path and its own cache entry.
+  const customerId = customerSession.customerId;
   const [savedAddresses, setSavedAddresses] = useState<DeliveryAddress[]>(a2MandremAddresses);
   const [orders] = useState<StorefrontOrder[]>(a2MandremOrders);
-  const checkout = useCheckoutFlow();
   const [requestedOrderId] = useState(requestedOrderIdFromUrl);
-  const [screen, setScreen] = useState<Screen>(() => checkout.order ? checkout.phase === "confirmed" ? "tracking" : "payment" : "menu");
   const [authRequest, setAuthRequest] = useState<AuthFlowRequest>();
   const [selectedOrderId, setSelectedOrderId] = useState<string>();
   const [configurationTarget, setConfigurationTarget] = useState<ConfigurationTarget>();
   const [viewingProductId, setViewingProductId] = useState<string>();
   const [cartActionError, setCartActionError] = useState<string>();
   const storefrontMenuResource = useStorefrontMenuQuery(storefrontContext.locationId);
-  const cartResource = useStorefrontCartQuery();
+  const cartResource = useStorefrontCartQuery(customerId);
   const settingsResource = useStorefrontSettingsQuery();
-  const setCartItem = useSetCartItemMutation();
-  const removeCartItem = useRemoveCartItemMutation();
+  const setCartItem = useSetCartItemMutation(customerId);
+  const removeCartItem = useRemoveCartItemMutation(customerId);
+  const checkout = useCheckoutFlow(cartResource.data?.id, customerId);
+  // A restored checkout only knows its order *id* synchronously; the order
+  // itself is re-read from the server, so the payment screen opens in its
+  // "confirming" state and resolves to tracking once the server answers.
+  const [screen, setScreen] = useState<Screen>(() => checkout.restored ? "payment" : "menu");
   useOrderingStatusChannel(storefrontContext.locationId);
   const menu = useMemo(
     () => storefrontMenuResource.data ? menuFromStorefrontMenu(storefrontMenuResource.data) : null,
@@ -113,6 +119,12 @@ export function StorefrontApp() {
     );
   }
 
+  function adjustConfigurableProductQuantity(productId: string, delta: number) {
+    const existingLine = cart?.items.find((item) => item.productId === productId);
+    if (!existingLine) return;
+    changeCartLineQuantity(existingLine.id, existingLine.quantity + delta);
+  }
+
   function changeCartLineQuantity(lineId: string, quantity: number) {
     if (!cart) return;
     if (quantity <= 0) {
@@ -132,7 +144,7 @@ export function StorefrontApp() {
     if (!cart) return;
     const lineId = cartLineKey(cart.id, product.id, []);
     const existingQuantity = cart.items.find((item) => item.id === lineId)?.quantity ?? 0;
-    changeSimpleProductQuantity(product.id, existingQuantity + 1, openCart);
+    changeSimpleProductQuantity(product.id, existingQuantity + 1);
   }
 
   function saveConfiguration(selections: CartLineOptionSelection[]) {
@@ -160,14 +172,12 @@ export function StorefrontApp() {
     } else {
       // Adding a new line is the only branch reached from the menu; the edit
       // branches above are only reachable from the cart screen, which the
-      // customer is already looking at. Navigating on settle (rather than
-      // immediately) means the cart renders the new line straight away
-      // instead of flashing its empty state, and a server rejection lands on
-      // the screen that actually shows the error banner.
+      // customer is already looking at. Adding stays on the menu so the
+      // customer can keep browsing instead of being bounced to the cart.
       const existingQuantity = cart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
       setCartItem.mutate(
         { cartItemId: newLineId, productId: configurationProduct.id, quantity: existingQuantity + 1, selections: optionInputs },
-        { onError, onSettled: openCart },
+        { onError },
       );
     }
 
@@ -201,6 +211,11 @@ export function StorefrontApp() {
   function beginCheckout(request: CheckoutRequest) {
     setScreen("payment");
     void checkout.begin(request);
+  }
+
+  function beginCashOnDeliveryCheckout(request: CheckoutRequest) {
+    setScreen("payment");
+    void checkout.beginCashOnDelivery(request);
   }
 
   function openTracking() {
@@ -255,8 +270,8 @@ export function StorefrontApp() {
   }
 
   return <>
-    {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={openCart} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onGoToCart={openCart} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
-    {screen === "cart" ? <CartScreen cart={cart} cartError={cartActionError} onDismissCartError={() => setCartActionError(undefined)} isCartLoading={cartResource.isPending} lines={lines} settings={settingsResource.data ?? null} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const item = cart?.items.find((candidate) => candidate.id === lineId); if (item) setConfigurationTarget({ productId: item.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
+    {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={openCart} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onAdjustQuantity={adjustConfigurableProductQuantity} onGoToCart={openCart} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
+    {screen === "cart" ? <CartScreen cart={cart} cartError={cartActionError} onDismissCartError={() => setCartActionError(undefined)} isCartLoading={cartResource.isPending} lines={lines} settings={settingsResource.data ?? null} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCashCheckoutAttempt={beginCashOnDeliveryCheckout} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const item = cart?.items.find((candidate) => candidate.id === lineId); if (item) setConfigurationTarget({ productId: item.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
     {/*
       Known limitation: verifying a different number here re-runs the full
       MSG91 + customer-auth-msg91 exchange, which finds-or-creates a customer
@@ -274,7 +289,7 @@ export function StorefrontApp() {
     {screen === "addresses" ? <SavedAddressesScreen addresses={savedAddresses} onBack={() => setScreen("account")} onDelete={(id) => setSavedAddresses((current) => current.filter((address) => address.id !== id))} onSave={saveAddress} venue={venue} /> : null}
     {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} venue={venue} /> : null}
     {screen === "order-details" && selectedOrder ? <OrderDetailsScreen order={selectedOrder} onBack={() => setScreen("orders")} onOrderAgain={orderAgain} venue={venue} /> : null}
-    {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onProviderReturn={checkout.returnFromProvider} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
+    {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onProviderReturn={checkout.returnFromProvider} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} startError={checkout.startError} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
     {screen === "tracking" && checkout.order ? <OrderTrackingScreen onBackToRestaurant={returnToRestaurant} order={checkout.order} venue={venue} /> : null}
     {configurationProduct ? <ProductConfigurationSheet initialSelections={configurationLine} product={configurationProduct} onClose={() => setConfigurationTarget(undefined)} onConfirm={saveConfiguration} /> : null}
     {viewingProduct ? <ProductDetailSheet locationName={venue.locationName} product={viewingProduct} onAdd={openProductConfiguration} onClose={() => setViewingProductId(undefined)} /> : null}

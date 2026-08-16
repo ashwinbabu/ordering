@@ -210,6 +210,8 @@ export type ResourceState = "loading" | "ready" | "error";
 export interface CheckoutRequest {
   cart: CartLine[];
   customer: CustomerDetails;
+  /** Kitchen note from the cart screen; persisted as ordering.orders.customer_note. */
+  customerNote?: string;
   deliveryAddress?: DeliveryAddress;
   displayedTotal: number;
   fulfilment: FulfilmentType;
@@ -220,7 +222,10 @@ export interface CheckoutRequest {
 }
 
 export interface PaymentPendingOrder {
+  /** ordering.orders.id -- the idempotency key, and what /orders/:id resolves. */
   id: string;
+  /** ordering.orders.order_number -- the short human-facing reference. */
+  orderNumber: string;
   amount: number;
   createdAt: string;
   fulfilment: FulfilmentType;
