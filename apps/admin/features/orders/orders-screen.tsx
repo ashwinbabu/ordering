@@ -18,9 +18,141 @@ import {
   ShoppingBag,
   Store,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
-import { formatMoney, formatQueueDate, isOnLocalDay, nextOrderAction, type Order, type OrderStatus } from "./order-model";
+import {
+  formatMoney,
+  formatOrdersDateRangeLabel,
+  isOnLocalDay,
+  nextOrderAction,
+  ordersDateRangeSpanDays,
+  ORDERS_DATE_RANGE_MAX_DAYS,
+  type Order,
+  type OrderStatus,
+  type OrdersDateRange,
+} from "./order-model";
+
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function fromDateInputValue(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(year, (month ?? 1) - 1, day ?? 1);
+}
+
+function OrdersDateRangePicker({
+  range,
+  onChange,
+}: {
+  range: OrdersDateRange;
+  onChange: (range: OrdersDateRange) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draftFrom, setDraftFrom] = useState(() => toDateInputValue(range.from));
+  const [draftTo, setDraftTo] = useState(() => toDateInputValue(range.to));
+  const [rangeError, setRangeError] = useState("");
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePointerDown(event: MouseEvent) {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, [open]);
+
+  function togglePanel() {
+    setDraftFrom(toDateInputValue(range.from));
+    setDraftTo(toDateInputValue(range.to));
+    setRangeError("");
+    setOpen((current) => !current);
+  }
+
+  function applyPreset(preset: OrdersDateRange) {
+    onChange(preset);
+    setOpen(false);
+  }
+
+  function applyCustomRange() {
+    const from = fromDateInputValue(draftFrom);
+    const to = fromDateInputValue(draftTo);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+      setRangeError("Pick both a start and end date.");
+      return;
+    }
+    if (from.getTime() > to.getTime()) {
+      setRangeError("The start date must be before the end date.");
+      return;
+    }
+    const nextRange = { from, to };
+    if (ordersDateRangeSpanDays(nextRange) > ORDERS_DATE_RANGE_MAX_DAYS) {
+      setRangeError(`Pick up to ${ORDERS_DATE_RANGE_MAX_DAYS} days at a time.`);
+      return;
+    }
+    onChange(nextRange);
+    setOpen(false);
+  }
+
+  const today = new Date();
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const last3 = new Date(today);
+  last3.setDate(last3.getDate() - 2);
+  const last7 = new Date(today);
+  last7.setDate(last7.getDate() - 6);
+  const todayValue = toDateInputValue(today);
+
+  return (
+    <div className="date-control-wrap" ref={wrapRef}>
+      <button type="button" className="date-control" onClick={togglePanel} aria-expanded={open}>
+        <CalendarDays size={17} />
+        {formatOrdersDateRangeLabel(range)}
+        <ChevronDown size={15} />
+      </button>
+      {open && (
+        <div className="date-range-menu" role="menu">
+          <div className="date-range-presets">
+            <button type="button" onClick={() => applyPreset({ from: today, to: today })}>Today</button>
+            <button type="button" onClick={() => applyPreset({ from: yesterday, to: today })}>Yesterday &amp; today</button>
+            <button type="button" onClick={() => applyPreset({ from: last3, to: today })}>Last 3 days</button>
+            <button type="button" onClick={() => applyPreset({ from: last7, to: today })}>Last 7 days</button>
+          </div>
+          <div className="menu-divider" />
+          <div className="date-range-custom">
+            <label className="field-label">
+              From
+              <input
+                type="date"
+                value={draftFrom}
+                max={draftTo}
+                onChange={(event) => setDraftFrom(event.target.value)}
+              />
+            </label>
+            <label className="field-label">
+              To
+              <input
+                type="date"
+                value={draftTo}
+                min={draftFrom}
+                max={todayValue}
+                onChange={(event) => setDraftTo(event.target.value)}
+              />
+            </label>
+            {rangeError && <p className="field-error">{rangeError}</p>}
+            <button type="button" className="primary-button compact-button" onClick={applyCustomRange}>
+              Apply
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function StatusBadge({ status }: { status: OrderStatus }) {
   return <span className={`status-badge status-${status.toLowerCase().replaceAll(" ", "-")}`}>{status}</span>;
@@ -58,7 +190,7 @@ function OrderCard({
           <ChevronRight size={17} />
         </button>
         <div className="order-time-row">
-          <span>Received {order.received}</span>
+          <span>Received {order.receivedDateTime}</span>
           <strong>{order.age}</strong>
         </div>
         <div className="customer-block">
@@ -105,7 +237,7 @@ function OrderCard({
         )}
       </section>
 
-      <section className="order-zone delivery-zone">
+      <section className="order-zone order-delivery-zone">
         <div className="zone-title-row">
           <span>Delivery details</span>
           <button onClick={() => navigator.clipboard?.writeText(order.fullAddress)} aria-label="Copy delivery address">
@@ -139,6 +271,8 @@ export function OrdersPage({
   onOrderingToggle,
   statusFilter,
   setStatusFilter,
+  dateRange,
+  setDateRange,
   busyOrderId,
   onProgress,
   onOpen,
@@ -151,6 +285,8 @@ export function OrdersPage({
   onOrderingToggle: () => void;
   statusFilter: "All" | OrderStatus;
   setStatusFilter: (status: "All" | OrderStatus) => void;
+  dateRange: OrdersDateRange;
+  setDateRange: (range: OrdersDateRange) => void;
   busyOrderId: string;
   onProgress: (order: Order) => void;
   onOpen: (order: Order) => void;
@@ -179,7 +315,7 @@ export function OrdersPage({
   return (
     <div className="page orders-page">
       <div className="orders-command-row">
-        <div className="date-control"><CalendarDays size={17} />{formatQueueDate(new Date())}<ChevronDown size={15} /></div>
+        <OrdersDateRangePicker range={dateRange} onChange={setDateRange} />
         <div className={`ordering-control ${orderingOpen ? "open" : "paused"}`}>
           <span className="ordering-control-status"><Store size={16} />{orderingOpen ? "Accepting orders" : "Orders paused"}</span>
           <div className="ordering-toggle-wrap">

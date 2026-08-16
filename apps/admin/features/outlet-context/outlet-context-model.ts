@@ -5,6 +5,7 @@ export interface AccessibleBusiness {
   name: string;
   currency: string;
   timezone: string;
+  logoUrl: string | null;
   role: BusinessRole;
 }
 

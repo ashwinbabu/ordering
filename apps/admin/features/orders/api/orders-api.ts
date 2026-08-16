@@ -63,6 +63,18 @@ function formatTime(value: string | null) {
   }).format(date);
 }
 
+function formatDateTime(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function formatAge(value: string | null, status: OrderStatus) {
   if (!value) return "Just now";
   if (status === "Delivered") return `Delivered ${formatTime(value)}`;
@@ -142,6 +154,7 @@ function parseOrder(value: Json): Order {
     fullAddress,
     deliveryInstructions: note ?? "No delivery instructions.",
     received: formatTime(placedAt),
+    receivedDateTime: formatDateTime(placedAt),
     age: formatAge(placedAt, status),
     subtotal: numberValue(row, "food_subtotal"),
     discount: numberValue(row, "discount_total"),
@@ -157,14 +170,20 @@ function parseOrder(value: Json): Order {
   };
 }
 
-export async function getOrdersForLocation(scope: OrderScope): Promise<Order[]> {
-  // No date window: an operations queue must never hide an order the
-  // operator just acted on, so every status stays visible and the day's
-  // figures are derived from each order's own milestone timestamps instead.
+export async function getOrdersForLocation(
+  scope: OrderScope,
+  dateWindow?: { from: string; to: string },
+): Promise<Order[]> {
+  // The date window only ever narrows delivered/cancelled orders on the
+  // server (see list_orders_for_location) -- an order that is still open
+  // must never disappear from the queue just because it falls outside the
+  // selected range.
   const { data, error } = await supabase.schema("ordering").rpc("list_orders_for_location", {
     p_business_id: scope.businessId,
     p_location_id: scope.locationId,
     p_limit: 100,
+    p_from: dateWindow?.from,
+    p_to: dateWindow?.to,
   });
   throwIfError(error);
   if (!Array.isArray(data)) throw new Error("The order response is invalid.");

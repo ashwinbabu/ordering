@@ -37,6 +37,7 @@ export interface Order {
   fullAddress: string;
   deliveryInstructions: string;
   received: string;
+  receivedDateTime: string;
   age: string;
   subtotal: number;
   discount: number;
@@ -61,6 +62,59 @@ export function formatQueueDate(date: Date) {
     month: "short",
     year: "numeric",
   }).format(date);
+}
+
+export interface OrdersDateRange {
+  from: Date;
+  to: Date;
+}
+
+export const ORDERS_DATE_RANGE_MAX_DAYS = 7;
+
+function startOfLocalDay(date: Date) {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+/** Previous and current calendar day, in the viewer's local time. */
+export function defaultOrdersDateRange(now = new Date()): OrdersDateRange {
+  const today = startOfLocalDay(now);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  return { from: yesterday, to: today };
+}
+
+/** Inclusive day count spanned by a range, e.g. today..today is 1 day. */
+export function ordersDateRangeSpanDays(range: OrdersDateRange) {
+  const from = startOfLocalDay(range.from);
+  const to = startOfLocalDay(range.to);
+  return Math.round((to.getTime() - from.getTime()) / 86_400_000) + 1;
+}
+
+/** [from, to) instant boundaries for the query, covering both calendar days fully. */
+export function ordersDateRangeQueryWindow(range: OrdersDateRange) {
+  const from = startOfLocalDay(range.from);
+  const to = startOfLocalDay(range.to);
+  to.setDate(to.getDate() + 1);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
+
+export function formatOrdersDateRangeLabel(range: OrdersDateRange, now = new Date()) {
+  const today = startOfLocalDay(now);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const from = startOfLocalDay(range.from);
+  const to = startOfLocalDay(range.to);
+
+  if (from.getTime() === yesterday.getTime() && to.getTime() === today.getTime()) {
+    return "Yesterday & today";
+  }
+  if (from.getTime() === today.getTime() && to.getTime() === today.getTime()) {
+    return "Today";
+  }
+  if (from.getTime() === to.getTime()) return formatQueueDate(from);
+  return `${formatQueueDate(from)} – ${formatQueueDate(to)}`;
 }
 
 /**

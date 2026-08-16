@@ -45,5 +45,6 @@ export function venueFromStorefrontMenu(storefrontMenu: StorefrontMenu): Venue {
       : "Not accepting orders right now",
     isAcceptingOrders: storefrontMenu.orderingEnabled,
     accentColor: "#9a3d28",
+    logoUrl: storefrontMenu.business.logoUrl,
   };
 }

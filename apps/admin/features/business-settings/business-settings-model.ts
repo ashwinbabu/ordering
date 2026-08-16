@@ -40,6 +40,7 @@ export interface BusinessSettingsDraft {
     postalCode: string;
     latitude: number;
     longitude: number;
+    logoUrl: string | null;
   };
   restaurant: {
     orderingMode: "delivery" | "pickup" | "both";
