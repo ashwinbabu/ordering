@@ -50,6 +50,12 @@ function checkoutErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+function isCheckoutAccessError(error: unknown) {
+  const code = (error as { code?: unknown } | null)?.code;
+  const message = (error as { message?: unknown } | null)?.message;
+  return code === "42501" || (typeof message === "string" && message.startsWith("permission denied"));
+}
+
 /**
  * Drives checkout against the real ordering RPCs.
  *
@@ -83,13 +89,25 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     activeRequest.current = true;
     setPhase("confirming");
     try {
-      applyServerOrder(await getOrder(orderId));
-    } catch {
+      // A missing session/permission cannot be repaired by a network retry.
+      // Make the retry policy explicit here rather than inheriting a future
+      // QueryClient default, and keep the server as the only order authority.
+      const serverOrder = await queryClient.fetchQuery({
+        queryKey: ["storefront", "checkout-order", orderId],
+        queryFn: () => getOrder(orderId),
+        retry: false,
+        staleTime: 0,
+      });
+      applyServerOrder(serverOrder);
+    } catch (error) {
+      // A persisted attempt would otherwise make every later page load repeat
+      // the same forbidden get_order call. It is not a transient condition.
+      if (isCheckoutAccessError(error)) clearCheckoutAttempt(storefrontContext);
       setPhase("verification_error");
     } finally {
       activeRequest.current = false;
     }
-  }, [applyServerOrder, order]);
+  }, [applyServerOrder, order, queryClient]);
 
   // Restoring a previous visit: the persisted value is only a pointer, so the
   // phase is rebuilt from whatever the server currently says about the order.
@@ -162,7 +180,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
   // prepare, going straight from order creation to the confirmed tracking
   // screen.
   const beginCashOnDelivery = useCallback(async (checkoutRequest: CheckoutRequest) => {
-    if (activeRequest.current || !cartId) return;
+    if (activeRequest.current || !cartId) return null;
     activeRequest.current = true;
     lastAttemptWasCash.current = true;
     setRequest(checkoutRequest);
@@ -193,9 +211,11 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
       setOrder(cashOrder);
       clearCheckoutAttempt(storefrontContext);
       setPhase("confirmed");
+      return cashOrder;
     } catch (error) {
       setStartError(checkoutErrorMessage(error, "We couldn't place your order."));
       setPhase("start_error");
+      return null;
     } finally {
       activeRequest.current = false;
     }

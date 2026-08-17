@@ -1,9 +1,10 @@
-import { a2MandremAddresses } from "../demo/a2-mandrem";
+import { a2MandremAddresses, a2MandremOrders } from "../demo/a2-mandrem";
 import { useMemo, useState } from "react";
 import { defaultCountryCode } from "../domain/phone";
-import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
+import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, MenuProduct, StorefrontOrder } from "../domain/storefront";
 import { AccountScreen } from "../features/account/account-screen";
 import { SavedAddressesScreen } from "../features/addresses/saved-addresses-screen";
+import { useCustomerAddressesQuery, useDeleteCustomerAddressMutation, useSaveCustomerAddressMutation } from "../features/addresses/customer-addresses-query";
 import { AuthFlowSheet, type AuthFlowRequest } from "../features/auth/auth-flow-sheet";
 import { useCustomerSession } from "../features/auth/customer-session";
 import { CartScreen } from "../features/cart/cart-screen";
@@ -47,6 +48,7 @@ export function StorefrontApp() {
   // the anonymous cart path and its own cache entry.
   const customerId = customerSession.customerId;
   const [savedAddresses, setSavedAddresses] = useState<DeliveryAddress[]>(a2MandremAddresses);
+  const [orders] = useState<StorefrontOrder[]>(a2MandremOrders);
   const [requestedOrderId] = useState(requestedOrderIdFromUrl);
   const [authRequest, setAuthRequest] = useState<AuthFlowRequest>();
   const [selectedOrderId, setSelectedOrderId] = useState<string>();
@@ -55,6 +57,9 @@ export function StorefrontApp() {
   const [cartActionError, setCartActionError] = useState<string>();
   const storefrontMenuResource = useStorefrontMenuQuery(storefrontContext.businessId, storefrontContext.locationId);
   const cartResource = useStorefrontCartQuery(customerId);
+  const customerAddressesResource = useCustomerAddressesQuery(customerId);
+  const saveCustomerAddress = useSaveCustomerAddressMutation(customerId);
+  const deleteCustomerAddress = useDeleteCustomerAddressMutation(customerId);
   const settingsResource = useStorefrontSettingsQuery();
   const setCartItem = useSetCartItemMutation(customerId);
   const removeCartItem = useRemoveCartItemMutation(customerId);
@@ -74,6 +79,7 @@ export function StorefrontApp() {
     [storefrontMenuResource.data],
   );
   const cart = cartResource.data;
+  const savedAddresses = customerAddressesResource.data ?? [];
   const lines = useMemo(() => reconcileCartLines(cart, menu), [cart, menu]);
   const cartQuantities = useMemo(() => {
     const quantities: Record<string, number> = {};
@@ -185,13 +191,13 @@ export function StorefrontApp() {
     setConfigurationTarget(undefined);
   }
 
-  function saveAddress(draft: AddressDraft, editingId?: string) {
-    const id = editingId ?? `address-${Date.now()}`;
-    const isDefault = editingId ? draft.isDefault : savedAddresses.length === 0;
-    const next = { ...draft, id, isDefault };
-    setSavedAddresses((current) => editingId
-      ? current.map((address) => address.id === editingId ? next : isDefault ? { ...address, isDefault: false } : address)
-      : [...current.map((address) => isDefault ? { ...address, isDefault: false } : address), next]);
+  async function saveAddress(draft: AddressDraft, editingId?: string) {
+    const addressDraft = editingId ? draft : { ...draft, isDefault: savedAddresses.length === 0 };
+    return saveCustomerAddress.mutateAsync({ draft: addressDraft, addressId: editingId });
+  }
+
+  async function removeAddress(addressId: string) {
+    await deleteCustomerAddress.mutateAsync({ addressId });
   }
 
   function openAuth(request: AuthFlowRequest) {
@@ -219,7 +225,14 @@ export function StorefrontApp() {
 
   function beginCashOnDeliveryCheckout(request: CheckoutRequest) {
     setScreen("payment");
-    void checkout.beginCashOnDelivery(request);
+    void checkout.beginCashOnDelivery(request).then((order) => {
+      if (!order) return;
+      // Cash orders are already placed by checkout_cart, so there is no
+      // payment result to confirm. Take the customer straight to the same
+      // tracking screen used after an online payment succeeds.
+      window.history.replaceState({}, "", `/orders/${order.id}`);
+      setScreen("tracking");
+    });
   }
 
   function openTracking() {
@@ -275,7 +288,7 @@ export function StorefrontApp() {
 
   return <>
     {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={openCart} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onAdjustQuantity={adjustConfigurableProductQuantity} onGoToCart={openCart} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
-    {screen === "cart" ? <CartScreen cart={cart} cartError={cartActionError} onDismissCartError={() => setCartActionError(undefined)} isCartLoading={cartResource.isPending} lines={lines} settings={settingsResource.data ?? null} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCashCheckoutAttempt={beginCashOnDeliveryCheckout} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const item = cart?.items.find((candidate) => candidate.id === lineId); if (item) setConfigurationTarget({ productId: item.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSavedAddressesChange={setSavedAddresses} savedAddresses={savedAddresses} venue={venue} /> : null}
+    {screen === "cart" ? <CartScreen cart={cart} cartError={cartActionError} onDismissCartError={() => setCartActionError(undefined)} isCartLoading={cartResource.isPending} lines={lines} settings={settingsResource.data ?? null} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCashCheckoutAttempt={beginCashOnDeliveryCheckout} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const item = cart?.items.find((candidate) => candidate.id === lineId); if (item) setConfigurationTarget({ productId: item.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSaveAddress={saveAddress} savedAddresses={savedAddresses} venue={venue} /> : null}
     {/*
       Known limitation: verifying a different number here re-runs the full
       MSG91 + customer-auth-msg91 exchange, which finds-or-creates a customer

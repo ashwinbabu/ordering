@@ -10,7 +10,7 @@ interface AddressFormProps {
   initialValue?: DeliveryAddress;
   mode: "create" | "edit";
   onCancel: () => void;
-  onSave: (address: AddressDraft) => void;
+  onSave: (address: AddressDraft) => void | Promise<unknown>;
 }
 
 const areas = ["Mandrem", "Arambol", "Ashwem", "Morjim"];
@@ -35,6 +35,8 @@ function toDraft(address?: DeliveryAddress, defaultRecipientPhone?: string): Add
 export function AddressForm({ defaultRecipientPhone, initialValue, mode, onCancel, onSave }: AddressFormProps) {
   const [draft, setDraft] = useState(() => toDraft(initialValue, defaultRecipientPhone));
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [saveError, setSaveError] = useState<string>();
+  const [isSaving, setIsSaving] = useState(false);
   const [isAreaPickerOpen, setIsAreaPickerOpen] = useState(false);
   const lineOneRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
@@ -44,7 +46,7 @@ export function AddressForm({ defaultRecipientPhone, initialValue, mode, onCance
     setErrors((current) => ({ ...current, [key]: "" }));
   }
 
-  function submit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const nextErrors: Record<string, string> = {};
     if (!draft.recipientName.trim()) nextErrors.recipientName = "Enter the recipient's name";
@@ -56,7 +58,15 @@ export function AddressForm({ defaultRecipientPhone, initialValue, mode, onCance
       if (nextErrors.line1) lineOneRef.current?.focus();
       return;
     }
-    onSave({ ...draft, recipientName: draft.recipientName.trim(), recipientPhone: draft.recipientPhone.replace(/\D/g, "") });
+    setSaveError(undefined);
+    setIsSaving(true);
+    try {
+      await onSave({ ...draft, recipientName: draft.recipientName.trim(), recipientPhone: draft.recipientPhone.replace(/\D/g, "") });
+    } catch {
+      setSaveError("We couldn't save this address. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -103,7 +113,8 @@ export function AddressForm({ defaultRecipientPhone, initialValue, mode, onCance
 
         <fieldset className="address-labels"><legend>Save as</legend><div>{addressLabels.map((label) => <label key={label}><input type="radio" name="address-label" checked={draft.label === label} onChange={() => setField("label", label)} /><span>{label}</span></label>)}</div></fieldset>
         {draft.label === "Other" ? <Field label="Address label"><input value={draft.customLabel ?? ""} onChange={(event) => setField("customLabel", event.target.value)} placeholder="e.g. Beach house" /></Field> : null}
-        <div className="address-form__actions"><button className="primary-button" type="submit">Save and check delivery</button></div>
+        {saveError ? <p className="section-error" role="alert">{saveError}</p> : null}
+        <div className="address-form__actions"><button className="primary-button" disabled={isSaving} type="submit">{isSaving ? "Saving address…" : "Save and check delivery"}</button></div>
       </form>
     </>
   );

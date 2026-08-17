@@ -28,10 +28,10 @@ export function useCustomerAddressesQuery(customerId: string | null, context: St
   });
 }
 
-function useAddressMutation<TArgs>(
+function useAddressMutation<TArgs, TResult>(
   customerId: string | null,
   context: StorefrontContext,
-  run: (args: TArgs, customerBusinessId: string) => Promise<unknown>,
+  run: (args: TArgs, customerBusinessId: string) => Promise<TResult>,
 ) {
   const queryClient = useQueryClient();
   return useMutation({
@@ -49,7 +49,7 @@ function useAddressMutation<TArgs>(
 }
 
 export function useSaveCustomerAddressMutation(customerId: string | null, context: StorefrontContext = storefrontContext) {
-  return useAddressMutation<{ draft: AddressDraft; addressId?: string }>(
+  return useAddressMutation<{ draft: AddressDraft; addressId?: string }, string>(
     customerId,
     context,
     async ({ draft, addressId }, customerBusinessId) => {
@@ -63,7 +63,7 @@ export function useSaveCustomerAddressMutation(customerId: string | null, contex
 }
 
 export function useDeleteCustomerAddressMutation(customerId: string | null, context: StorefrontContext = storefrontContext) {
-  return useAddressMutation<{ addressId: string }>(
+  return useAddressMutation<{ addressId: string }, void>(
     customerId,
     context,
     ({ addressId }) => deleteCustomerAddress(addressId),
