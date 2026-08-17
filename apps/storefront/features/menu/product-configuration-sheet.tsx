@@ -4,6 +4,7 @@ import { formatRupees, type CartLineOptionSelection, type MenuProduct, type Stor
 
 interface ProductConfigurationSheetProps {
   initialSelections?: CartLineOptionSelection[];
+  isAcceptingOrders: boolean;
   onClose: () => void;
   onConfirm: (selections: CartLineOptionSelection[]) => void;
   product: MenuProduct;
@@ -29,7 +30,7 @@ function requirementText(group: StorefrontMenuOptionGroup) {
   return `Select ${group.minSelections}–${group.maxSelections}`;
 }
 
-export function ProductConfigurationSheet({ initialSelections = [], onClose, onConfirm, product }: ProductConfigurationSheetProps) {
+export function ProductConfigurationSheet({ initialSelections = [], isAcceptingOrders, onClose, onConfirm, product }: ProductConfigurationSheetProps) {
   const optionGroups = product.optionGroups ?? [];
   const [selectedOptionIds, setSelectedOptionIds] = useState<SelectionByGroup>(() => selectionsFor(optionGroups, initialSelections));
   const isValid = optionGroups.every((group) => isGroupValid(group, selectedOptionIds[group.id]));
@@ -115,7 +116,9 @@ export function ProductConfigurationSheet({ initialSelections = [], onClose, onC
         </div>
         <div className="sheet-cta configuration-cta">
           {!isValid ? <p>Select the required options to continue</p> : null}
-          <button className="primary-button" disabled={!isValid} type="button" onClick={() => onConfirm(selectedOptions)}>
+          <button className="primary-button" disabled={!isValid || !isAcceptingOrders} type="button" onClick={() => {
+            if (isAcceptingOrders) onConfirm(selectedOptions);
+          }}>
             <span>Add to Cart</span>
             <strong>{formatRupees(configuredPrice)}</strong>
           </button>
