@@ -79,12 +79,17 @@ function isCheckoutAccessError(error: unknown) {
  *   2. A payment outcome is only ever read back from the server. Nothing in
  *      browser storage is allowed to assert that an order was paid.
  */
-export function useCheckoutFlow(cartId: string | undefined, customerId: string | null) {
+export function useCheckoutFlow(cartId: string | undefined, customerId: string | null, requestedOrderId: string | null = null) {
   const queryClient = useQueryClient();
   const [restored] = useState(() => Boolean(readCheckoutAttempt(storefrontContext)));
-  const [phase, setPhase] = useState<CheckoutPhase>(() => restored ? "confirming" : "idle");
+  // A direct load of /orders/:orderid (fresh navigation, reload, shared
+  // link) carries no checkout attempt in localStorage -- that's only
+  // written by this browser's own checkout. Track the URL's order id the
+  // same way as a restored attempt so the tracking query below actually
+  // runs instead of leaving `order` null forever.
+  const [phase, setPhase] = useState<CheckoutPhase>(() => restored || requestedOrderId ? "confirming" : "idle");
   const [order, setOrder] = useState<PaymentPendingOrder | null>(null);
-  const [trackedOrderId, setTrackedOrderId] = useState<string | null>(() => readCheckoutAttempt(storefrontContext)?.orderId ?? null);
+  const [trackedOrderId, setTrackedOrderId] = useState<string | null>(() => readCheckoutAttempt(storefrontContext)?.orderId ?? requestedOrderId);
   const [request, setRequest] = useState<CheckoutRequest | null>(null);
   const [updatedAmount, setUpdatedAmount] = useState<number | null>(null);
   const [startError, setStartError] = useState<string>();
@@ -104,6 +109,10 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     enabled: Boolean(trackedOrderId) && trackedPhases.has(phase),
     staleTime: 10_000,
     retry: false,
+    // Mirrors customer-orders-query.ts and orders-query.ts: the realtime
+    // broadcast has no replay, so a tab that missed it (asleep, backgrounded,
+    // a dropped socket) needs this as its catch-up path back to the server.
+    refetchOnWindowFocus: true,
   });
 
   const applyServerOrder = useCallback((result: ServerOrder) => {
@@ -129,7 +138,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
   }, [trackingQuery.data]);
 
   const verify = useCallback(async () => {
-    const orderId = order?.id ?? readCheckoutAttempt(storefrontContext)?.orderId;
+    const orderId = order?.id ?? readCheckoutAttempt(storefrontContext)?.orderId ?? requestedOrderId;
     if (!orderId || activeRequest.current) return;
     activeRequest.current = true;
     setPhase("confirming");
@@ -152,14 +161,14 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     } finally {
       activeRequest.current = false;
     }
-  }, [applyServerOrder, order, queryClient]);
+  }, [applyServerOrder, order, queryClient, requestedOrderId]);
 
   // Restoring a previous visit: the persisted value is only a pointer, so the
   // phase is rebuilt from whatever the server currently says about the order.
   useEffect(() => {
-    if (!restored) return;
+    if (!restored && !requestedOrderId) return;
     void verify();
-    // Mount-only; verify() re-reads the persisted id itself.
+    // Mount-only; verify() re-reads the persisted/requested id itself.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

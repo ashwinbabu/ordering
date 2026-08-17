@@ -19,6 +19,34 @@ function parseOrderingMode(value: string): StorefrontSettings["orderingMode"] {
   return value;
 }
 
+function parsePaymentMethodStatus(value: string): "available" | "disabled" | "not_configured" {
+  if (value !== "available" && value !== "disabled" && value !== "not_configured") {
+    throw new Error("The storefront online payment status is invalid.");
+  }
+
+  return value;
+}
+
+function parsePaymentMethods(value: unknown): StorefrontSettings["paymentMethods"] {
+  const paymentMethods = readRecord(value as never, "The storefront payment methods");
+  const defaultMethod = readString(paymentMethods.defaultMethod, "The storefront default payment method");
+  if (defaultMethod !== "cash" && defaultMethod !== "online") {
+    throw new Error("The storefront default payment method is invalid.");
+  }
+  const cash = readRecord(paymentMethods.cash as never, "The storefront cash payment settings");
+  const online = readRecord(paymentMethods.online as never, "The storefront online payment settings");
+
+  return {
+    defaultMethod,
+    cash: { enabled: readBoolean(cash.enabled, "The storefront cash-on-delivery enabled flag") },
+    online: {
+      configured: readBoolean(online.configured, "The storefront online payment configured flag"),
+      enabled: readBoolean(online.enabled, "The storefront online payment enabled flag"),
+      status: parsePaymentMethodStatus(readString(online.status, "The storefront online payment status")),
+    },
+  };
+}
+
 function parseDeliveryZone(value: unknown): StorefrontDeliveryZone {
   const zone = readRecord(value as never, "A delivery zone");
   return {
@@ -46,12 +74,12 @@ export async function getStorefrontSettings(locationId: string): Promise<Storefr
   if (result.data === null) return null;
 
   const settings = readRecord(result.data as never, "The storefront settings response");
-  if (readNumber(settings.schemaVersion, "The storefront settings schema version") !== 1) {
+  if (readNumber(settings.schemaVersion, "The storefront settings schema version") !== 2) {
     throw new Error("The storefront settings schema version is unsupported.");
   }
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     currency: readString(settings.currency, "The storefront currency"),
     orderingEnabled: readBoolean(settings.orderingEnabled, "The storefront ordering-enabled flag"),
     orderingMode: parseOrderingMode(readString(settings.orderingMode, "The storefront ordering mode")),
@@ -60,6 +88,7 @@ export async function getStorefrontSettings(locationId: string): Promise<Storefr
     minimumOrderValue: readNumber(settings.minimumOrderValue, "The storefront minimum order value"),
     taxMode: parseTaxMode(readString(settings.taxMode, "The storefront tax mode")),
     taxRate: readNumber(settings.taxRate, "The storefront tax rate"),
+    paymentMethods: parsePaymentMethods(settings.paymentMethods),
     deliveryZones: readArray(settings.deliveryZones as never, "The storefront delivery zones").map(parseDeliveryZone),
   };
 }

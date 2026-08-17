@@ -53,8 +53,14 @@ export interface StorefrontDeliveryZone {
 
 export type TaxMode = "none" | "inclusive" | "exclusive";
 
+export interface StorefrontPaymentMethods {
+  defaultMethod: "cash" | "online";
+  cash: { enabled: boolean };
+  online: { configured: boolean; enabled: boolean; status: "available" | "disabled" | "not_configured" };
+}
+
 export interface StorefrontSettings {
-  schemaVersion: 1;
+  schemaVersion: 2;
   currency: string;
   orderingEnabled: boolean;
   orderingMode: "delivery" | "pickup" | "both";
@@ -63,6 +69,7 @@ export interface StorefrontSettings {
   minimumOrderValue: number;
   taxMode: TaxMode;
   taxRate: number;
+  paymentMethods: StorefrontPaymentMethods;
   deliveryZones: StorefrontDeliveryZone[];
 }
 
