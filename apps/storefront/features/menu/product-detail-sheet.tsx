@@ -5,13 +5,14 @@ import { dietaryInfoFor, productTagFor } from "./dietary-badge";
 import { MenuImage } from "./menu-image";
 
 interface ProductDetailSheetProps {
+  isAcceptingOrders: boolean;
   locationName: string;
   onAdd: (product: MenuProduct) => void;
   onClose: () => void;
   product: MenuProduct;
 }
 
-export function ProductDetailSheet({ locationName, onAdd, onClose, product }: ProductDetailSheetProps) {
+export function ProductDetailSheet({ isAcceptingOrders, locationName, onAdd, onClose, product }: ProductDetailSheetProps) {
   const isAvailable = product.availability === "available";
   const isConfigurable = (product.optionGroups?.length ?? 0) > 0;
   const dietaryInfo = dietaryInfoFor(product.badges);
@@ -28,6 +29,7 @@ export function ProductDetailSheet({ locationName, onAdd, onClose, product }: Pr
   }, [onClose]);
 
   function addAndClose() {
+    if (!isAcceptingOrders || !isAvailable) return;
     onAdd(product);
     onClose();
   }
@@ -68,7 +70,7 @@ export function ProductDetailSheet({ locationName, onAdd, onClose, product }: Pr
           </div>
         </div>
         <div className="sheet-cta">
-          <button className="primary-button" disabled={!isAvailable} type="button" onClick={addAndClose}>
+          <button className="primary-button" disabled={!isAvailable || !isAcceptingOrders} type="button" onClick={addAndClose}>
             {isAvailable ? `${isConfigurable ? "Choose options" : "Add to Cart"} · ${formatRupees(product.price)}` : "Currently unavailable"}
           </button>
         </div>

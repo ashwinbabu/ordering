@@ -19,13 +19,14 @@ import {
   Utensils,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Toggle } from "@/components/ui/toggle";
 import { formatMoney as money } from "@/features/orders/order-model";
 import {
   DAYS,
   createMenuId,
   effectiveProductState,
+  isScheduleActive,
   priceFromInput,
   type Category,
   type CategoryDialog,
@@ -48,12 +49,14 @@ function FoodMarker({ type }: { type: FoodType }) {
 
 export function MenuAvailability({
   categories,
+  timezone,
   busyAvailability,
   onToggleCategory,
   onToggleProduct,
   onEditMenu,
 }: {
   categories: Category[];
+  timezone: string;
   busyAvailability: string;
   onToggleCategory: (category: Category) => void;
   onToggleProduct: (category: Category, product: Product) => void;
@@ -61,6 +64,12 @@ export function MenuAvailability({
 }) {
   const [expanded, setExpanded] = useState<string[]>(["burgers", "beverages"]);
   const [search, setSearch] = useState("");
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(new Date()), 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
   const filtered = categories.filter(
     (category) =>
       category.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -97,6 +106,11 @@ export function MenuAvailability({
       <section className="availability-list" aria-label="Menu categories">
         {filtered.map((category) => {
           const isExpanded = expanded.includes(category.id);
+          const categoryScheduledUnavailable = !isScheduleActive(
+            category,
+            timezone,
+            now,
+          );
           return (
             <article className="availability-category" key={category.id}>
               <div className="category-availability-row">
@@ -143,6 +157,7 @@ export function MenuAvailability({
                       checked={category.available}
                       onChange={() => onToggleCategory(category)}
                       label={`Toggle ${category.name}`}
+                      disabled={category.available && categoryScheduledUnavailable}
                     />
                   )}
                 </div>
@@ -151,6 +166,9 @@ export function MenuAvailability({
                 <div className="product-availability-list">
                   {category.products.length ? (
                     category.products.map((product) => {
+                      const scheduledUnavailable =
+                        categoryScheduledUnavailable ||
+                        !isScheduleActive(product, timezone, now);
                       const state = effectiveProductState(category, product);
                       return (
                         <div
@@ -187,9 +205,7 @@ export function MenuAvailability({
                               className={
                                 state === "Available"
                                   ? "available-text"
-                                  : state === "Scheduled unavailable"
-                                    ? "scheduled-text"
-                                    : "unavailable-text"
+                                  : "unavailable-text"
                               }
                             >
                               {busyAvailability === product.id
@@ -202,11 +218,14 @@ export function MenuAvailability({
                               <Toggle
                                 checked={product.available}
                                 onChange={() =>
-                                  onToggleProduct(category, product)
-                                }
-                                label={`Toggle ${product.name}`}
-                                disabled={!category.available}
-                              />
+                                onToggleProduct(category, product)
+                              }
+                              label={`Toggle ${product.name}`}
+                              disabled={
+                                !category.available ||
+                                (product.available && scheduledUnavailable)
+                              }
+                            />
                             )}
                           </div>
                         </div>

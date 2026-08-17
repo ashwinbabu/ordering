@@ -63,6 +63,51 @@ export type CategoryDialog =
 
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+type ScheduledAvailability = Pick<
+  Category,
+  "scheduleMode" | "scheduleStart" | "scheduleEnd" | "scheduleDays"
+>;
+
+/**
+ * Mirrors the storefront's availability-window check in the outlet's timezone.
+ * An item without a custom schedule remains available throughout restaurant
+ * hours; its manual availability is evaluated separately by the caller.
+ */
+export function isScheduleActive(
+  item: ScheduledAvailability,
+  timezone: string,
+  now = new Date(),
+) {
+  if (
+    item.scheduleMode === "restaurant" ||
+    !item.scheduleStart ||
+    !item.scheduleEnd
+  ) {
+    return true;
+  }
+
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  const day = values.weekday;
+  const time = `${values.hour}:${values.minute}`;
+
+  return (
+    item.scheduleDays.includes(day) &&
+    time >= item.scheduleStart &&
+    time < item.scheduleEnd
+  );
+}
+
 const burgerVariants: VariantGroup[] = [
   {
     id: "size",
@@ -316,7 +361,6 @@ export function priceFromInput(value: string) {
 export function effectiveProductState(category: Category, product: Product) {
   if (!category.available) return "Unavailable — category off";
   if (!product.available) return "Unavailable";
-  if (product.scheduledUnavailable) return "Scheduled unavailable";
   return "Available";
 }
 

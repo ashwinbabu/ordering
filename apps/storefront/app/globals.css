@@ -1590,19 +1590,24 @@ h1,h2,h3,p {
 .delivery-destination strong { font-size: .78rem }
 .delivery-destination p { color: var(--muted); margin: 4px 0 0; font-size: .68rem; line-height: 1.4 }
 
-.order-timeline { padding: 20px }
-.order-timeline ol { margin: 0; padding: 0; list-style: none; display: grid }
-.order-timeline li { min-height: 75px; color: var(--soft); grid-template-columns: auto 1fr auto; align-items: start; gap: 13px; display: grid; position: relative }
-.order-timeline li:not(:last-child)::after { background: var(--line); content: ""; width: 1px; position: absolute; top: 34px; bottom: -2px; left: 16px }
-.timeline-marker { z-index: 1; border: 1px solid var(--line-strong); width: 33px; height: 33px; color: var(--soft); background: #fff; border-radius: 50%; place-items: center; font-size: .7rem; font-weight: 700; display: grid }
-.order-timeline li.is-complete .timeline-marker, .order-timeline li.is-active .timeline-marker { border-color: var(--brand); background: var(--brand); color: #fff }
-.order-timeline li.is-complete:not(:last-child)::after { background: var(--brand) }
-.order-timeline li div { padding-top: 3px }
-.order-timeline li strong, .order-timeline li p { margin: 0 }
-.order-timeline li strong { color: inherit; font-size: .8rem }
-.order-timeline li p { margin-top: 4px; font-size: .68rem; line-height: 1.4 }
-.order-timeline li.is-active, .order-timeline li.is-complete { color: var(--ink) }
-.timeline-status { background: #f7efec; color: var(--brand); border-radius: 999px; margin-top: 4px; padding: 5px 8px; font-size: .61rem; font-weight: 720 }
+.order-status-timeline { border: 1px solid var(--line); background: #fff; border-radius: var(--radius-lg); padding: 20px 20px 12px }
+.order-status-timeline__heading { justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 19px; display: flex }
+.order-status-timeline__heading h2 { letter-spacing: -.035em; margin: 0; font-size: 1.18rem }
+.order-status-timeline .live-pill { margin-left: 0 }
+.order-status-timeline ol { margin: 0; padding: 0; list-style: none }
+.order-status-timeline li { color: var(--soft); grid-template-columns: 30px minmax(0,1fr); align-items: start; column-gap: 12px; padding-bottom: 22px; display: grid; position: relative }
+.order-status-timeline li:last-child { padding-bottom: 0 }
+.order-status-timeline li:not(:last-child)::after { background: var(--line); content: ""; width: 1px; position: absolute; top: 30px; bottom: 0; left: 14px }
+.order-status-timeline .timeline-marker { z-index: 1; border: 1px solid var(--line-strong); width: 30px; height: 30px; color: var(--soft); background: #fff; border-radius: 50%; place-items: center; display: grid; position: relative }
+.order-status-timeline li.is-active .timeline-marker { border-color: var(--brand); color: #fff; background: var(--brand) }
+.order-status-timeline li.is-active .timeline-marker::after { border: 1px solid #a33e29; border-radius: inherit; content: ""; position: absolute; inset: -4px; animation: timeline-current-pulse 1.9s ease-out infinite }
+.order-status-timeline li>div { min-width: 0; padding-top: 3px }
+.order-status-timeline li strong,.order-status-timeline li p { margin: 0 }
+.order-status-timeline li strong { color: inherit; font-size: .8rem }
+.order-status-timeline li p { margin-top: 4px; font-size: .68rem; line-height: 1.4 }
+.order-status-timeline li.is-active { color: var(--ink) }
+@keyframes timeline-current-pulse { 0% { opacity: .75; transform: scale(.78) } 70%,100% { opacity: 0; transform: scale(1.25) } }
+@media (prefers-reduced-motion: reduce) { .order-status-timeline li.is-active .timeline-marker::after { animation: none } }
 
 .order-cancelled-page { text-align: center; align-content: center; justify-items: center; min-height: calc(100vh - 72px); padding: 32px 24px; display: grid }
 .order-cancelled-page h1 { letter-spacing: -.04em; margin: 20px 0 8px; font-size: 1.65rem }
