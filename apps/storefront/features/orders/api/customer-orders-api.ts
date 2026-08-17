@@ -125,13 +125,17 @@ function buildTimeline(order: Record<string, unknown>) {
 }
 
 /**
- * Reads the signed-in customer's own order history for one business. Requires
- * a real auth session -- the RPC is granted to `authenticated` only, so this
+ * Reads the signed-in customer's own order history for the current business
+ * *and* location -- matching the hostname -> single-location architecture, so
+ * a customer who has ordered from a sibling location of the same business
+ * does not see those orders mixed into this storefront's history. Requires a
+ * real auth session -- the RPC is granted to `authenticated` only, so this
  * must not be called for an anonymous browser.
  */
-export async function listCustomerOrders(businessId: string, businessKey: string): Promise<StorefrontOrder[]> {
+export async function listCustomerOrders(businessId: string, locationId: string, businessKey: string): Promise<StorefrontOrder[]> {
   const result = await callUntypedRpc(getSupabaseClient().schema("ordering"), "list_customer_orders", {
     p_business_id: businessId,
+    p_location_id: locationId,
   });
   if (result.error) throw result.error;
 

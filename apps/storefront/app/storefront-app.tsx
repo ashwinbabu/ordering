@@ -1,7 +1,6 @@
-import { a2MandremOrders } from "../demo/a2-mandrem";
 import { useMemo, useState } from "react";
 import { defaultCountryCode } from "../domain/phone";
-import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, MenuProduct, StorefrontOrder } from "../domain/storefront";
+import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
 import { AccountScreen } from "../features/account/account-screen";
 import { SavedAddressesScreen } from "../features/addresses/saved-addresses-screen";
 import { useCustomerAddressesQuery, useDeleteCustomerAddressMutation, useSaveCustomerAddressMutation } from "../features/addresses/customer-addresses-query";
@@ -24,6 +23,7 @@ import { useOrderingStatusChannel } from "../features/ordering-status/use-orderi
 import { OrderDetailsScreen } from "../features/orders/order-details-screen";
 import { OrdersScreen } from "../features/orders/orders-screen";
 import { OrderTrackingScreen } from "../features/orders/order-tracking-screen";
+import { useCustomerOrdersQuery } from "../features/orders/customer-orders-query";
 import { LinkUnavailablePage } from "../features/venue/link-unavailable-page";
 import { VenueFooter } from "../features/venue/venue-footer";
 import { VenueHeader } from "../features/venue/venue-header";
@@ -39,6 +39,7 @@ type Screen = "account" | "addresses" | "cart" | "menu" | "order-details" | "ord
 interface ConfigurationTarget { productId: string; lineId?: string; }
 
 const currentOrderStatuses = new Set<StorefrontOrder["status"]>(["placed", "accepted", "preparing", "out-for-delivery"]);
+const noAddresses: DeliveryAddress[] = [];
 
 export function StorefrontApp() {
   const customerSession = useCustomerSession();
@@ -46,7 +47,6 @@ export function StorefrontApp() {
   // Cart identity: null means this browser is still anonymous, which selects
   // the anonymous cart path and its own cache entry.
   const customerId = customerSession.customerId;
-  const [orders] = useState<StorefrontOrder[]>(a2MandremOrders);
   const [requestedOrderId] = useState(requestedOrderIdFromUrl);
   const [authRequest, setAuthRequest] = useState<AuthFlowRequest>();
   const [selectedOrderId, setSelectedOrderId] = useState<string>();
@@ -62,6 +62,7 @@ export function StorefrontApp() {
   const setCartItem = useSetCartItemMutation(customerId);
   const removeCartItem = useRemoveCartItemMutation(customerId);
   const checkout = useCheckoutFlow(cartResource.data?.id, customerId);
+  const ordersResource = useCustomerOrdersQuery(customerId, storefrontContext.businessId);
   // A restored checkout only knows its order *id* synchronously; the order
   // itself is re-read from the server, so the payment screen opens in its
   // "confirming" state and resolves to tracking once the server answers.
@@ -76,7 +77,7 @@ export function StorefrontApp() {
     [storefrontMenuResource.data],
   );
   const cart = cartResource.data;
-  const savedAddresses = customerAddressesResource.data ?? [];
+  const savedAddresses = customerAddressesResource.data ?? noAddresses;
   const lines = useMemo(() => reconcileCartLines(cart, menu), [cart, menu]);
   const cartQuantities = useMemo(() => {
     const quantities: Record<string, number> = {};
@@ -88,9 +89,9 @@ export function StorefrontApp() {
   const customerDetails: CustomerDetails = customer
     ? { name: customer.name, countryCode: customer.countryCode, phone: customer.phone }
     : { name: "", countryCode: defaultCountryCode, phone: "" };
-  const restaurantOrders = orders.filter((order) => order.restaurantId === "a2-mandrem");
-  const currentOrders = restaurantOrders.filter((order) => currentOrderStatuses.has(order.status));
-  const pastOrders = restaurantOrders.filter((order) => !currentOrderStatuses.has(order.status)).slice().sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt));
+  const orders = ordersResource.data ?? [];
+  const currentOrders = orders.filter((order) => currentOrderStatuses.has(order.status));
+  const pastOrders = orders.filter((order) => !currentOrderStatuses.has(order.status)).slice().sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt));
   const selectedOrder = orders.find((order) => order.id === selectedOrderId);
 
   const configurationProduct = configurationTarget ? menu?.products.find((product) => product.id === configurationTarget.productId) : undefined;
@@ -189,7 +190,8 @@ export function StorefrontApp() {
   }
 
   async function saveAddress(draft: AddressDraft, editingId?: string) {
-    const addressDraft = editingId ? draft : { ...draft, isDefault: savedAddresses.length === 0 };
+    const isFirstAddress = customerAddressesResource.isSuccess && savedAddresses.length === 0;
+    const addressDraft = editingId ? draft : { ...draft, isDefault: isFirstAddress };
     return saveCustomerAddress.mutateAsync({ draft: addressDraft, addressId: editingId });
   }
 
@@ -300,8 +302,8 @@ export function StorefrontApp() {
     {screen === "account" ? (customer
       ? <AccountScreen addressCount={savedAddresses.length} customer={customer} onBack={() => setScreen("menu")} onOpenAddresses={() => setScreen("addresses")} onOpenOrders={() => setScreen("orders")} onRequestPhoneChange={() => openAuth({ context: "account", initialStep: "phone", phone: { countryCode: customer.countryCode, phone: customer.phone }, onSuccess: () => {} })} onSaveCustomer={customerSession.updateLocalProfile} onSignOut={() => { void customerSession.signOut(); setScreen("menu"); }} venue={venue} />
       : <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading your account</h1></section></main>) : null}
-    {screen === "addresses" ? <SavedAddressesScreen addresses={savedAddresses} onBack={() => setScreen("account")} onDelete={removeAddress} onSave={saveAddress} state={customerAddressesResource.isPending ? "loading" : customerAddressesResource.isError ? "error" : "ready"} venue={venue} /> : null}
-    {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} venue={venue} /> : null}
+    {screen === "addresses" ? <SavedAddressesScreen addresses={savedAddresses} onBack={() => setScreen("account")} onDelete={removeAddress} onRetry={() => void customerAddressesResource.refetch()} onSave={saveAddress} state={customerAddressesResource.isPending ? "loading" : customerAddressesResource.isError ? "error" : "ready"} venue={venue} /> : null}
+    {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} state={ordersResource.isPending ? "loading" : ordersResource.isError ? "error" : "ready"} venue={venue} /> : null}
     {screen === "order-details" && selectedOrder ? <OrderDetailsScreen order={selectedOrder} onBack={() => setScreen("orders")} onOrderAgain={orderAgain} venue={venue} /> : null}
     {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onProviderReturn={checkout.returnFromProvider} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} startError={checkout.startError} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
     {screen === "tracking" && checkout.order ? <OrderTrackingScreen onBackToRestaurant={returnToRestaurant} order={checkout.order} venue={venue} /> : null}
