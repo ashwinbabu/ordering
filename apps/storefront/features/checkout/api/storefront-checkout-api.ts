@@ -213,3 +213,23 @@ export async function getOrder(orderId: string): Promise<ServerOrder> {
   if (result.error) throw result.error;
   return parseOrder(result.data);
 }
+
+/**
+ * Cancels the customer's own order via the same compare-and-swap transition
+ * every other status change goes through (ordering.transition_order ->
+ * private.transition_order_internal). That function only allows this for the
+ * order's own customer, while status is still 'placed', within 90 seconds of
+ * placed_at -- and atomically rejects if the restaurant has already accepted
+ * it (p_expected_status no longer matches), so a lost race surfaces as an
+ * error here rather than silently overriding the restaurant's acceptance.
+ */
+export async function cancelOrder(orderId: string, expectedStatus: string, reason: string): Promise<ServerOrder> {
+  const result = await callUntypedRpc(checkoutRpc(), "transition_order", {
+    p_order_id: orderId,
+    p_expected_status: expectedStatus,
+    p_new_status: "cancelled",
+    p_cancel_reason: reason,
+  });
+  if (result.error) throw result.error;
+  return parseOrder(result.data);
+}

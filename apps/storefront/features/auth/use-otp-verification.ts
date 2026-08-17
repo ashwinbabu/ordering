@@ -92,7 +92,15 @@ export function useOtpVerification() {
     void phone; // resend targets whatever identifier the widget was last configured with
   }
 
-  async function verifyOtp(phone: PhoneNumber, otp: string) {
+  /**
+   * Returns the real core.customers id once the exchange resolves - the
+   * edge function already creates/links that row and sets the Supabase
+   * session before returning, so this id is immediately usable for
+   * customer-scoped writes (e.g. resolveCustomerBusinessId) without waiting
+   * on customer-session.tsx's own async reload. Demo mode never mints a
+   * real session, so it returns undefined.
+   */
+  async function verifyOtp(phone: PhoneNumber, otp: string): Promise<string | undefined> {
     assertConfigured();
     if (!isLiveVerification) {
       await wait(480);
@@ -100,7 +108,7 @@ export function useOtpVerification() {
         // No real MSG91/Supabase session exists in demo mode - without this,
         // the account screen would wait forever for a customer that never arrives.
         completeDemoSignIn(phone);
-        return;
+        return undefined;
       }
       const reason = otp === demoOtp.expired ? "expired" : otp === demoOtp.rateLimited ? "rate-limited" : "incorrect";
       throw new OtpVerifyError(reason, "Demo mode - use 123456, 000000 or 999999.");
@@ -114,7 +122,8 @@ export function useOtpVerification() {
     }
 
     try {
-      await exchangeMsg91AccessToken(accessToken);
+      const verified = await exchangeMsg91AccessToken(accessToken);
+      return verified.customerId;
     } catch (error) {
       if (error instanceof CustomerAuthError) throw new OtpVerifyError(customerAuthErrorToReason(error), error.message);
       throw new OtpVerifyError("incorrect", "Something went wrong. Please try again.");

@@ -4,6 +4,7 @@ import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, Deliver
 import { AccountScreen } from "../features/account/account-screen";
 import { SavedAddressesScreen } from "../features/addresses/saved-addresses-screen";
 import { useCustomerAddressesQuery, useDeleteCustomerAddressMutation, useSaveCustomerAddressMutation } from "../features/addresses/customer-addresses-query";
+import { createCustomerAddress, resolveCustomerBusinessId } from "../features/addresses/api/customer-address-api";
 import { AuthFlowSheet, type AuthFlowRequest } from "../features/auth/auth-flow-sheet";
 import { useCustomerSession } from "../features/auth/customer-session";
 import { CartScreen } from "../features/cart/cart-screen";
@@ -49,6 +50,13 @@ export function StorefrontApp() {
   const customerId = customerSession.customerId;
   const [requestedOrderId] = useState(requestedOrderIdFromUrl);
   const [authRequest, setAuthRequest] = useState<AuthFlowRequest>();
+  // A guest's typed-but-unsaved delivery address: core.customer_business_addresses
+  // writes require an authenticated customer (see createCustomerAddress), so
+  // there is nowhere server-side to put this until OTP verification succeeds.
+  // Held here (not in CartScreen's local state) so it survives the screen
+  // staying mounted underneath the auth sheet and is reachable from the
+  // post-verification materialize step below.
+  const [pendingGuestAddress, setPendingGuestAddress] = useState<DeliveryAddress>();
   const [selectedOrderId, setSelectedOrderId] = useState<string>();
   const [configurationTarget, setConfigurationTarget] = useState<ConfigurationTarget>();
   const [viewingProductId, setViewingProductId] = useState<string>();
@@ -191,6 +199,14 @@ export function StorefrontApp() {
   }
 
   async function saveAddress(draft: AddressDraft, editingId?: string) {
+    if (!customerId) {
+      // No customer to own the row yet - keep the draft in memory as the
+      // guest's presumptive first (default) address until checkout carries
+      // them through OTP verification.
+      const address: DeliveryAddress = { ...draft, isDefault: true, id: "pending" };
+      setPendingGuestAddress(address);
+      return address.id;
+    }
     const isFirstAddress = customerAddressesResource.isSuccess && savedAddresses.length === 0;
     const addressDraft = editingId ? draft : { ...draft, isDefault: isFirstAddress };
     return saveCustomerAddress.mutateAsync({ draft: addressDraft, addressId: editingId });
@@ -200,11 +216,34 @@ export function StorefrontApp() {
     await deleteCustomerAddress.mutateAsync({ addressId });
   }
 
+  /**
+   * Converts the in-memory guest address into a real
+   * core.customer_business_addresses row once OTP verification hands back a
+   * real customerId. Called from CartScreen right before checkout_cart, which
+   * requires a persisted p_customer_business_address_id - there is no
+   * free-text-address path through checkout. Errors are reported the same way
+   * as other cart actions and swallowed here (returning undefined) so the
+   * caller can just bail out without needing its own error UI.
+   */
+  async function materializePendingAddress(authenticatedCustomerId: string): Promise<DeliveryAddress | undefined> {
+    if (!pendingGuestAddress) return undefined;
+    try {
+      const customerBusinessId = await resolveCustomerBusinessId(storefrontContext.businessId, authenticatedCustomerId);
+      const addressId = await createCustomerAddress(customerBusinessId, pendingGuestAddress);
+      const address: DeliveryAddress = { ...pendingGuestAddress, id: addressId };
+      setPendingGuestAddress(undefined);
+      return address;
+    } catch (error) {
+      reportCartError(error, "We couldn't save your delivery address. Please try again.");
+      return undefined;
+    }
+  }
+
   function openAuth(request: AuthFlowRequest) {
     setAuthRequest({
       ...request,
       onCancel: () => { request.onCancel?.(); setAuthRequest(undefined); },
-      onSuccess: (phone) => { request.onSuccess(phone); setAuthRequest(undefined); },
+      onSuccess: (phone, customerId) => { request.onSuccess(phone, customerId); setAuthRequest(undefined); },
     });
   }
 
@@ -296,7 +335,7 @@ export function StorefrontApp() {
 
   return <>
     {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={openCart} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onAdjustQuantity={adjustConfigurableProductQuantity} onGoToCart={openCart} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
-    {screen === "cart" ? <CartScreen cart={cart} cartError={cartActionError} onDismissCartError={() => setCartActionError(undefined)} isCartLoading={cartResource.isPending} lines={lines} settings={settingsResource.data ?? null} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCashCheckoutAttempt={beginCashOnDeliveryCheckout} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const item = cart?.items.find((candidate) => candidate.id === lineId); if (item) setConfigurationTarget({ productId: item.productId, lineId }); }} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSaveAddress={saveAddress} savedAddresses={savedAddresses} venue={venue} /> : null}
+    {screen === "cart" ? <CartScreen cart={cart} cartError={cartActionError} onDismissCartError={() => setCartActionError(undefined)} isCartLoading={cartResource.isPending} lines={lines} settings={settingsResource.data ?? null} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCashCheckoutAttempt={beginCashOnDeliveryCheckout} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const item = cart?.items.find((candidate) => candidate.id === lineId); if (item) setConfigurationTarget({ productId: item.productId, lineId }); }} onMaterializePendingAddress={materializePendingAddress} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSaveAddress={saveAddress} pendingAddress={pendingGuestAddress} savedAddresses={savedAddresses} venue={venue} /> : null}
     {/*
       Known limitation: verifying a different number here re-runs the full
       MSG91 + customer-auth-msg91 exchange, which finds-or-creates a customer
@@ -315,7 +354,7 @@ export function StorefrontApp() {
     {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} state={ordersResource.isPending ? "loading" : ordersResource.isError ? "error" : "ready"} venue={venue} /> : null}
     {screen === "order-details" && selectedOrder ? <OrderDetailsScreen order={selectedOrder} onBack={() => setScreen("orders")} onOrderAgain={orderAgain} venue={venue} /> : null}
     {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onProviderReturn={checkout.returnFromProvider} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} startError={checkout.startError} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
-    {screen === "tracking" && checkout.order ? <OrderTrackingScreen onBackToRestaurant={returnToRestaurant} order={checkout.order} venue={venue} /> : null}
+    {screen === "tracking" && checkout.order ? <OrderTrackingScreen cancelError={checkout.cancelError} cancelling={checkout.cancelling} onBackToRestaurant={returnToRestaurant} onCancel={() => void checkout.cancelOrder()} order={checkout.order} venue={venue} /> : null}
     {configurationProduct ? <ProductConfigurationSheet initialSelections={configurationLine} isAcceptingOrders={venue.isAcceptingOrders} product={configurationProduct} onClose={() => setConfigurationTarget(undefined)} onConfirm={saveConfiguration} /> : null}
     {viewingProduct ? <ProductDetailSheet isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} product={viewingProduct} onAdd={openProductConfiguration} onClose={() => setViewingProductId(undefined)} /> : null}
     {authRequest ? <AuthFlowSheet request={authRequest} /> : null}
