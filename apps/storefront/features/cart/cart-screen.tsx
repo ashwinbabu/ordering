@@ -31,7 +31,7 @@ interface CartScreenProps {
   onEditConfiguration: (lineId: string) => void;
   onQuantityChange: (lineId: string, quantity: number) => void;
   onRequestAuthentication: (request: AuthFlowRequest) => void;
-  onSavedAddressesChange: (addresses: DeliveryAddress[]) => void;
+  onSaveAddress: (draft: AddressDraft, addressId?: string) => Promise<string>;
   savedAddresses: DeliveryAddress[];
   settings: StorefrontSettings | null;
   venue: Venue;
@@ -43,7 +43,7 @@ function computeDisplayTax(netFood: number, settings: StorefrontSettings | null)
   return Math.round(netFood * settings.taxRate) / 100;
 }
 
-export function CartScreen({ cart, cartError, customerDetails, isCartLoading, isCustomerVerified, lines, onBack, onCashCheckoutAttempt, onCheckoutAttempt, onDismissCartError, onEditConfiguration, onQuantityChange, onRequestAuthentication, onSavedAddressesChange, savedAddresses, settings, venue }: CartScreenProps) {
+export function CartScreen({ cart, cartError, customerDetails, isCartLoading, isCustomerVerified, lines, onBack, onCashCheckoutAttempt, onCheckoutAttempt, onDismissCartError, onEditConfiguration, onQuantityChange, onRequestAuthentication, onSaveAddress, savedAddresses, settings, venue }: CartScreenProps) {
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("delivery");
   const [isCashOnDelivery, setIsCashOnDelivery] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string>();
@@ -121,14 +121,12 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
   }), [lines, settings, fulfilment, selectedAddress, deliveryQuoteQuery.data?.serviceable, isOnline, netFoodSubtotal]);
 
   function openAddressForm(address?: DeliveryAddress) { setEditingAddress(address); setAddressSheet("form"); }
-  function saveAddress(draft: AddressDraft) {
-    const id = editingAddress?.id ?? `address-${Date.now()}`;
-    const isDefault = editingAddress ? draft.isDefault : savedAddresses.length === 0;
-    const next = { ...draft, id, isDefault };
-    onSavedAddressesChange(editingAddress
-      ? savedAddresses.map((address) => address.id === id ? next : isDefault ? { ...address, isDefault: false } : address)
-      : [...savedAddresses.map((address) => isDefault ? { ...address, isDefault: false } : address), next]);
-    setSelectedAddressId(id); setEditingAddress(undefined); setAddressSheet(null); setAddressInvalid(false);
+  async function saveAddress(draft: AddressDraft) {
+    const addressId = await onSaveAddress(draft, editingAddress?.id);
+    setSelectedAddressId(addressId);
+    setEditingAddress(undefined);
+    setAddressSheet(null);
+    setAddressInvalid(false);
   }
   function applyCoupon() {
     if (!couponCode || !isOnline) return;

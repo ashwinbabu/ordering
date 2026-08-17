@@ -9,8 +9,8 @@ import { DeleteAddressSheet } from "./delete-address-sheet";
 interface SavedAddressesScreenProps {
   addresses: DeliveryAddress[];
   onBack: () => void;
-  onDelete: (id: string) => void;
-  onSave: (draft: AddressDraft, editingId?: string) => void;
+  onDelete: (id: string) => void | Promise<unknown>;
+  onSave: (draft: AddressDraft, editingId?: string) => void | Promise<unknown>;
   state?: ResourceState;
   venue: Venue;
 }
@@ -22,7 +22,7 @@ export function SavedAddressesScreen({ addresses, onBack, onDelete, onSave, stat
 
   function closeForm() { setIsFormOpen(false); setEditingAddress(undefined); }
   function openCreate() { setEditingAddress(undefined); setIsFormOpen(true); }
-  function saveAddress(draft: AddressDraft) { onSave(draft, editingAddress?.id); closeForm(); }
+  async function saveAddress(draft: AddressDraft) { await onSave(draft, editingAddress?.id); closeForm(); }
 
   return <main className="ordering-app customer-page saved-addresses-page">
     <CustomerPageHeader title="Saved addresses" venue={venue} onBack={onBack} />
@@ -36,6 +36,6 @@ export function SavedAddressesScreen({ addresses, onBack, onDelete, onSave, stat
       </section> : null}
     </div>
     {isFormOpen ? <div className="sheet-layer" role="presentation"><button aria-label="Close address form" className="sheet-scrim" type="button" onClick={closeForm} /><section className="bottom-sheet address-form-sheet" role="dialog" aria-modal="true" aria-label={editingAddress ? "Edit address" : "Add delivery address"}><AddressForm key={editingAddress?.id ?? "new-address"} initialValue={editingAddress} mode={editingAddress ? "edit" : "create"} onCancel={closeForm} onSave={saveAddress} /></section></div> : null}
-    {deletingAddress ? <DeleteAddressSheet address={deletingAddress} onCancel={() => setDeletingAddress(undefined)} onConfirm={() => { onDelete(deletingAddress.id); setDeletingAddress(undefined); }} /> : null}
+    {deletingAddress ? <DeleteAddressSheet address={deletingAddress} onCancel={() => setDeletingAddress(undefined)} onConfirm={() => { void Promise.resolve(onDelete(deletingAddress.id)).then(() => setDeletingAddress(undefined)); }} /> : null}
   </main>;
 }
