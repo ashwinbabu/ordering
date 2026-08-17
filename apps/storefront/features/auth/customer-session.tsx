@@ -5,6 +5,7 @@ import type { CustomerProfile } from "../../domain/storefront";
 import { getSupabaseClient } from "../../lib/supabase/client";
 import { storefrontContext } from "../../lib/storefront/storefront-context";
 import { resolveCustomerBusinessId } from "./api/customer-business-api";
+import { useCustomerOrdersChannel } from "../orders/use-customer-orders-channel";
 
 interface CustomerRow {
   id: string;
@@ -56,6 +57,12 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   const [demoProfile, setDemoProfile] = useState<CustomerProfile | null>(null);
   const [localOverride, setLocalOverride] = useState<Partial<CustomerProfile>>({});
   const [customerLoaded, setCustomerLoaded] = useState(true);
+
+  // Lives here (not in the Orders screen) so the customer keeps receiving
+  // order-change notifications while on any screen, with exactly one
+  // subscription for the whole session -- re-subscribing automatically if
+  // they sign in/out (authUserId changes) via the hook's own cleanup.
+  useCustomerOrdersChannel(session?.user.id ?? null, customerId);
 
   useEffect(() => {
     let active = true;
