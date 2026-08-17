@@ -53,7 +53,7 @@ export function StorefrontApp() {
   const [configurationTarget, setConfigurationTarget] = useState<ConfigurationTarget>();
   const [viewingProductId, setViewingProductId] = useState<string>();
   const [cartActionError, setCartActionError] = useState<string>();
-  const storefrontMenuResource = useStorefrontMenuQuery(storefrontContext.locationId);
+  const storefrontMenuResource = useStorefrontMenuQuery(storefrontContext.businessId, storefrontContext.locationId);
   const cartResource = useStorefrontCartQuery(customerId);
   const settingsResource = useStorefrontSettingsQuery();
   const setCartItem = useSetCartItemMutation(customerId);
@@ -63,7 +63,7 @@ export function StorefrontApp() {
   // itself is re-read from the server, so the payment screen opens in its
   // "confirming" state and resolves to tracking once the server answers.
   const [screen, setScreen] = useState<Screen>(() => checkout.restored ? "payment" : "menu");
-  useOrderingStatusChannel(storefrontContext.locationId);
+  useOrderingStatusChannel(storefrontContext.businessId, storefrontContext.locationId);
   const menu = useMemo(
     () => storefrontMenuResource.data ? menuFromStorefrontMenu(storefrontMenuResource.data) : null,
     [storefrontMenuResource.data],
@@ -202,6 +202,9 @@ export function StorefrontApp() {
   }
 
   function requestAccountAuthentication() {
+    // A signed-in customer goes straight to their account; only an anonymous
+    // visitor needs the phone/OTP sheet.
+    if (customer) { setScreen("account"); return; }
     openAuth({
       context: "account",
       onSuccess: () => setScreen("account"),

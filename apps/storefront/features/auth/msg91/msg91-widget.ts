@@ -25,6 +25,7 @@ export function otpMode(): OtpMode {
   // them back is exactly when you forget.
   if (demoModeRequested) return "demo";
   if (widgetId && tokenAuth) return "live";
+  if (demoModeRequested) return "demo";
   return "unconfigured";
 }
 

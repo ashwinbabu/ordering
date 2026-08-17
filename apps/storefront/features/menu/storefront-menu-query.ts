@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { getStorefrontMenu } from "./api/storefront-menu-api";
 
-export function storefrontMenuQueryKey(locationId: string) {
-  return ["storefront-menu", locationId] as const;
+export function storefrontMenuQueryKey(businessId: string, locationId: string) {
+  return ["storefront", businessId, locationId, "menu"] as const;
 }
 
-export function useStorefrontMenuQuery(locationId: string) {
+export function useStorefrontMenuQuery(businessId: string, locationId: string) {
   return useQuery({
-    queryKey: storefrontMenuQueryKey(locationId),
+    queryKey: storefrontMenuQueryKey(businessId, locationId),
     queryFn: async () => {
       try {
         const menu = await getStorefrontMenu(locationId);

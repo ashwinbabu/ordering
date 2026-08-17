@@ -110,6 +110,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
       fulfilment: checkoutRequest.fulfilment,
       customerBusinessAddressId: checkoutRequest.deliveryAddress?.id ?? null,
       customerNote: checkoutRequest.customerNote ?? null,
+      paymentMethod: "online",
     });
     setOrder(result.order);
 
@@ -175,14 +176,19 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
         fulfilment: checkoutRequest.fulfilment,
         customerBusinessAddressId: checkoutRequest.deliveryAddress?.id ?? null,
         customerNote: checkoutRequest.customerNote ?? null,
+        paymentMethod: "cash",
       });
 
       void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId), exact: true });
 
+      // The server has already created this order as 'placed'; only the
+      // customer-facing payment-method label is added here. Nothing about the
+      // order's own status is invented client-side -- an earlier version
+      // overrode paymentStatus to "confirmed" locally, which made a cash order
+      // look confirmed while it sat unplaced and invisible to the restaurant.
       const cashOrder: PaymentPendingOrder = {
         ...result.order,
-        paymentStatus: "confirmed",
-        trackingOrder: { ...result.order.trackingOrder, paymentStatus: "pending", paymentMethod: "Cash on delivery" },
+        trackingOrder: { ...result.order.trackingOrder, paymentMethod: "Cash on delivery" },
       };
       setOrder(cashOrder);
       clearCheckoutAttempt(storefrontContext);

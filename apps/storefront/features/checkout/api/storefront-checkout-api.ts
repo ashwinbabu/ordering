@@ -189,6 +189,10 @@ export async function checkoutCart(args: {
   fulfilment: FulfilmentType;
   customerBusinessAddressId: string | null;
   customerNote: string | null;
+  // "cash" makes checkout_cart create the order already 'placed' (there is no
+  // provider hand-off to wait for), which is what puts it in front of the
+  // restaurant. "online" keeps the payment_pending -> placed flow.
+  paymentMethod: "cash" | "online";
 }): Promise<ServerOrder> {
   const result = await callUntypedRpc(checkoutRpc(), "checkout_cart", {
     p_order_id: args.orderId,
@@ -197,6 +201,7 @@ export async function checkoutCart(args: {
     p_customer_business_address_id: args.customerBusinessAddressId,
     p_customer_note: args.customerNote,
     p_trusted_delivery_minutes: args.fulfilment === "delivery" ? trustedDeliveryMinutes : null,
+    p_payment_method: args.paymentMethod,
   });
   if (result.error) throw result.error;
   return parseOrder(result.data);

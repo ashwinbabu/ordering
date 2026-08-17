@@ -331,6 +331,37 @@ Deno.serve(async (request) => {
       }
       authEmail = syntheticEmail;
     }
+  } else {
+    // Create the auth user explicitly, WITH the verified phone attached.
+    //
+    // This is load-bearing for more than the auth record itself. The trigger
+    // auth_users_10_sync_customer fires on insert into auth.users and only
+    // takes its phone-adoption branch (which links this uuid onto the
+    // existing core.customers row via `on conflict (phone_e164)`) when
+    // new.phone is set. If the user is instead created implicitly by
+    // generateLink below - email only, phone null - the trigger falls
+    // through to its OAuth-only branch and inserts a SECOND customer row
+    // with a null phone_e164 that claims this auth uuid. The link update
+    // further down then violates customers_auth_user_id_key and the whole
+    // sign-in fails 409, leaving an orphan row behind. Verified against the
+    // live trigger: no phone => 1 orphan / 0 linked, phone set => 0 orphan /
+    // 1 linked.
+    const created = await admin.auth.admin.createUser({
+      email: syntheticEmail,
+      email_confirm: true,
+      phone: digits,
+      phone_confirm: true,
+      user_metadata: { phone_e164: phoneE164, auth_provider: "msg91_widget" },
+    });
+
+    if (created.error) {
+      // Most likely a concurrent request already created this identity.
+      // generateLink still resolves it by email below, and the trigger has
+      // already run for whichever request won the race.
+      console.warn("customer-auth-msg91: createUser did not return a new user, continuing", created.error.code);
+    } else if (created.data.user) {
+      authUserId = created.data.user.id;
+    }
   }
 
   const generated = await admin.auth.admin.generateLink({
