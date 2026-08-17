@@ -202,6 +202,9 @@ export function StorefrontApp() {
   }
 
   function requestAccountAuthentication() {
+    // A signed-in customer goes straight to their account; only an anonymous
+    // visitor needs the phone/OTP sheet.
+    if (customer) { setScreen("account"); return; }
     openAuth({
       context: "account",
       onSuccess: () => setScreen("account"),

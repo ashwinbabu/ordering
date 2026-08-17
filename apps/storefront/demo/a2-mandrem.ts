@@ -1,5 +1,4 @@
 import type { CustomerProfile, DeliveryAddress, StorefrontDemo, StorefrontOrder } from "../domain/storefront";
-import { areaCoordinates } from "../features/addresses/area-coordinates";
 
 export const a2MandremStorefront: StorefrontDemo = {
   venue: {
@@ -194,77 +193,134 @@ export const a2MandremCustomer: CustomerProfile = {
   isPhoneVerified: true,
 };
 
+// Sourced from the real ordering-dev database (customer 1e652a82-9a77-43fa-
+// ae26-620b98c71861, "Rahul Nair") instead of invented fixtures, so real
+// uuids flow through checkout instead of the fake "home-beach-road" id that
+// used to crash ordering.checkout_cart. Still rendered via plain useState in
+// storefront-app.tsx, not fetched live -- these are a frozen snapshot, not a
+// substitute for wiring up useCustomerAddressesQuery/useCustomerOrdersQuery.
 export const a2MandremAddresses: DeliveryAddress[] = [
   {
-    id: "home-beach-road", label: "Home", recipientName: "Ashwin Babu", recipientPhone: "9025117533",
-    line1: "41 Beach Road", line2: "", locality: "Arambol", city: "North Goa", state: "Goa", postalCode: "403524",
-    landmark: "Near the beach entrance", instructions: "Leave at reception", isDefault: true,
-    ...areaCoordinates.Arambol,
-  },
-  {
-    id: "work-mandrem", label: "Work", recipientName: "Ashwin Babu", recipientPhone: "9025117533",
-    line1: "Mandrem Market Road", line2: "", locality: "Mandrem", city: "North Goa", state: "Goa", postalCode: "403527",
-    landmark: "", instructions: "", isDefault: false,
-    ...areaCoordinates.Mandrem,
+    id: "250195b5-e677-45ae-b474-eef0333bb613", label: "Home", recipientName: "Rahul Nair", recipientPhone: "9000000001",
+    line1: "House 42, Beach Road", line2: "Near Main Junction", locality: "Arambol", city: "Arambol", state: "Goa", postalCode: "403524",
+    landmark: "Near Arambol Market", instructions: "Call on arrival", isDefault: true,
+    latitude: 15.684, longitude: 73.7065,
   },
 ];
 
+// paymentStatus note: the DB's "not_required" status (used on the two
+// cancelled orders below, since nothing was ever charged) has no exact match
+// in the storefront's OrderPaymentStatus type ("paid" | "pending" |
+// "refunded") -- mapped to "pending" as the closest fit.
+//
+// status note: the DB's own `status` column reads "placed" on both orders
+// that have cancelled_at/cancel_reason set (0ea8d92f.../81b0d8fc... below) --
+// a real inconsistency in the seed data, not something introduced here.
+// Overridden to "cancelled" below since that's what actually happened,
+// rather than reproducing the DB's contradiction in the UI.
 export const a2MandremOrders: StorefrontOrder[] = [
   {
-    id: "A21083", restaurantId: "a2-mandrem", placedAt: "2026-08-14T15:20:00+05:30", status: "preparing",
-    paymentStatus: "paid", paymentMethod: "UPI", fulfilment: "delivery",
+    id: "d830d798-b323-4d42-8c1e-67793d03b512", restaurantId: "a2-mandrem", placedAt: "2026-08-14T10:50:00Z", status: "placed",
+    paymentStatus: "paid", fulfilment: "delivery",
     items: [
-      { id: "order-1083-1", productId: "prawn-curry-rice", name: "Goan Prawn Curry Rice", quantity: 1, unitPrice: 340, selectedOptions: ["Medium spicy"] },
-      { id: "order-1083-2", productId: "paneer-kathi-roll", name: "Paneer Kathi Roll", quantity: 1, unitPrice: 190 },
-      { id: "order-1083-3", productId: "kokum-cooler", name: "Kokum Cooler", quantity: 1, unitPrice: 95 },
+      { id: "023afcac-b4b4-4ac2-9038-db659143af82", productId: "9dec85b2-056e-4ae4-ba13-83d4c4a19da1", name: "Mango Shake", quantity: 1, unitPrice: 209 },
+      { id: "6bddab15-c477-48b1-8c8b-a49671884a16", productId: "d2cb84fc-0f70-44b7-a7d4-1a2bfdab06a0", name: "Spicy Paneer Burger", quantity: 1, unitPrice: 419 },
     ],
-    subtotal: 625, discount: 0, deliveryFee: 39, taxes: 112, total: 776,
-    deliveryAddress: a2MandremAddresses[0], orderNote: "Please call when outside.", estimatedFulfilment: "Estimated delivery 4:10 PM",
+    subtotal: 628, discount: 0, deliveryFee: 60, taxes: 31.4, total: 719.4,
+    deliveryAddress: a2MandremAddresses[0],
     timeline: [
-      { label: "Order placed", occurredAt: "2026-08-14T15:20:00+05:30" },
-      { label: "Accepted", occurredAt: "2026-08-14T15:22:00+05:30" },
-      { label: "Preparing", occurredAt: "2026-08-14T15:28:00+05:30" },
+      { label: "Order placed", occurredAt: "2026-08-14T10:50:00Z" },
+      { label: "Accepted", occurredAt: "2026-08-14T10:58:00Z" },
     ],
   },
   {
-    id: "A20984", restaurantId: "a2-mandrem", placedAt: "2026-08-12T20:42:00+05:30", status: "delivered",
-    paymentStatus: "paid", paymentMethod: "UPI", fulfilment: "delivery",
+    id: "7e8a1421-e25f-4565-875e-1fc9d5ad5bb2", restaurantId: "a2-mandrem", placedAt: "2026-08-14T10:48:00Z", status: "delivered",
+    paymentStatus: "paid", fulfilment: "delivery",
     items: [
-      { id: "order-984-1", productId: "masala-dosa", name: "Classic Masala Dosa", quantity: 2, unitPrice: 150, selectedOptions: ["Extra chutney"] },
-      { id: "order-984-2", productId: "masala-fries", name: "Masala Fries", quantity: 1, unitPrice: 130, selectedOptions: ["Extra lime"] },
+      { id: "6ff15f85-6b47-4feb-b8fb-d126980522f0", productId: "d31db1a9-c9e2-4acb-9af8-c75fc4708c2f", name: "Margherita Pizza", quantity: 1, unitPrice: 389 },
+      { id: "a887c9d4-dc15-4885-a02b-a81f46d46b51", productId: "5a1e855c-3976-4909-83c7-04d2772297ab", name: "Fresh Lime Soda", quantity: 1, unitPrice: 99 },
     ],
-    subtotal: 430, discount: 50, couponCode: "SAVE10", deliveryFee: 39, taxes: 68, total: 487,
-    deliveryAddress: a2MandremAddresses[0], completedAt: "2026-08-12T21:26:00+05:30",
+    subtotal: 488, discount: 0, deliveryFee: 30, taxes: 24.4, total: 542.4,
+    deliveryAddress: a2MandremAddresses[0], completedAt: "2026-08-15T11:00:22Z",
     timeline: [
-      { label: "Order placed", occurredAt: "2026-08-12T20:42:00+05:30" },
-      { label: "Accepted", occurredAt: "2026-08-12T20:44:00+05:30" },
-      { label: "Out for delivery", occurredAt: "2026-08-12T21:08:00+05:30" },
-      { label: "Delivered", occurredAt: "2026-08-12T21:26:00+05:30" },
+      { label: "Order placed", occurredAt: "2026-08-14T10:48:00Z" },
+      { label: "Accepted", occurredAt: "2026-08-14T12:00:38Z" },
+      { label: "Out for delivery", occurredAt: "2026-08-15T11:00:08Z" },
+      { label: "Delivered", occurredAt: "2026-08-15T11:00:22Z" },
     ],
   },
   {
-    id: "A20917", restaurantId: "a2-mandrem", placedAt: "2026-08-03T13:14:00+05:30", status: "completed",
-    paymentStatus: "paid", paymentMethod: "Card", fulfilment: "pickup",
+    id: "44fca732-8dbf-4509-ad14-1c9b3105e747", restaurantId: "a2-mandrem", placedAt: "2026-08-12T13:40:00Z", status: "accepted",
+    paymentStatus: "paid", fulfilment: "delivery",
     items: [
-      { id: "order-917-1", productId: "veg-xacuti", name: "Vegetable Xacuti", quantity: 1, unitPrice: 260 },
-      { id: "order-917-2", productId: "bebinca", name: "Goan Bebinca", quantity: 1, unitPrice: 180 },
+      { id: "64b25abe-0a2f-4c3b-896a-badb0ff718a1", productId: "57c47c6a-e55d-4b81-b8b4-fdb369fa20d9", name: "Paneer Tikka Pizza", quantity: 2, unitPrice: 349 },
+      { id: "be59dc51-a427-41db-8db6-a4965c6eb5f6", productId: "3e1deb70-c03f-494d-ac40-407b3285375e", name: "Cold Coffee", quantity: 1, unitPrice: 189 },
     ],
-    subtotal: 440, discount: 0, deliveryFee: 0, taxes: 79, total: 519, completedAt: "2026-08-03T13:39:00+05:30",
+    subtotal: 887, discount: 0, deliveryFee: 0, taxes: 44.35, total: 931.35,
+    deliveryAddress: a2MandremAddresses[0], estimatedFulfilment: "Out for delivery",
     timeline: [
-      { label: "Order placed", occurredAt: "2026-08-03T13:14:00+05:30" },
-      { label: "Ready for pickup", occurredAt: "2026-08-03T13:36:00+05:30" },
-      { label: "Collected", occurredAt: "2026-08-03T13:39:00+05:30" },
+      { label: "Order placed", occurredAt: "2026-08-12T13:40:00Z" },
+      { label: "Accepted", occurredAt: "2026-08-12T13:45:00Z" },
+      { label: "Out for delivery", occurredAt: "2026-08-12T14:12:00Z" },
     ],
   },
   {
-    id: "A20871", restaurantId: "a2-mandrem", placedAt: "2026-07-27T19:08:00+05:30", status: "cancelled",
-    paymentStatus: "refunded", fulfilment: "delivery",
-    items: [{ id: "order-871-1", productId: "fish-thali", name: "Goan Fish Thali", quantity: 1, unitPrice: 390 }],
-    subtotal: 390, discount: 0, deliveryFee: 0, taxes: 0, total: 390,
-    deliveryAddress: a2MandremAddresses[1], cancellationReason: "Restaurant unable to fulfil this order.",
+    id: "6386f564-22e0-4d38-943e-29c6826bece8", restaurantId: "a2-mandrem", placedAt: "2026-08-11T12:30:00Z", status: "delivered",
+    paymentStatus: "paid", fulfilment: "delivery",
+    items: [
+      { id: "2a50d0f5-0511-411a-820b-dfff83139ac5", productId: "d93c8e3c-4b9f-41b3-9957-72e1bb05e420", name: "Classic Veg Burger", quantity: 2, unitPrice: 229 },
+      { id: "b2ac053d-a7ea-4ccc-a0f2-523c311f8d45", productId: "e40a077c-a882-4bd1-a200-2e8a8a9eb49d", name: "Watermelon Cooler", quantity: 1, unitPrice: 179 },
+    ],
+    subtotal: 637, discount: 0, deliveryFee: 60, taxes: 31.85, total: 728.85,
+    deliveryAddress: a2MandremAddresses[0], completedAt: "2026-08-11T13:30:00Z",
     timeline: [
-      { label: "Order placed", occurredAt: "2026-07-27T19:08:00+05:30" },
-      { label: "Cancelled", occurredAt: "2026-07-27T19:14:00+05:30" },
+      { label: "Order placed", occurredAt: "2026-08-11T12:30:00Z" },
+      { label: "Accepted", occurredAt: "2026-08-11T12:38:00Z" },
+      { label: "Out for delivery", occurredAt: "2026-08-11T13:05:00Z" },
+      { label: "Delivered", occurredAt: "2026-08-11T13:30:00Z" },
+    ],
+  },
+  {
+    id: "3fc9ab8a-cd96-45ae-b4ba-c933909f77e1", restaurantId: "a2-mandrem", placedAt: "2026-08-08T07:30:00Z", status: "delivered",
+    paymentStatus: "paid", fulfilment: "delivery",
+    items: [
+      { id: "9c8a3f71-9617-4fa3-9541-3a83d0bf0c2b", productId: "d31db1a9-c9e2-4acb-9af8-c75fc4708c2f", name: "Margherita Pizza", quantity: 1, unitPrice: 349 },
+      { id: "be823806-b91f-467f-8db4-9e994fb47a8c", productId: "5a1e855c-3976-4909-83c7-04d2772297ab", name: "Fresh Lime Soda", quantity: 2, unitPrice: 139 },
+    ],
+    subtotal: 627, discount: 0, deliveryFee: 0, taxes: 31.35, total: 658.35,
+    deliveryAddress: a2MandremAddresses[0], completedAt: "2026-08-08T08:18:00Z",
+    timeline: [
+      { label: "Order placed", occurredAt: "2026-08-08T07:30:00Z" },
+      { label: "Accepted", occurredAt: "2026-08-08T07:35:00Z" },
+      { label: "Out for delivery", occurredAt: "2026-08-08T08:00:00Z" },
+      { label: "Delivered", occurredAt: "2026-08-08T08:18:00Z" },
+    ],
+  },
+  {
+    id: "0ea8d92f-1fc8-42f2-a8bb-b245d20c7f7d", restaurantId: "a2-mandrem", placedAt: "2026-08-06T14:30:00Z", status: "cancelled",
+    paymentStatus: "pending", fulfilment: "delivery",
+    items: [
+      { id: "2d4b9593-3592-45d0-a06e-46e31e45d5f1", productId: "3e1deb70-c03f-494d-ac40-407b3285375e", name: "Cold Coffee", quantity: 1, unitPrice: 149 },
+      { id: "98763ee7-f022-427f-b4a4-89f2f5c4b9f2", productId: "57c47c6a-e55d-4b81-b8b4-fdb369fa20d9", name: "Paneer Tikka Pizza", quantity: 1, unitPrice: 439 },
+    ],
+    subtotal: 588, discount: 0, deliveryFee: 0, taxes: 29.4, total: 617.4,
+    deliveryAddress: a2MandremAddresses[0], cancellationReason: "Customer cancelled before preparation",
+    timeline: [
+      { label: "Order placed", occurredAt: "2026-08-06T14:30:00Z" },
+      { label: "Cancelled", occurredAt: "2026-08-06T14:31:00Z" },
+    ],
+  },
+  {
+    id: "81b0d8fc-95e0-4f05-9f8e-f88e20538f2d", restaurantId: "a2-mandrem", placedAt: "2026-08-06T14:30:00Z", status: "cancelled",
+    paymentStatus: "pending", fulfilment: "delivery",
+    items: [
+      { id: "ef7685ab-09fe-4c02-9063-2be033ff895e", productId: "bbd93940-9890-4b85-9607-3ef4f1ee32b3", name: "Crispy Chicken Burger", quantity: 1, unitPrice: 424 },
+    ],
+    subtotal: 424, discount: 0, deliveryFee: 60, taxes: 21.2, total: 505.2,
+    deliveryAddress: a2MandremAddresses[0], cancellationReason: "Customer changed their mind",
+    timeline: [
+      { label: "Order placed", occurredAt: "2026-08-06T14:30:00Z" },
+      { label: "Cancelled", occurredAt: "2026-08-06T14:34:00Z" },
     ],
   },
 ];
