@@ -57,12 +57,18 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   const [demoProfile, setDemoProfile] = useState<CustomerProfile | null>(null);
   const [localOverride, setLocalOverride] = useState<Partial<CustomerProfile>>({});
   const [customerLoaded, setCustomerLoaded] = useState(true);
+  // True only once core.customer_businesses is confirmed to exist for this
+  // session -- the Realtime RLS policy for the customer-orders channel
+  // requires that row, and it's created by a separate async step below, so
+  // "authUserId is set" alone is not enough to know the channel can be
+  // joined yet.
+  const [customerBusinessReady, setCustomerBusinessReady] = useState(false);
 
   // Lives here (not in the Orders screen) so the customer keeps receiving
   // order-change notifications while on any screen, with exactly one
   // subscription for the whole session -- re-subscribing automatically if
   // they sign in/out (authUserId changes) via the hook's own cleanup.
-  useCustomerOrdersChannel(session?.user.id ?? null, customerId);
+  useCustomerOrdersChannel(session?.user.id ?? null, customerId, customerBusinessReady);
 
   useEffect(() => {
     let active = true;
@@ -87,36 +93,52 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    setCustomerBusinessReady(false);
 
-    const fetchCustomer = session
-      ? getSupabaseClient()
-          .schema("core")
-          .from("customers")
-          .select("id, phone_e164, display_name, email, phone_verified_at")
-          .eq("auth_user_id", session.user.id)
-          .maybeSingle()
-      : Promise.resolve({ data: null, error: null });
+    async function loadCustomer() {
+      const fetchCustomer = session
+        ? getSupabaseClient()
+            .schema("core")
+            .from("customers")
+            .select("id, phone_e164, display_name, email, phone_verified_at")
+            .eq("auth_user_id", session.user.id)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null });
 
-    fetchCustomer.then(({ data, error }) => {
+      const { data, error } = await fetchCustomer;
       if (!active) return;
+
       if (error || !data) {
         if (error) console.error("Could not load the signed-in customer profile.", error);
         setCustomerId(null);
         setBaseProfile(null);
-      } else {
-        const row = data as CustomerRow;
-        setCustomerId(row.id);
-        setBaseProfile(profileFromRow(row));
-        setDemoProfile(null); // a real session supersedes any demo sign-in
-        // Idempotent (DB-level upsert on business_id+customer_id) -- safe to
-        // call on every session resolution, not just the first sign-in.
-        resolveCustomerBusinessId(storefrontContext.businessId, row.id).catch((linkError: unknown) => {
-          console.error("Could not link this customer to the current business.", linkError);
-        });
+        setLocalOverride({});
+        setCustomerLoaded(true);
+        return;
       }
+
+      const row = data as CustomerRow;
+      setCustomerId(row.id);
+      setBaseProfile(profileFromRow(row));
+      setDemoProfile(null); // a real session supersedes any demo sign-in
       setLocalOverride({});
       setCustomerLoaded(true);
-    });
+
+      // Idempotent (DB-level upsert on business_id+customer_id) -- safe to
+      // call on every session resolution, not just the first sign-in.
+      // Awaited (not fire-and-forget) so customerBusinessReady only flips
+      // once the row the Realtime RLS policy checks for actually exists --
+      // subscribing before this resolves is what caused the private
+      // customer-orders channel to be rejected as unauthorized.
+      try {
+        await resolveCustomerBusinessId(storefrontContext.businessId, row.id);
+        if (active) setCustomerBusinessReady(true);
+      } catch (linkError) {
+        console.error("Could not link this customer to the current business.", linkError);
+      }
+    }
+
+    void loadCustomer();
 
     return () => {
       active = false;

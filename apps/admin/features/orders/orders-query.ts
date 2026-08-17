@@ -28,6 +28,12 @@ export function useOrdersQuery(
       ),
     enabled: Boolean(businessId && locationId),
     staleTime: 15_000,
+    // Broadcast has no replay -- an order-changed event sent while this tab
+    // was backgrounded/asleep is gone for good. Refetching on focus is what
+    // catches the Orders page back up, independent of the realtime socket
+    // reconnecting. Matches useCustomerOrdersQuery's override on the
+    // storefront side, for the same reason.
+    refetchOnWindowFocus: true,
   });
 }
 

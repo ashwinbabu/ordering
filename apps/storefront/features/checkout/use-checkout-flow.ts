@@ -1,4 +1,4 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { beginCheckoutAttempt, clearCheckoutAttempt, readCheckoutAttempt } from "./checkout-attempt-storage";
 import { checkoutCart, getOrder, quoteCart, type ServerOrder } from "./api/storefront-checkout-api";
@@ -13,6 +13,19 @@ export type CheckoutPhase =
 
 /** Payment outcomes from which nothing further happens without the customer acting. */
 const terminalPaymentStatuses = new Set(["confirmed", "cancelled"]);
+
+/**
+ * Phases in which a real order exists and is being shown to the customer,
+ * as opposed to still being created or waiting on the payment-provider
+ * stub. Only in these phases does the tracking query below stay mounted --
+ * that's what lets a realtime-triggered invalidateQueries actually refetch
+ * instead of just marking an inactive cache entry stale.
+ */
+const trackedPhases = new Set<CheckoutPhase>(["confirming", "confirmed", "pending", "failed", "cancelled"]);
+
+export function checkoutOrderQueryKey(orderId: string | null) {
+  return ["storefront", "checkout-order", orderId] as const;
+}
 
 function phaseFromOrder(order: PaymentPendingOrder): CheckoutPhase {
   if (order.paymentStatus === "confirmed") return "confirmed";
@@ -71,17 +84,49 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
   const [restored] = useState(() => Boolean(readCheckoutAttempt(storefrontContext)));
   const [phase, setPhase] = useState<CheckoutPhase>(() => restored ? "confirming" : "idle");
   const [order, setOrder] = useState<PaymentPendingOrder | null>(null);
+  const [trackedOrderId, setTrackedOrderId] = useState<string | null>(() => readCheckoutAttempt(storefrontContext)?.orderId ?? null);
   const [request, setRequest] = useState<CheckoutRequest | null>(null);
   const [updatedAmount, setUpdatedAmount] = useState<number | null>(null);
   const [startError, setStartError] = useState<string>();
   const activeRequest = useRef(false);
   const lastAttemptWasCash = useRef(false);
 
+  /**
+   * An active TanStack observer on the same query key verify() populates.
+   * use-customer-orders-channel.ts invalidates this key by order id on
+   * every order-changed broadcast; invalidateQueries only forces a real
+   * refetch when there's an active observer, which this is, for exactly as
+   * long as we're actually tracking a placed order.
+   */
+  const trackingQuery = useQuery({
+    queryKey: checkoutOrderQueryKey(trackedOrderId),
+    queryFn: () => getOrder(trackedOrderId as string),
+    enabled: Boolean(trackedOrderId) && trackedPhases.has(phase),
+    staleTime: 10_000,
+    retry: false,
+  });
+
   const applyServerOrder = useCallback((result: ServerOrder) => {
-    setOrder(result.order);
+    setOrder((current) => {
+      // The server response doesn't carry this label (see
+      // beginCashOnDelivery below) -- preserve whatever was already
+      // showing across any later refresh of the same order.
+      const paymentMethod = current?.trackingOrder.paymentMethod ?? result.order.trackingOrder.paymentMethod;
+      return { ...result.order, trackingOrder: { ...result.order.trackingOrder, paymentMethod } };
+    });
+    setTrackedOrderId(result.order.id);
     if (terminalPaymentStatuses.has(result.order.paymentStatus)) clearCheckoutAttempt(storefrontContext);
     setPhase(phaseFromOrder(result.order));
   }, []);
+
+  // Applies a background refetch -- realtime-invalidated or otherwise --
+  // once we're already tracking a placed order, keeping the tracking
+  // screen in sync with Admin without the customer doing anything.
+  useEffect(() => {
+    if (!trackingQuery.data) return;
+    applyServerOrder(trackingQuery.data);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackingQuery.data]);
 
   const verify = useCallback(async () => {
     const orderId = order?.id ?? readCheckoutAttempt(storefrontContext)?.orderId;
@@ -93,7 +138,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
       // Make the retry policy explicit here rather than inheriting a future
       // QueryClient default, and keep the server as the only order authority.
       const serverOrder = await queryClient.fetchQuery({
-        queryKey: ["storefront", "checkout-order", orderId],
+        queryKey: checkoutOrderQueryKey(orderId),
         queryFn: () => getOrder(orderId),
         retry: false,
         staleTime: 0,
@@ -131,6 +176,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
       paymentMethod: "online",
     });
     setOrder(result.order);
+    setTrackedOrderId(result.order.id);
 
     // checkout_cart marks the cart 'converted', so the cached copy is stale and
     // the next add has to open a fresh cart.
@@ -209,6 +255,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
         trackingOrder: { ...result.order.trackingOrder, paymentMethod: "Cash on delivery" },
       };
       setOrder(cashOrder);
+      setTrackedOrderId(cashOrder.id);
       clearCheckoutAttempt(storefrontContext);
       setPhase("confirmed");
       return cashOrder;
