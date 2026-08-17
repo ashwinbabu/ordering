@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { defaultCountryCode } from "../domain/phone";
 import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
 import { AccountScreen } from "../features/account/account-screen";
@@ -11,7 +12,7 @@ import { CartScreen } from "../features/cart/cart-screen";
 import { cartLineKey } from "../lib/storefront/cart-line-identity";
 import { reconcileCartLines, selectionsFromServerItem } from "../features/cart/cart-reconciliation";
 import { useRemoveCartItemMutation, useSetCartItemMutation } from "../features/cart/storefront-cart-mutations";
-import { useStorefrontCartQuery } from "../features/cart/storefront-cart-query";
+import { readCurrentCart, useStorefrontCartQuery } from "../features/cart/storefront-cart-query";
 import { useStorefrontSettingsQuery } from "../features/cart/storefront-settings-query";
 import { PaymentFlowScreen } from "../features/checkout/payment-flow-screen";
 import { useCheckoutFlow } from "../features/checkout/use-checkout-flow";
@@ -43,6 +44,7 @@ const currentOrderStatuses = new Set<StorefrontOrder["status"]>(["placed", "acce
 const noAddresses: DeliveryAddress[] = [];
 
 export function StorefrontApp() {
+  const queryClient = useQueryClient();
   const customerSession = useCustomerSession();
   const customer = customerSession.customer;
   // Cart identity: null means this browser is still anonymous, which selects
@@ -121,10 +123,14 @@ export function StorefrontApp() {
   // `onAdded` is passed only by the add-to-cart entry points, never by the
   // quantity stepper -- stepping a quantity must not navigate anywhere.
   function changeSimpleProductQuantity(productId: string, quantity: number, onAdded?: () => void) {
-    if (!cart) return;
-    const lineId = cartLineKey(cart.id, productId, []);
+    // Read the cart fresh at click time, not the value this closure was
+    // created with -- a render-stale cart.id would derive a line id for a
+    // cart that isn't current any more (see cart-line-identity.ts).
+    const currentCart = readCurrentCart(queryClient, customerId);
+    if (!currentCart) return;
+    const lineId = cartLineKey(currentCart.id, productId, []);
     if (quantity <= 0) {
-      if (cart.items.some((item) => item.id === lineId)) removeCartItem.mutate({ cartItemId: lineId }, { onError: (error) => reportCartError(error, "Couldn't update your cart.") });
+      if (currentCart.items.some((item) => item.id === lineId)) removeCartItem.mutate({ cartItemId: lineId }, { onError: (error) => reportCartError(error, "Couldn't update your cart.") });
       return;
     }
     setCartItem.mutate(
@@ -155,26 +161,28 @@ export function StorefrontApp() {
 
   function openProductConfiguration(product: MenuProduct) {
     if ((product.optionGroups?.length ?? 0) > 0) { setConfigurationTarget({ productId: product.id }); return; }
-    if (!cart) return;
-    const lineId = cartLineKey(cart.id, product.id, []);
-    const existingQuantity = cart.items.find((item) => item.id === lineId)?.quantity ?? 0;
+    const currentCart = readCurrentCart(queryClient, customerId);
+    if (!currentCart) return;
+    const lineId = cartLineKey(currentCart.id, product.id, []);
+    const existingQuantity = currentCart.items.find((item) => item.id === lineId)?.quantity ?? 0;
     changeSimpleProductQuantity(product.id, existingQuantity + 1);
   }
 
   function saveConfiguration(selections: CartLineOptionSelection[]) {
-    if (!configurationProduct || !cart) return;
-    const newLineId = cartLineKey(cart.id, configurationProduct.id, selections);
+    const currentCart = readCurrentCart(queryClient, customerId);
+    if (!configurationProduct || !currentCart) return;
+    const newLineId = cartLineKey(currentCart.id, configurationProduct.id, selections);
     const optionInputs = selections.map((selection) => ({ optionId: selection.optionId }));
     const onError = (error: unknown) => reportCartError(error, "This item couldn't be added right now.");
 
     if (configurationTarget?.lineId) {
-      const editingItem = cart.items.find((item) => item.id === configurationTarget.lineId);
+      const editingItem = currentCart.items.find((item) => item.id === configurationTarget.lineId);
       const quantity = editingItem?.quantity ?? 1;
 
       if (newLineId === configurationTarget.lineId) {
         setCartItem.mutate({ cartItemId: newLineId, productId: configurationProduct.id, quantity, selections: optionInputs }, { onError });
       } else {
-        const collidingQuantity = cart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
+        const collidingQuantity = currentCart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
         removeCartItem.mutate({ cartItemId: configurationTarget.lineId }, {
           onError,
           onSuccess: () => setCartItem.mutate(
@@ -188,7 +196,7 @@ export function StorefrontApp() {
       // branches above are only reachable from the cart screen, which the
       // customer is already looking at. Adding stays on the menu so the
       // customer can keep browsing instead of being bounced to the cart.
-      const existingQuantity = cart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
+      const existingQuantity = currentCart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
       setCartItem.mutate(
         { cartItemId: newLineId, productId: configurationProduct.id, quantity: existingQuantity + 1, selections: optionInputs },
         { onError },
@@ -292,9 +300,10 @@ export function StorefrontApp() {
   }
 
   function orderAgain(order: StorefrontOrder) {
-    if (!cart) return;
-    const cartId = cart.id;
-    const existingItemIds = cart.items.map((item) => item.id);
+    const currentCart = readCurrentCart(queryClient, customerId);
+    if (!currentCart) return;
+    const cartId = currentCart.id;
+    const existingItemIds = currentCart.items.map((item) => item.id);
 
     async function replaceCartWithOrder() {
       for (const itemId of existingItemIds) {

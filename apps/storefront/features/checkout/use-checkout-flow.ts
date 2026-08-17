@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { beginCheckoutAttempt, clearCheckoutAttempt, readCheckoutAttempt } from "./checkout-attempt-storage";
 import { cancelOrder as cancelOrderRequest, checkoutCart, getOrder, quoteCart, type ServerOrder } from "./api/storefront-checkout-api";
+import { clearCartPointer } from "../cart/cart-pointer-storage";
 import { storefrontCartQueryKey } from "../cart/storefront-cart-query";
 import { storefrontContext } from "../../lib/storefront/storefront-context";
 import type { CheckoutRequest, PaymentPendingOrder } from "../../domain/storefront";
@@ -195,8 +196,11 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     setTrackedOrderId(result.order.id);
 
     // checkout_cart marks the cart 'converted', so the cached copy is stale and
-    // the next add has to open a fresh cart.
+    // the next add has to open a fresh cart. Only clear the pointer now that
+    // conversion actually succeeded -- an aborted or failed checkout must
+    // leave the still-active cart's pointer alone.
     void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId), exact: true });
+    clearCartPointer(storefrontContext);
 
     // The payment hand-off is still a stub: no gateway is configured, so this
     // stops at "waiting for the provider" rather than claiming any outcome.
@@ -260,6 +264,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
       });
 
       void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId), exact: true });
+      clearCartPointer(storefrontContext);
 
       // The server has already created this order as 'placed'; only the
       // customer-facing payment-method label is added here. Nothing about the
