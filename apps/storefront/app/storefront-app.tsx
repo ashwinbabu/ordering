@@ -61,12 +61,13 @@ export function StorefrontApp() {
   const settingsResource = useStorefrontSettingsQuery();
   const setCartItem = useSetCartItemMutation(customerId);
   const removeCartItem = useRemoveCartItemMutation(customerId);
-  const checkout = useCheckoutFlow(cartResource.data?.id, customerId);
+  const checkout = useCheckoutFlow(cartResource.data?.id, customerId, requestedOrderId);
   const ordersResource = useCustomerOrdersQuery(customerId, storefrontContext.businessId);
-  // A restored checkout only knows its order *id* synchronously; the order
-  // itself is re-read from the server, so the payment screen opens in its
-  // "confirming" state and resolves to tracking once the server answers.
-  const [screen, setScreen] = useState<Screen>(() => checkout.restored ? "payment" : "menu");
+  // A restored checkout, or a direct /orders/:orderid load, only knows the
+  // order *id* synchronously; the order itself is re-read from the server,
+  // so the screen opens in its "confirming" state and resolves once the
+  // server answers.
+  const [screen, setScreen] = useState<Screen>(() => checkout.restored ? "payment" : requestedOrderId ? "tracking" : "menu");
   useOrderingStatusChannel(storefrontContext.businessId, storefrontContext.locationId);
   const menu = useMemo(
     () => storefrontMenuResource.data ? menuFromStorefrontMenu(storefrontMenuResource.data) : null,
@@ -281,8 +282,16 @@ export function StorefrontApp() {
     return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading menu</h1><p>Getting the latest menu for this location.</p></section></main>;
   }
 
-  if ((requestedOrderId && requestedOrderId !== checkout.order?.id) || (screen === "tracking" && !checkout.order)) {
+  // While a requested/restored order is still being verified against the
+  // server, checkout.order is legitimately null for a moment -- only a
+  // concluded failure (or a tracking screen with nothing to track at all)
+  // means the link is actually unavailable.
+  if (checkout.phase === "verification_error" || (screen === "tracking" && !checkout.order && !requestedOrderId && !checkout.restored)) {
     return <LinkUnavailablePage venue={venue} onBrowseMenu={returnToRestaurant} />;
+  }
+
+  if (screen === "tracking" && !checkout.order) {
+    return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading your order</h1><p>Fetching the latest status.</p></section></main>;
   }
 
   return <>

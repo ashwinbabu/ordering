@@ -93,6 +93,12 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
   const discount = appliedCouponCode && couponDiscountQuery.data?.valid ? couponDiscountQuery.data.discountAmount ?? 0 : 0;
   const netFoodSubtotal = Math.max(subtotal - discount, 0);
 
+  const cashEnabled = settings?.paymentMethods.cash.enabled ?? true;
+  const onlineEnabled = settings?.paymentMethods.online.enabled ?? true;
+  const cashOnlyMode = cashEnabled && !onlineEnabled;
+  const onlineOnlyMode = onlineEnabled && !cashEnabled;
+  const effectiveCashOnDelivery = cashOnlyMode ? true : onlineOnlyMode ? false : isCashOnDelivery;
+
   const pickupSupported = !settings || settings.orderingMode !== "delivery";
   const deliverySupported = !settings || settings.orderingMode !== "pickup";
   const deliveryDestination = fulfilment === "delivery" && selectedAddress?.latitude !== undefined && selectedAddress?.longitude !== undefined
@@ -152,7 +158,7 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
       deliveryFee: deliveryFee ?? 0,
       taxes,
     };
-    const proceedToCheckout = () => isCashOnDelivery ? onCashCheckoutAttempt(checkoutRequest) : onCheckoutAttempt(checkoutRequest);
+    const proceedToCheckout = () => effectiveCashOnDelivery ? onCashCheckoutAttempt(checkoutRequest) : onCheckoutAttempt(checkoutRequest);
     if (isCustomerVerified) { proceedToCheckout(); return; }
     // The address form's recipientPhone is the number the customer just typed
     // for this delivery, so that's who gets texted (needsAddress above
@@ -174,7 +180,7 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
     ? "Add a delivery address to continue"
     : !eligibility.canCheckout && eligibility.reason
       ? checkoutEligibilityMessage(eligibility.reason)
-      : isCashOnDelivery ? "Place order" : "Continue to payment";
+      : effectiveCashOnDelivery ? "Place order" : "Continue to payment";
 
   // Placeholder estimate until real prep-time logic lands: a flat kitchen
   // prep baseline plus a zone-distance bump (closer zones add less transit
@@ -320,10 +326,17 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
         </dl>
         {settings && netFoodSubtotal < settings.minimumOrderValue ? <p className="address-error" role="alert">Add {formatRupees(settings.minimumOrderValue - netFoodSubtotal)} more to meet the {formatRupees(settings.minimumOrderValue)} minimum order.</p> : null}
         <p className="summary-note">Final prices are rechecked before the secure payment hand-off.</p>
-        <label className="cash-on-delivery-toggle">
-          <input type="checkbox" checked={isCashOnDelivery} onChange={(event) => setIsCashOnDelivery(event.target.checked)} />
-          <span>Pay cash upon delivery</span>
-        </label>
+        {onlineOnlyMode ? null : (
+          <label className="cash-on-delivery-toggle">
+            <input
+              type="checkbox"
+              checked={effectiveCashOnDelivery}
+              disabled={cashOnlyMode}
+              onChange={(event) => setIsCashOnDelivery(event.target.checked)}
+            />
+            <span>Pay cash upon delivery</span>
+          </label>
+        )}
       </section>
     </div>
 
