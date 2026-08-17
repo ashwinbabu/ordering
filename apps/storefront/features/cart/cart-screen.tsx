@@ -29,9 +29,11 @@ interface CartScreenProps {
   onCheckoutAttempt: (request: CheckoutRequest) => void;
   onDismissCartError: () => void;
   onEditConfiguration: (lineId: string) => void;
+  onMaterializePendingAddress: (customerId: string) => Promise<DeliveryAddress | undefined>;
   onQuantityChange: (lineId: string, quantity: number) => void;
   onRequestAuthentication: (request: AuthFlowRequest) => void;
   onSaveAddress: (draft: AddressDraft, addressId?: string) => Promise<string>;
+  pendingAddress?: DeliveryAddress;
   savedAddresses: DeliveryAddress[];
   settings: StorefrontSettings | null;
   venue: Venue;
@@ -43,7 +45,7 @@ function computeDisplayTax(netFood: number, settings: StorefrontSettings | null)
   return Math.round(netFood * settings.taxRate) / 100;
 }
 
-export function CartScreen({ cart, cartError, customerDetails, isCartLoading, isCustomerVerified, lines, onBack, onCashCheckoutAttempt, onCheckoutAttempt, onDismissCartError, onEditConfiguration, onQuantityChange, onRequestAuthentication, onSaveAddress, savedAddresses, settings, venue }: CartScreenProps) {
+export function CartScreen({ cart, cartError, customerDetails, isCartLoading, isCustomerVerified, lines, onBack, onCashCheckoutAttempt, onCheckoutAttempt, onDismissCartError, onEditConfiguration, onMaterializePendingAddress, onQuantityChange, onRequestAuthentication, onSaveAddress, pendingAddress, savedAddresses, settings, venue }: CartScreenProps) {
   const [fulfilment, setFulfilment] = useState<FulfilmentType>("delivery");
   const [isCashOnDelivery, setIsCashOnDelivery] = useState(false);
   const [selectedAddressId, setSelectedAddressId] = useState<string>();
@@ -84,10 +86,13 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
     previousLineTotals.current = new Map(lines.map((line) => [line.id, { quantity: line.quantity, lineTotal: line.lineTotal }]));
   }, [lines]);
 
-  const effectiveAddressId = selectedAddressId ?? savedAddresses.find((address) => address.isDefault)?.id;
+  const effectiveAddressId = selectedAddressId ?? savedAddresses.find((address) => address.isDefault)?.id ?? pendingAddress?.id;
   const itemCount = lines.reduce((count, line) => count + line.quantity, 0);
   const subtotal = cart?.estimatedFoodSubtotal ?? 0;
-  const selectedAddress = savedAddresses.find((address) => address.id === effectiveAddressId);
+  // A guest's address never lands in savedAddresses (the server has no row
+  // for it yet), so it's only reachable through the pendingAddress prop.
+  const selectedAddress = savedAddresses.find((address) => address.id === effectiveAddressId)
+    ?? (pendingAddress?.id === effectiveAddressId ? pendingAddress : undefined);
   const appliedCouponCode = cart?.coupon?.code;
   const couponDiscountQuery = useCartCouponDiscountQuery(appliedCouponCode, subtotal);
   const discount = appliedCouponCode && couponDiscountQuery.data?.valid ? couponDiscountQuery.data.discountAmount ?? 0 : 0;
@@ -158,8 +163,20 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
       deliveryFee: deliveryFee ?? 0,
       taxes,
     };
-    const proceedToCheckout = () => effectiveCashOnDelivery ? onCashCheckoutAttempt(checkoutRequest) : onCheckoutAttempt(checkoutRequest);
-    if (isCustomerVerified) { proceedToCheckout(); return; }
+    // A guest's address is still only the in-memory draft ("pending") until
+    // OTP verification hands back a real customerId - that's the only point
+    // a real core.customer_business_addresses row (and its id, which
+    // checkout_cart requires) can be created.
+    async function proceedToCheckout(_phone?: PhoneNumber, authenticatedCustomerId?: string) {
+      let deliveryAddress = checkoutRequest.deliveryAddress;
+      if (authenticatedCustomerId && deliveryAddress?.id === "pending") {
+        deliveryAddress = await onMaterializePendingAddress(authenticatedCustomerId);
+        if (!deliveryAddress) return; // materialize failed; error already surfaced via cartError
+      }
+      const request: CheckoutRequest = { ...checkoutRequest, deliveryAddress };
+      if (effectiveCashOnDelivery) onCashCheckoutAttempt(request); else onCheckoutAttempt(request);
+    }
+    if (isCustomerVerified) { void proceedToCheckout(); return; }
     // The address form's recipientPhone is the number the customer just typed
     // for this delivery, so that's who gets texted (needsAddress above
     // guarantees selectedAddress is set once fulfilment is "delivery").
@@ -171,8 +188,8 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
         ? { countryCode: customerDetails.countryCode, phone: customerDetails.phone }
         : undefined;
     onRequestAuthentication(contactPhone
-      ? { context: "checkout", initialStep: "otp", onSuccess: proceedToCheckout, phone: contactPhone }
-      : { context: "checkout", onSuccess: proceedToCheckout });
+      ? { context: "checkout", initialStep: "otp", onSuccess: (phone, customerId) => void proceedToCheckout(phone, customerId), phone: contactPhone }
+      : { context: "checkout", onSuccess: (phone, customerId) => void proceedToCheckout(phone, customerId) });
   }
   function selectAddress(address: DeliveryAddress) { setSelectedAddressId(address.id); setAddressSheet(null); setAddressInvalid(false); }
 

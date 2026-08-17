@@ -22,7 +22,8 @@ interface AuthFlowBase {
   context: AuthContext;
   copy?: AuthFlowCopy;
   onCancel?: () => void;
-  onSuccess: (phone: PhoneNumber) => void;
+  /** customerId is the real core.customers id once a live session exists - undefined in demo mode. */
+  onSuccess: (phone: PhoneNumber, customerId?: string) => void;
 }
 
 export interface PhoneAuthRequest extends AuthFlowBase {
@@ -146,8 +147,8 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
 
     setVerificationState("verifying");
     try {
-      await otpVerification.verifyOtp(phone, value);
-      request.onSuccess(phone);
+      const customerId = await otpVerification.verifyOtp(phone, value);
+      request.onSuccess(phone, customerId);
     } catch (error) {
       const reason = error instanceof OtpVerifyError ? error.reason : "incorrect";
       setVerificationState(reason === "expired" ? "expired" : reason === "rate-limited" ? "rate-limited" : "incorrect");

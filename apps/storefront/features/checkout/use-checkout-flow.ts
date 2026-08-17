@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { beginCheckoutAttempt, clearCheckoutAttempt, readCheckoutAttempt } from "./checkout-attempt-storage";
-import { checkoutCart, getOrder, quoteCart, type ServerOrder } from "./api/storefront-checkout-api";
+import { cancelOrder as cancelOrderRequest, checkoutCart, getOrder, quoteCart, type ServerOrder } from "./api/storefront-checkout-api";
 import { storefrontCartQueryKey } from "../cart/storefront-cart-query";
 import { storefrontContext } from "../../lib/storefront/storefront-context";
 import type { CheckoutRequest, PaymentPendingOrder } from "../../domain/storefront";
@@ -93,8 +93,14 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
   const [request, setRequest] = useState<CheckoutRequest | null>(null);
   const [updatedAmount, setUpdatedAmount] = useState<number | null>(null);
   const [startError, setStartError] = useState<string>();
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string>();
   const activeRequest = useRef(false);
   const lastAttemptWasCash = useRef(false);
+  // transition_order's compare-and-swap needs the order's *raw* database
+  // status (e.g. "placed"), not the storefront-facing enum PaymentPendingOrder
+  // carries -- tracked separately rather than widening that type for one caller.
+  const databaseStatus = useRef<string | null>(null);
 
   /**
    * An active TanStack observer on the same query key verify() populates.
@@ -116,6 +122,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
   });
 
   const applyServerOrder = useCallback((result: ServerOrder) => {
+    databaseStatus.current = result.databaseStatus;
     setOrder((current) => {
       // The server response doesn't carry this label (see
       // beginCashOnDelivery below) -- preserve whatever was already
@@ -307,6 +314,29 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
    */
   const returnFromProvider = useCallback(() => { void verify(); }, [verify]);
 
+  /**
+   * Cancels the tracked order for real (see cancelOrder in
+   * storefront-checkout-api.ts) instead of only toggling local UI state.
+   * transition_order rejects atomically if the restaurant has already
+   * accepted the order or the 90-second window has closed -- that shows up
+   * here as a thrown error, surfaced via cancelError, with the tracking
+   * screen re-synced to whatever the server actually did.
+   */
+  const cancelOrder = useCallback(async () => {
+    if (!trackedOrderId || !databaseStatus.current || cancelling) return;
+    setCancelling(true);
+    setCancelError(undefined);
+    try {
+      const result = await cancelOrderRequest(trackedOrderId, databaseStatus.current, "Cancelled by customer");
+      applyServerOrder(result);
+    } catch (error) {
+      setCancelError(checkoutErrorMessage(error, "We couldn't cancel this order. It may have already been accepted."));
+      void verify();
+    } finally {
+      setCancelling(false);
+    }
+  }, [applyServerOrder, cancelling, trackedOrderId, verify]);
+
   useEffect(() => {
     function onVisibilityChange() {
       if (document.visibilityState === "visible" && phase === "awaiting_provider") void verify();
@@ -315,5 +345,5 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [phase, verify]);
 
-  return { acceptUpdatedQuote, begin, beginCashOnDelivery, order, phase, restored, returnFromProvider, retryPayment, startError, updatedAmount, verify };
+  return { acceptUpdatedQuote, begin, beginCashOnDelivery, cancelError, cancelling, cancelOrder, order, phase, restored, returnFromProvider, retryPayment, startError, updatedAmount, verify };
 }

@@ -2,14 +2,20 @@ import { ArrowLeft, Check, CircleCheck, Clock3, MapPin, ReceiptText, Truck } fro
 import { useEffect, useState } from "react";
 import { formatRupees, type PaymentPendingOrder, type Venue } from "../../domain/storefront";
 
-interface OrderTrackingScreenProps { order: PaymentPendingOrder; venue: Venue; onBackToRestaurant: () => void; }
+interface OrderTrackingScreenProps {
+  order: PaymentPendingOrder;
+  venue: Venue;
+  onBackToRestaurant: () => void;
+  onCancel: () => void;
+  cancelling: boolean;
+  cancelError?: string;
+}
 
 const cancelWindowSeconds = 90;
 const timerCircumference = 113;
 
-export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderTrackingScreenProps) {
+export function OrderTrackingScreen({ order, venue, onBackToRestaurant, onCancel, cancelling, cancelError }: OrderTrackingScreenProps) {
   const [remainingSeconds, setRemainingSeconds] = useState(() => Math.max(0, cancelWindowSeconds - Math.floor((Date.now() - Date.parse(order.createdAt)) / 1000)));
-  const [cancelled, setCancelled] = useState(false);
   useEffect(() => {
     const timer = window.setInterval(() => setRemainingSeconds(Math.max(0, cancelWindowSeconds - Math.floor((Date.now() - Date.parse(order.createdAt)) / 1000))), 1000);
     return () => window.clearInterval(timer);
@@ -18,7 +24,10 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
   const address = order.trackingOrder.deliveryAddress;
   const isCashOnDelivery = order.trackingOrder.paymentMethod === "Cash on delivery";
 
-  if (cancelled) {
+  // Driven by the server's own status, not a local click -- the cancel button
+  // below only requests a transition; this only shows once ordering.orders
+  // actually says 'cancelled' (see use-checkout-flow.ts's cancelOrder).
+  if (order.trackingOrder.status === "cancelled") {
     return <main className="tracking-page">
       <header className="tracking-header"><button className="icon-button" type="button" onClick={onBackToRestaurant} aria-label="Back to restaurant"><ArrowLeft aria-hidden="true" size={23} /></button><div className="brand-mark brand-mark--mini" aria-label={`${venue.displayName} logo`}>{venue.displayName}</div><div><strong>{venue.displayName}</strong><small>Order #{order.orderNumber}</small></div></header>
       <section className="order-cancelled-page">
@@ -54,8 +63,8 @@ export function OrderTrackingScreen({ order, venue, onBackToRestaurant }: OrderT
             </svg>
             <strong>{remainingSeconds}</strong>
           </div>
-          <div><strong>Need to cancel?</strong><p>You can cancel only while this countdown is active.</p></div>
-          <button type="button" onClick={() => setCancelled(true)}>Cancel order</button>
+          <div><strong>Need to cancel?</strong><p>You can cancel only while this countdown is active.</p>{cancelError ? <p role="alert" className="cancel-window__error">{cancelError}</p> : null}</div>
+          <button type="button" onClick={onCancel} disabled={cancelling}>{cancelling ? "Cancelling…" : "Cancel order"}</button>
         </section>
       ) : null}
 
