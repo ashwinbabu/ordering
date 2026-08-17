@@ -6,6 +6,7 @@ import { getSupabaseClient } from "../../lib/supabase/client";
 import { storefrontContext } from "../../lib/storefront/storefront-context";
 import { resolveCustomerBusinessId } from "./api/customer-business-api";
 import { useCustomerOrdersChannel } from "../orders/use-customer-orders-channel";
+import { clearCartPointer } from "../cart/cart-pointer-storage";
 
 interface CustomerRow {
   id: string;
@@ -147,6 +148,10 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
 
   async function signOut() {
     setDemoProfile(null);
+    // Without this, the next anonymous bootstrap would try this customer's
+    // cart pointer and either leak it into the new anonymous session or --
+    // on a shared device -- into whichever customer signs in next.
+    clearCartPointer(storefrontContext);
     await getSupabaseClient().auth.signOut();
   }
 

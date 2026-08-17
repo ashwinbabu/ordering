@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { attachAnonymousCart, getCart, openAnonymousCart } from "./api/storefront-cart-api";
 import { readCartPointer, writeCartPointer } from "./cart-pointer-storage";
 import { resolveCustomerBusinessId } from "../auth/api/customer-business-api";
@@ -13,6 +13,16 @@ import type { ServerCart } from "../../domain/cart";
  */
 export function storefrontCartQueryKey(customerId: string | null, context: StorefrontContext = storefrontContext) {
   return ["storefront", "cart", context.businessId, context.locationId, customerId ?? "anon"] as const;
+}
+
+/**
+ * The single source callers should read cart identity from at the moment
+ * they act -- mutation calls and identity-sensitive derivations (like a
+ * line id) must use this instead of a `cart` value captured at render time,
+ * which can be behind by the time the user actually clicks.
+ */
+export function readCurrentCart(queryClient: QueryClient, customerId: string | null, context: StorefrontContext = storefrontContext): ServerCart | undefined {
+  return queryClient.getQueryData<ServerCart>(storefrontCartQueryKey(customerId, context));
 }
 
 /**
