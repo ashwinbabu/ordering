@@ -1093,6 +1093,7 @@ export function AdminApp() {
     content = (
       <MenuAvailability
         categories={categories}
+        timezone={activeBusiness.timezone}
         busyAvailability={busyAvailability}
         onToggleCategory={toggleCategoryAvailability}
         onToggleProduct={(category, product) =>
