@@ -3,6 +3,7 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import { useAuth } from "@/features/auth/auth-context";
 import { useOutletContextQuery } from "@/features/outlet-context/outlet-context-query";
+import { useLocationOrdersChannel } from "@/features/orders/use-location-orders-channel";
 import type { AccessibleBusiness, AccessibleLocation } from "@/features/outlet-context/outlet-context-model";
 
 interface OutletContextValue {
@@ -28,6 +29,11 @@ export function OutletProvider({ children }: { children: ReactNode }) {
     () => data?.businesses.find((business) => business.id === activeLocation?.businessId) ?? null,
     [activeLocation?.businessId, data?.businesses],
   );
+
+  // Long-lived, provider-level subscription (not per-screen) so switching
+  // outlets re-scopes it automatically via the effect's own cleanup, the
+  // same pattern the storefront uses for its customer-orders channel.
+  useLocationOrdersChannel(activeBusiness?.id ?? null, activeLocation?.id ?? null);
 
   return (
     <OutletContext.Provider value={{
