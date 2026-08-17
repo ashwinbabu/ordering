@@ -62,7 +62,8 @@ export function AddressForm({ defaultRecipientPhone, initialValue, mode, onCance
     setIsSaving(true);
     try {
       await onSave({ ...draft, recipientName: draft.recipientName.trim(), recipientPhone: draft.recipientPhone.replace(/\D/g, "") });
-    } catch {
+    } catch (e) {
+      console.log(e)
       setSaveError("We couldn't save this address. Please try again.");
     } finally {
       setIsSaving(false);
