@@ -1,12 +1,28 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { removeCartItem, setCartCoupon, setCartItem, type CartOptionSelectionInput } from "./api/storefront-cart-api";
 import { clearCartPointer } from "./cart-pointer-storage";
-import { cartLineKey, findLineByContent, resolveCartLineId } from "../../lib/storefront/cart-line-identity";
+import { findLineByContent, resolveCartLineId } from "../../lib/storefront/cart-line-identity";
 import { resolveCartIdentity, storefrontCartQueryKey } from "./storefront-cart-query";
 import { storefrontContext, type StorefrontContext } from "../../lib/storefront/storefront-context";
 
 /** Postgres error codes the cart RPCs raise for business-rule rejections (not transient failures -- never worth retrying). */
 const nonRetryableCartErrorCodes = new Set(["22023", "42501", "55000", "23505", "40001"]);
+
+/**
+ * Shared by every mutation in this file so TanStack Query runs at most one
+ * of them at a time: a mutation's status stays "pending" -- which blocks any
+ * other same-scope mutation from starting -- until after its own onSuccess
+ * callback has resolved, and each mutation's onSuccess here is exactly the
+ * synchronous cache write (`queryClient.setQueryData`) that reconciles the
+ * cart. So by construction, the next cart mutation never starts before the
+ * previous one's write is already reflected in the cart query cache -- one
+ * mutation, server write, reconciled state, next mutation. This is what
+ * makes it safe for resolveCartLineId (cart-line-identity.ts) to mint a
+ * random id for a genuinely new line without deduplicating two rapid,
+ * identical adds into a single line: the second add's findLineByContent
+ * check always runs against a snapshot that already includes the first.
+ */
+const cartMutationScope = { id: "storefront-cart" } as const;
 
 export function isNonRetryableCartError(error: unknown) {
   const code = (error as { code?: unknown } | null)?.code;
@@ -100,6 +116,7 @@ export function useSetLineByContentMutation(getCustomerId: () => string | null, 
         });
       }, queryClient, getCustomerId, context),
     onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+    scope: cartMutationScope,
     retry: false,
   });
 }
@@ -152,6 +169,7 @@ export function useUpdateExistingLineMutation(getCustomerId: () => string | null
         });
       }, queryClient, getCustomerId, context),
     onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+    scope: cartMutationScope,
     retry: false,
   });
 }
@@ -175,6 +193,7 @@ export function useRemoveExistingLineMutation(getCustomerId: () => string | null
         return removeCartItem({ cartId, anonymousSessionId, cartItemId: item.id });
       }, queryClient, getCustomerId, context),
     onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+    scope: cartMutationScope,
     retry: false,
   });
 }
@@ -213,7 +232,7 @@ export function useSaveCartLineConfigurationMutation(getCustomerId: () => string
 
         if (!args.sourceLineId) {
           const quantity = (target?.quantity ?? 0) + 1;
-          const cartItemId = target?.id ?? cartLineKey(cart.id, args.productId, args.selections);
+          const cartItemId = target?.id ?? window.crypto.randomUUID();
           const result = await setCartItem({
             cartId, anonymousSessionId, cartItemId,
             productId: args.productId, quantity, customerNote: args.customerNote, selections: args.selections,
@@ -242,7 +261,7 @@ export function useSaveCartLineConfigurationMutation(getCustomerId: () => string
         // source survives, unremoved) rather than remove-first's failure
         // mode: the source silently gone and the merged replacement never
         // created.
-        const targetId = target?.id ?? cartLineKey(cart.id, args.productId, args.selections);
+        const targetId = target?.id ?? window.crypto.randomUUID();
         const mergedQuantity = sourceQuantity + (target?.quantity ?? 0);
         const result = await setCartItem({
           cartId, anonymousSessionId, cartItemId: targetId,
@@ -265,6 +284,7 @@ export function useSaveCartLineConfigurationMutation(getCustomerId: () => string
       }, queryClient, getCustomerId, context);
     },
     onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+    scope: cartMutationScope,
     retry: false,
   });
 }
@@ -278,6 +298,7 @@ export function useSetCartCouponMutation(getCustomerId: () => string | null, con
         return setCartCoupon({ cartId, anonymousSessionId, code: args.code });
       }, queryClient, getCustomerId, context),
     onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+    scope: cartMutationScope,
     retry: false,
   });
 }
