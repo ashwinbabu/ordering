@@ -3,9 +3,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { beginCheckoutAttempt, clearCheckoutAttempt, readCheckoutAttempt } from "./checkout-attempt-storage";
 import { cancelOrder as cancelOrderRequest, checkoutCart, getOrder, quoteCart, type ServerOrder } from "./api/storefront-checkout-api";
 import { clearCartPointer } from "../cart/cart-pointer-storage";
-import { storefrontCartQueryKey } from "../cart/storefront-cart-query";
+import { resolveCartIdentity, storefrontCartQueryKey } from "../cart/storefront-cart-query";
 import { storefrontContext } from "../../lib/storefront/storefront-context";
 import type { CheckoutRequest, PaymentPendingOrder } from "../../domain/storefront";
+
+/**
+ * What quote_cart/checkout_cart need to identify and act on a cart, resolved
+ * the same way -- from the same function -- as every other cart RPC in the
+ * app (see storefront-cart-query.ts). Neither RPC accepts a separate
+ * anonymous-session credential (both always send null; checkout is
+ * authenticated-only), so `cartId` is the only field either call reads off
+ * this, but resolving the whole snapshot keeps checkout on the same single
+ * source of identity as the rest of the cart instead of a parallel,
+ * cartId-only helper that could drift from it.
+ */
+type CartIdentity = ReturnType<typeof resolveCartIdentity>;
 
 export type CheckoutPhase =
   | "idle" | "quoting" | "quote_changed" | "creating_order" | "preparing_payment"
@@ -71,16 +83,55 @@ function isCheckoutAccessError(error: unknown) {
 }
 
 /**
+ * checkout_cart's own 42501s are not all the same failure. Its very first
+ * statement is `if not can_access_cart(p_cart_id, null) then raise 42501
+ * 'cart access denied'` -- that message means the cart on file no longer
+ * belongs to this identity, a genuine race between this hook's snapshot and
+ * a concurrent change (another tab attaching or re-claiming the cart). Any
+ * other 42501 (checkout_cart's own 'checkout requires authentication', or a
+ * bare "permission denied for function" from the RLS grant rejecting an
+ * unauthenticated caller before the function body ever runs) means this
+ * browser has no usable session at all -- re-reading the cart cannot fix
+ * that, so only the first case is worth retrying.
+ *
+ * Retrying the first case is safe: the access check runs before any insert,
+ * so a raised exception leaves nothing partially written, and the retry
+ * reuses the same orderId already persisted by beginCheckoutAttempt --
+ * checkout_cart's own idempotency check (converted cart + matching
+ * converted_order_id returns the existing order) means even a retry that
+ * lands after an earlier attempt's eventual success cannot create a second
+ * order.
+ */
+function isCartIdentityCheckoutError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  const message = (error as { message?: unknown } | null)?.message;
+  return code === "42501" && message === "cart access denied";
+}
+
+/**
  * Drives checkout against the real ordering RPCs.
  *
- * Two invariants hold throughout:
+ * Three invariants hold throughout:
  *   1. The order's identifier is persisted *before* checkout_cart is called,
  *      so a lost response, a refresh, or a second tab all replay onto the same
  *      order instead of creating another one.
  *   2. A payment outcome is only ever read back from the server. Nothing in
  *      browser storage is allowed to assert that an order was paid.
+ *   3. `getCartIdentity` is called fresh, immediately before each RPC that
+ *      needs it -- never once at the top of a callback and reused across an
+ *      `await`. quote_cart and checkout_cart are treated as two independent
+ *      RPCs for this purpose: checkout_cart re-resolves identity on its own
+ *      rather than trusting whatever quote_cart's call happened to read,
+ *      since checkout_cart recomputes its own authoritative total from the
+ *      cart regardless of what was quoted.
+ *   4. `getCustomerId` (not a plain `customerId` value) is what any cache
+ *      key here is built from, for the same reason as (3): auth can
+ *      transition while a checkout call is in flight or being recovered,
+ *      and a `customerId` captured at the top of a long-running callback
+ *      would keep targeting the pre-transition cache slot for the rest of
+ *      that callback's life, including its own retry.
  */
-export function useCheckoutFlow(cartId: string | undefined, customerId: string | null, requestedOrderId: string | null = null) {
+export function useCheckoutFlow(getCartIdentity: () => CartIdentity | undefined, getCustomerId: () => string | null, requestedOrderId: string | null = null) {
   const queryClient = useQueryClient();
   const [restored] = useState(() => Boolean(readCheckoutAttempt(storefrontContext)));
   // A direct load of /orders/:orderid (fresh navigation, reload, shared
@@ -180,13 +231,35 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * Calls checkout_cart with the given identity's cartId; on the narrow,
+   * proven-safe 'cart access denied' failure (see isCartIdentityCheckoutError
+   * above), refetches the cart and retries exactly once with a freshly
+   * resolved identity -- never replaying the failed request's own cartId.
+   * Any other failure (including a second 'cart access denied') propagates.
+   */
+  const checkoutCartWithIdentityRecovery = useCallback(
+    async (identity: CartIdentity, args: Omit<Parameters<typeof checkoutCart>[0], "cartId">) => {
+      try {
+        return await checkoutCart({ ...args, cartId: identity.cartId });
+      } catch (error) {
+        if (!isCartIdentityCheckoutError(error)) throw error;
+        await queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(getCustomerId()), exact: true });
+        const freshIdentity = getCartIdentity();
+        if (!freshIdentity) throw error;
+        return await checkoutCart({ ...args, cartId: freshIdentity.cartId });
+      }
+    },
+    [getCartIdentity, getCustomerId, queryClient],
+  );
+
   const createOrder = useCallback(async (checkoutRequest: CheckoutRequest) => {
-    if (!cartId) throw new Error("Your cart is still loading.");
+    const identity = getCartIdentity();
+    if (!identity) throw new Error("Your cart is still loading.");
     setPhase("creating_order");
     const orderId = beginCheckoutAttempt(storefrontContext);
-    const result = await checkoutCart({
+    const result = await checkoutCartWithIdentityRecovery(identity, {
       orderId,
-      cartId,
       fulfilment: checkoutRequest.fulfilment,
       customerBusinessAddressId: checkoutRequest.deliveryAddress?.id ?? null,
       customerNote: checkoutRequest.customerNote ?? null,
@@ -199,17 +272,18 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     // the next add has to open a fresh cart. Only clear the pointer now that
     // conversion actually succeeded -- an aborted or failed checkout must
     // leave the still-active cart's pointer alone.
-    void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId), exact: true });
+    void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(getCustomerId()), exact: true });
     clearCartPointer(storefrontContext);
 
     // The payment hand-off is still a stub: no gateway is configured, so this
     // stops at "waiting for the provider" rather than claiming any outcome.
     setPhase("preparing_payment");
     setPhase("awaiting_provider");
-  }, [cartId, customerId, queryClient]);
+  }, [checkoutCartWithIdentityRecovery, getCartIdentity, getCustomerId, queryClient]);
 
   const begin = useCallback(async (checkoutRequest: CheckoutRequest) => {
-    if (activeRequest.current || !cartId) return;
+    const identity = getCartIdentity();
+    if (activeRequest.current || !identity) return;
     activeRequest.current = true;
     lastAttemptWasCash.current = false;
     setRequest(checkoutRequest);
@@ -217,7 +291,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     setPhase("quoting");
     try {
       const quote = await quoteCart({
-        cartId,
+        cartId: identity.cartId,
         fulfilment: checkoutRequest.fulfilment,
         customerBusinessAddressId: checkoutRequest.deliveryAddress?.id ?? null,
       });
@@ -228,6 +302,11 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
         return;
       }
 
+      // createOrder resolves its own identity fresh rather than reusing
+      // `identity` above -- if it changed during the quote round trip, order
+      // creation targets whichever cart is actually current now, and
+      // checkout_cart recomputes its own authoritative total regardless of
+      // what was quoted.
       await createOrder(checkoutRequest);
     } catch (error) {
       // quote_cart and checkout_cart raise for real, explainable conditions --
@@ -238,7 +317,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     } finally {
       activeRequest.current = false;
     }
-  }, [cartId, createOrder]);
+  }, [createOrder, getCartIdentity]);
 
   // Cash on delivery still creates a real order through checkout_cart (same
   // idempotent path as online checkout) -- it just skips the quote-recheck
@@ -246,7 +325,8 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
   // prepare, going straight from order creation to the confirmed tracking
   // screen.
   const beginCashOnDelivery = useCallback(async (checkoutRequest: CheckoutRequest) => {
-    if (activeRequest.current || !cartId) return null;
+    const identity = getCartIdentity();
+    if (activeRequest.current || !identity) return null;
     activeRequest.current = true;
     lastAttemptWasCash.current = true;
     setRequest(checkoutRequest);
@@ -254,16 +334,15 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     setPhase("placing_order");
     try {
       const orderId = beginCheckoutAttempt(storefrontContext);
-      const result = await checkoutCart({
+      const result = await checkoutCartWithIdentityRecovery(identity, {
         orderId,
-        cartId,
         fulfilment: checkoutRequest.fulfilment,
         customerBusinessAddressId: checkoutRequest.deliveryAddress?.id ?? null,
         customerNote: checkoutRequest.customerNote ?? null,
         paymentMethod: "cash",
       });
 
-      void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId), exact: true });
+      void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(getCustomerId()), exact: true });
       clearCartPointer(storefrontContext);
 
       // The server has already created this order as 'placed'; only the
@@ -287,7 +366,7 @@ export function useCheckoutFlow(cartId: string | undefined, customerId: string |
     } finally {
       activeRequest.current = false;
     }
-  }, [cartId, customerId, queryClient]);
+  }, [checkoutCartWithIdentityRecovery, getCartIdentity, getCustomerId, queryClient]);
 
   const acceptUpdatedQuote = useCallback(() => {
     if (!request || activeRequest.current) return;

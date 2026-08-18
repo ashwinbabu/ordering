@@ -26,6 +26,21 @@ export function readCurrentCart(queryClient: QueryClient, customerId: string | n
 }
 
 /**
+ * The single authoritative read every cart RPC call (mutation or checkout)
+ * resolves its identity from, exactly once, immediately before constructing
+ * that request. Returns the cart itself, not just its id, so a caller never
+ * needs a second, independent read to look at its items -- a second read is
+ * what let cart_id/credential and an item id disagree in the first place.
+ * Throws rather than returning undefined so a caller can't accidentally
+ * build a request around a half-resolved identity.
+ */
+export function resolveCartIdentity(queryClient: QueryClient, customerId: string | null, context: StorefrontContext = storefrontContext) {
+  const cart = readCurrentCart(queryClient, customerId, context);
+  if (!cart) throw new Error("The cart has not loaded yet.");
+  return { cart, cartId: cart.id, anonymousSessionId: cart.isAuthenticated ? null : getAnonymousSessionId() };
+}
+
+/**
  * A signed-in customer always goes through attach_anonymous_cart: it claims
  * this browser's guest cart, merges it into an existing customer cart when
  * both exist, and creates one when there is nothing to claim. That single RPC
