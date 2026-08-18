@@ -1,4 +1,4 @@
-import type { CartLineOptionSelection } from "../../domain/storefront";
+import type { ServerCart, ServerCartItem } from "../../domain/cart";
 
 // The server upserts a cart item by client-supplied id
 // (ordering.set_cart_item), so the client owns cart-line identity. Two lines
@@ -6,12 +6,48 @@ import type { CartLineOptionSelection } from "../../domain/storefront";
 // exactly; quantity belongs to that exact configuration (task: cart-line
 // identity). The cart's own id is folded in so a fresh cart opened after the
 // previous one expired never collides with a stale item id from before.
-export function cartLineKey(cartId: string, productId: string, selections: CartLineOptionSelection[]) {
+//
+// Only for minting the id of a genuinely new line. An existing line's id
+// must come from the authoritative cart response (see resolveCartLineId) --
+// attach_anonymous_cart can re-parent an existing cart_items row onto a
+// different cart_id while preserving its id, so recomputing this hash for a
+// line that may already exist is not safe.
+export function cartLineKey(cartId: string, productId: string, selections: { optionId: string }[]) {
   const optionsKey = selections
     .map((selection) => selection.optionId)
     .sort()
     .join(",");
   return deterministicUuid(`${cartId}:${productId}:${optionsKey}`);
+}
+
+/**
+ * Finds the line already in `cart` with this exact product + option
+ * configuration, if any -- matched by content, not by recomputing an id.
+ * This is what makes existing-line lookup robust to attach_anonymous_cart's
+ * re-parenting: a survived line keeps its original id even though its
+ * cart_id changed, so a fresh cartLineKey(cart.id, ...) would not find it,
+ * but a content match does.
+ */
+export function findLineByContent(
+  cart: ServerCart,
+  productId: string,
+  selections: { optionId: string }[],
+): ServerCartItem | undefined {
+  const optionIds = selections.map((selection) => selection.optionId).sort().join(",");
+  return cart.items.find((item) => {
+    if (item.productId !== productId) return false;
+    return item.options.map((option) => option.optionId).sort().join(",") === optionIds;
+  });
+}
+
+/**
+ * The single place that decides existing-vs-new for a "set by content"
+ * mutation: an existing match's own id, or a freshly minted one -- always
+ * derived from the same `cart` snapshot passed in, so it can never disagree
+ * with the cart_id sent alongside it in the same request.
+ */
+export function resolveCartLineId(cart: ServerCart, productId: string, selections: { optionId: string }[]): string {
+  return findLineByContent(cart, productId, selections)?.id ?? cartLineKey(cart.id, productId, selections);
 }
 
 function fnv1a32(input: string, seed: number): number {

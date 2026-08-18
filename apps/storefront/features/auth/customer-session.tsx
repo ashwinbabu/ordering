@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { splitE164, type PhoneNumber } from "../../domain/phone";
 import type { CustomerProfile } from "../../domain/storefront";
 import { getSupabaseClient } from "../../lib/supabase/client";
@@ -19,6 +19,18 @@ interface CustomerRow {
 interface CustomerSessionValue {
   customer: CustomerProfile | null;
   customerId: string | null;
+  /**
+   * Reads the current customerId at call time, not the value closed over
+   * when a caller was created. `customerId` above is a normal render value
+   * -- correct for query keys and reactive UI, but a closure that captures
+   * it can go stale if auth transitions while that closure is still
+   * running (e.g. mid-mutation, or during a cart-identity recovery retry).
+   * This getter is backed by a ref kept in sync with `customerId` on every
+   * render, so any code that must observe an auth change that happens
+   * *during* an in-flight async operation should call this instead of
+   * closing over the plain value.
+   */
+  getCustomerId: () => string | null;
   isLoading: boolean;
   signOut: () => Promise<void>;
   /**
@@ -64,6 +76,18 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   // "authUserId is set" alone is not enough to know the channel can be
   // joined yet.
   const [customerBusinessReady, setCustomerBusinessReady] = useState(false);
+  // Mirrors `customerId` for callers that need its *current* value from
+  // inside an async operation that may outlive the render that started it
+  // (see `getCustomerId` below). Written only by setCurrentCustomerId,
+  // synchronously with the state below it -- an effect-based mirror would
+  // leave a window, between the state committing and the effect running,
+  // where getCustomerId() could still return the previous value.
+  const customerIdRef = useRef<string | null>(null);
+  const setCurrentCustomerId = useCallback((next: string | null) => {
+    customerIdRef.current = next;
+    setCustomerId(next);
+  }, []);
+  const getCustomerId = useCallback(() => customerIdRef.current, []);
 
   // Lives here (not in the Orders screen) so the customer keeps receiving
   // order-change notifications while on any screen, with exactly one
@@ -111,7 +135,7 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
 
       if (error || !data) {
         if (error) console.error("Could not load the signed-in customer profile.", error);
-        setCustomerId(null);
+        setCurrentCustomerId(null);
         setBaseProfile(null);
         setLocalOverride({});
         setCustomerLoaded(true);
@@ -119,7 +143,7 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
       }
 
       const row = data as CustomerRow;
-      setCustomerId(row.id);
+      setCurrentCustomerId(row.id);
       setBaseProfile(profileFromRow(row));
       setDemoProfile(null); // a real session supersedes any demo sign-in
       setLocalOverride({});
@@ -144,7 +168,7 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [session]);
+  }, [session, setCurrentCustomerId]);
 
   async function signOut() {
     setDemoProfile(null);
@@ -172,6 +196,7 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   const value: CustomerSessionValue = {
     customer,
     customerId,
+    getCustomerId,
     isLoading: !sessionLoaded || !customerLoaded,
     signOut,
     updateLocalProfile,

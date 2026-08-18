@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { defaultCountryCode } from "../domain/phone";
 import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
@@ -9,10 +9,10 @@ import { createCustomerAddress, resolveCustomerBusinessId } from "../features/ad
 import { AuthFlowSheet, type AuthFlowRequest } from "../features/auth/auth-flow-sheet";
 import { useCustomerSession } from "../features/auth/customer-session";
 import { CartScreen } from "../features/cart/cart-screen";
-import { cartLineKey } from "../lib/storefront/cart-line-identity";
+import { findLineByContent } from "../lib/storefront/cart-line-identity";
 import { reconcileCartLines, selectionsFromServerItem } from "../features/cart/cart-reconciliation";
-import { useRemoveCartItemMutation, useSetCartItemMutation } from "../features/cart/storefront-cart-mutations";
-import { readCurrentCart, useStorefrontCartQuery } from "../features/cart/storefront-cart-query";
+import { useRemoveExistingLineMutation, useSaveCartLineConfigurationMutation, useSetLineByContentMutation, useUpdateExistingLineMutation } from "../features/cart/storefront-cart-mutations";
+import { readCurrentCart, resolveCartIdentity, useStorefrontCartQuery } from "../features/cart/storefront-cart-query";
 import { useStorefrontSettingsQuery } from "../features/cart/storefront-settings-query";
 import { PaymentFlowScreen } from "../features/checkout/payment-flow-screen";
 import { useCheckoutFlow } from "../features/checkout/use-checkout-flow";
@@ -50,6 +50,12 @@ export function StorefrontApp() {
   // Cart identity: null means this browser is still anonymous, which selects
   // the anonymous cart path and its own cache entry.
   const customerId = customerSession.customerId;
+  // The live getter, for anything that resolves cart identity from inside an
+  // async operation that can outlive the render that started it (mutations,
+  // recovery retries, checkout) -- see getCustomerId's docstring in
+  // customer-session.tsx. `customerId` above stays the plain reactive value
+  // for query keys and rendered UI, which is what it's for.
+  const getCustomerId = customerSession.getCustomerId;
   const [requestedOrderId] = useState(requestedOrderIdFromUrl);
   const [authRequest, setAuthRequest] = useState<AuthFlowRequest>();
   // A guest's typed-but-unsaved delivery address: core.customer_business_addresses
@@ -69,9 +75,24 @@ export function StorefrontApp() {
   const saveCustomerAddress = useSaveCustomerAddressMutation(customerId);
   const deleteCustomerAddress = useDeleteCustomerAddressMutation(customerId);
   const settingsResource = useStorefrontSettingsQuery();
-  const setCartItem = useSetCartItemMutation(customerId);
-  const removeCartItem = useRemoveCartItemMutation(customerId);
-  const checkout = useCheckoutFlow(cartResource.data?.id, customerId, requestedOrderId);
+  const setLineByContent = useSetLineByContentMutation(getCustomerId);
+  const updateExistingLine = useUpdateExistingLineMutation(getCustomerId);
+  const removeExistingLine = useRemoveExistingLineMutation(getCustomerId);
+  const saveCartLineConfiguration = useSaveCartLineConfigurationMutation(getCustomerId);
+  // The same single identity-resolution function every cart mutation uses
+  // (see storefront-cart-query.ts) -- called fresh at the moment each
+  // checkout RPC actually fires (see use-checkout-flow.ts), never a value
+  // captured here at render time. Reading getCustomerId() (not customerId)
+  // means this stays correct even if auth transitions while a checkout call
+  // built from it is still in flight.
+  const getCartIdentity = useCallback(() => {
+    try {
+      return resolveCartIdentity(queryClient, getCustomerId());
+    } catch {
+      return undefined;
+    }
+  }, [getCustomerId, queryClient]);
+  const checkout = useCheckoutFlow(getCartIdentity, getCustomerId, requestedOrderId);
   const ordersResource = useCustomerOrdersQuery(customerId, storefrontContext.businessId);
   // A restored checkout, or a direct /orders/:orderid load, only knows the
   // order *id* synchronously; the order itself is re-read from the server,
@@ -122,87 +143,71 @@ export function StorefrontApp() {
 
   // `onAdded` is passed only by the add-to-cart entry points, never by the
   // quantity stepper -- stepping a quantity must not navigate anywhere.
+  // Identity (cart id, credential, and existing-vs-new line id) is resolved
+  // inside the mutation from one fresh snapshot at execution time -- this
+  // component never derives or passes any of it (see cart-line-identity.ts).
   function changeSimpleProductQuantity(productId: string, quantity: number, onAdded?: () => void) {
-    // Read the cart fresh at click time, not the value this closure was
-    // created with -- a render-stale cart.id would derive a line id for a
-    // cart that isn't current any more (see cart-line-identity.ts).
-    const currentCart = readCurrentCart(queryClient, customerId);
-    if (!currentCart) return;
-    const lineId = cartLineKey(currentCart.id, productId, []);
-    if (quantity <= 0) {
-      if (currentCart.items.some((item) => item.id === lineId)) removeCartItem.mutate({ cartItemId: lineId }, { onError: (error) => reportCartError(error, "Couldn't update your cart.") });
-      return;
-    }
-    setCartItem.mutate(
-      { cartItemId: lineId, productId, quantity, selections: [] },
-      { onError: (error) => reportCartError(error, "This item couldn't be added right now."), onSettled: onAdded },
+    if (!cart) return;
+    setLineByContent.mutate(
+      { productId, selections: [], quantity },
+      {
+        onError: (error) => reportCartError(error, quantity <= 0 ? "Couldn't update your cart." : "This item couldn't be added right now."),
+        onSettled: onAdded,
+      },
     );
   }
 
   function adjustConfigurableProductQuantity(productId: string, delta: number) {
     const existingLine = cart?.items.find((item) => item.productId === productId);
     if (!existingLine) return;
-    changeCartLineQuantity(existingLine.id, existingLine.quantity + delta);
+    const selections = existingLine.options.map((option) => ({ optionId: option.optionId }));
+    updateExistingLine.mutate(
+      { lineId: existingLine.id, productId, selections, delta },
+      { onError: (error) => reportCartError(error, "Couldn't update your cart.") },
+    );
   }
 
+  // `lineId` (and the productId/selections passed alongside it below) are a
+  // reference to the line the customer is looking at, not identity -- the
+  // mutation re-resolves the cart_id/credential/line-id it actually sends
+  // from its own fresh snapshot, falling back to a content match if this
+  // exact id is no longer there (see resolveExistingLine in
+  // storefront-cart-mutations.ts).
   function changeCartLineQuantity(lineId: string, quantity: number) {
-    if (!cart) return;
+    const item = cart?.items.find((candidate) => candidate.id === lineId);
+    if (!item) return;
+    const selections = item.options.map((option) => ({ optionId: option.optionId }));
     if (quantity <= 0) {
-      removeCartItem.mutate({ cartItemId: lineId }, { onError: (error) => reportCartError(error, "Couldn't update your cart.") });
+      removeExistingLine.mutate(
+        { lineId, productId: item.productId, selections },
+        { onError: (error) => reportCartError(error, "Couldn't update your cart.") },
+      );
       return;
     }
-    const item = cart.items.find((candidate) => candidate.id === lineId);
-    if (!item) return;
-    setCartItem.mutate(
-      { cartItemId: lineId, productId: item.productId, quantity, customerNote: item.customerNote ?? undefined, selections: item.options.map((option) => ({ optionId: option.optionId })) },
+    updateExistingLine.mutate(
+      { lineId, productId: item.productId, selections, quantity },
       { onError: (error) => reportCartError(error, "This item couldn't be updated right now.") },
     );
   }
 
   function openProductConfiguration(product: MenuProduct) {
     if ((product.optionGroups?.length ?? 0) > 0) { setConfigurationTarget({ productId: product.id }); return; }
+    // Same-tick peek purely for the "+1 to whatever's already there" default
+    // shown to the user -- not an identity value. The mutation this calls
+    // re-resolves everything fresh regardless of whether this peek is stale.
     const currentCart = readCurrentCart(queryClient, customerId);
     if (!currentCart) return;
-    const lineId = cartLineKey(currentCart.id, product.id, []);
-    const existingQuantity = currentCart.items.find((item) => item.id === lineId)?.quantity ?? 0;
+    const existingQuantity = findLineByContent(currentCart, product.id, [])?.quantity ?? 0;
     changeSimpleProductQuantity(product.id, existingQuantity + 1);
   }
 
   function saveConfiguration(selections: CartLineOptionSelection[]) {
-    const currentCart = readCurrentCart(queryClient, customerId);
-    if (!configurationProduct || !currentCart) return;
-    const newLineId = cartLineKey(currentCart.id, configurationProduct.id, selections);
+    if (!configurationProduct) return;
     const optionInputs = selections.map((selection) => ({ optionId: selection.optionId }));
-    const onError = (error: unknown) => reportCartError(error, "This item couldn't be added right now.");
-
-    if (configurationTarget?.lineId) {
-      const editingItem = currentCart.items.find((item) => item.id === configurationTarget.lineId);
-      const quantity = editingItem?.quantity ?? 1;
-
-      if (newLineId === configurationTarget.lineId) {
-        setCartItem.mutate({ cartItemId: newLineId, productId: configurationProduct.id, quantity, selections: optionInputs }, { onError });
-      } else {
-        const collidingQuantity = currentCart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
-        removeCartItem.mutate({ cartItemId: configurationTarget.lineId }, {
-          onError,
-          onSuccess: () => setCartItem.mutate(
-            { cartItemId: newLineId, productId: configurationProduct.id, quantity: quantity + collidingQuantity, selections: optionInputs },
-            { onError },
-          ),
-        });
-      }
-    } else {
-      // Adding a new line is the only branch reached from the menu; the edit
-      // branches above are only reachable from the cart screen, which the
-      // customer is already looking at. Adding stays on the menu so the
-      // customer can keep browsing instead of being bounced to the cart.
-      const existingQuantity = currentCart.items.find((item) => item.id === newLineId)?.quantity ?? 0;
-      setCartItem.mutate(
-        { cartItemId: newLineId, productId: configurationProduct.id, quantity: existingQuantity + 1, selections: optionInputs },
-        { onError },
-      );
-    }
-
+    saveCartLineConfiguration.mutate(
+      { sourceLineId: configurationTarget?.lineId, productId: configurationProduct.id, selections: optionInputs },
+      { onError: (error) => reportCartError(error, "This item couldn't be added right now.") },
+    );
     setConfigurationTarget(undefined);
   }
 
@@ -300,20 +305,21 @@ export function StorefrontApp() {
   }
 
   function orderAgain(order: StorefrontOrder) {
-    const currentCart = readCurrentCart(queryClient, customerId);
-    if (!currentCart) return;
-    const cartId = currentCart.id;
-    const existingItemIds = currentCart.items.map((item) => item.id);
+    if (!cart) return;
+    // A list of candidate ids to attempt clearing, not an identity value --
+    // each removal below resolves its own fresh cart id/credential
+    // independently, so a stale entry here just no-ops instead of being
+    // combined into a mismatched request (see cart-line-identity.ts).
+    const existingItemIds = cart.items.map((item) => item.id);
 
     async function replaceCartWithOrder() {
       for (const itemId of existingItemIds) {
-        await removeCartItem.mutateAsync({ cartItemId: itemId });
+        await removeExistingLine.mutateAsync({ lineId: itemId });
       }
       for (const item of order.items) {
         const product = item.productId ? menu?.products.find((candidate) => candidate.id === item.productId) : undefined;
         if (!product) continue;
-        const lineId = cartLineKey(cartId, product.id, []);
-        await setCartItem.mutateAsync({ cartItemId: lineId, productId: product.id, quantity: item.quantity, selections: [] });
+        await setLineByContent.mutateAsync({ productId: product.id, selections: [], quantity: item.quantity });
       }
     }
 

@@ -61,8 +61,8 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
   // Cart cache entries are keyed by identity, so coupon writes and the
   // revalidate-on-open below have to target the same identity the cart was
   // loaded under.
-  const { customerId } = useCustomerSession();
-  const setCartCoupon = useSetCartCouponMutation(customerId);
+  const { customerId, getCustomerId } = useCustomerSession();
+  const setCartCoupon = useSetCartCouponMutation(getCustomerId);
   const isOnline = useOnlineStatus();
 
   useEffect(() => {
