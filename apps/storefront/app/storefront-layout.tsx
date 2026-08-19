@@ -1,50 +1,78 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Outlet, useNavigate } from "react-router";
 import { defaultCountryCode } from "../domain/phone";
-import type { CartLineOptionSelection, CheckoutRequest, CustomerDetails, DeliveryAddress, MenuProduct, StorefrontOrder } from "../domain/storefront";
-import { AccountScreen } from "../features/account/account-screen";
-import { SavedAddressesScreen } from "../features/addresses/saved-addresses-screen";
+import { currentOrderStatuses, type CartLineOptionSelection, type CustomerDetails, type DeliveryAddress, type MenuProduct, type StorefrontOrder } from "../domain/storefront";
+import type { CartLineView, ServerCart, StorefrontSettings } from "../domain/cart";
 import { useCustomerAddressesQuery, useDeleteCustomerAddressMutation, useSaveCustomerAddressMutation } from "../features/addresses/customer-addresses-query";
 import { createCustomerAddress, resolveCustomerBusinessId } from "../features/addresses/api/customer-address-api";
+import type { AddressDraft } from "../features/addresses/address-form";
 import { AuthFlowSheet, type AuthFlowRequest } from "../features/auth/auth-flow-sheet";
 import { useCustomerSession } from "../features/auth/customer-session";
-import { CartScreen } from "../features/cart/cart-screen";
 import { findLineByContent } from "../lib/storefront/cart-line-identity";
 import { reconcileCartLines, selectionsFromServerItem } from "../features/cart/cart-reconciliation";
 import { useRemoveExistingLineMutation, useSaveCartLineConfigurationMutation, useSetLineByContentMutation, useUpdateExistingLineMutation } from "../features/cart/storefront-cart-mutations";
 import { readCurrentCart, resolveCartIdentity, useStorefrontCartQuery } from "../features/cart/storefront-cart-query";
 import { useStorefrontSettingsQuery } from "../features/cart/storefront-settings-query";
-import { PaymentFlowScreen } from "../features/checkout/payment-flow-screen";
 import { useCheckoutFlow } from "../features/checkout/use-checkout-flow";
-import { MenuScreen } from "../features/menu/menu-screen";
 import { ProductConfigurationSheet } from "../features/menu/product-configuration-sheet";
 import { ProductDetailSheet } from "../features/menu/product-detail-sheet";
 import { menuFromStorefrontMenu, venueFromStorefrontMenu } from "../features/menu/storefront-menu-adapter";
 import { useStorefrontMenuQuery } from "../features/menu/storefront-menu-query";
 import { useOrderingStatusChannel } from "../features/ordering-status/use-ordering-status-channel";
-import { OrderDetailsScreen } from "../features/orders/order-details-screen";
-import { OrdersScreen } from "../features/orders/orders-screen";
-import { OrderTrackingScreen } from "../features/orders/order-tracking-screen";
 import { useCustomerOrdersQuery } from "../features/orders/customer-orders-query";
-import { LinkUnavailablePage } from "../features/venue/link-unavailable-page";
-import { VenueFooter } from "../features/venue/venue-footer";
-import { VenueHeader } from "../features/venue/venue-header";
-import type { AddressDraft } from "../features/addresses/address-form";
 import { storefrontContext } from "../lib/storefront/storefront-context";
+import type { Menu, Venue } from "../domain/storefront";
+import type { UseQueryResult } from "@tanstack/react-query";
 
-function requestedOrderIdFromUrl() {
-  const match = window.location.pathname.match(/^\/orders\/([^/]+)$/);
-  return match ? match[1] : null;
-}
-
-type Screen = "account" | "addresses" | "cart" | "menu" | "order-details" | "orders" | "payment" | "tracking";
 interface ConfigurationTarget { productId: string; lineId?: string; }
 
-const currentOrderStatuses = new Set<StorefrontOrder["status"]>(["placed", "accepted", "preparing", "out-for-delivery"]);
 const noAddresses: DeliveryAddress[] = [];
 
-export function StorefrontApp() {
+/**
+ * Shared across every routed screen via <Outlet context={...}/> -- the
+ * router-era equivalent of what StorefrontApp used to compute once and pass
+ * down as props. Only major-screen navigation moved to the router; cart,
+ * menu, checkout, customer session and every mutation below are unchanged
+ * from the pre-routing implementation, just relocated here so no route
+ * duplicates its own fetch of the same data.
+ */
+export interface StorefrontLayoutContext {
+  venue: Venue;
+  menu: Menu;
+  cart: ServerCart | undefined;
+  cartResource: { isPending: boolean };
+  lines: CartLineView[];
+  cartQuantities: Record<string, number>;
+  cartItemCount: number;
+  cartTotal: number;
+  cartActionError: string | undefined;
+  dismissCartError: () => void;
+  settings: StorefrontSettings | null;
+  customerDetails: CustomerDetails;
+  savedAddresses: DeliveryAddress[];
+  customerAddressesResource: { isPending: boolean; isError: boolean; isSuccess: boolean; refetch: () => void };
+  pendingGuestAddress: DeliveryAddress | undefined;
+  checkout: ReturnType<typeof useCheckoutFlow>;
+  ordersResource: UseQueryResult<StorefrontOrder[]>;
+  currentOrders: StorefrontOrder[];
+  pastOrders: StorefrontOrder[];
+  openAuth: (request: AuthFlowRequest) => void;
+  openProductConfiguration: (product: MenuProduct) => void;
+  openConfigurationForLine: (lineId: string) => void;
+  viewProduct: (productId: string) => void;
+  changeSimpleProductQuantity: (productId: string, quantity: number, onAdded?: () => void) => void;
+  adjustConfigurableProductQuantity: (productId: string, delta: number) => void;
+  changeCartLineQuantity: (lineId: string, quantity: number) => void;
+  saveAddress: (draft: AddressDraft, editingId?: string) => Promise<string>;
+  removeAddress: (addressId: string) => Promise<void>;
+  materializePendingAddress: (authenticatedCustomerId: string) => Promise<DeliveryAddress | undefined>;
+  replaceCartWithOrder: (order: StorefrontOrder) => Promise<void>;
+}
+
+export function StorefrontLayout() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const customerSession = useCustomerSession();
   const customer = customerSession.customer;
   // Cart identity: null means this browser is still anonymous, which selects
@@ -56,7 +84,6 @@ export function StorefrontApp() {
   // customer-session.tsx. `customerId` above stays the plain reactive value
   // for query keys and rendered UI, which is what it's for.
   const getCustomerId = customerSession.getCustomerId;
-  const [requestedOrderId] = useState(requestedOrderIdFromUrl);
   const [authRequest, setAuthRequest] = useState<AuthFlowRequest>();
   // A guest's typed-but-unsaved delivery address: core.customer_business_addresses
   // writes require an authenticated customer (see createCustomerAddress), so
@@ -65,7 +92,6 @@ export function StorefrontApp() {
   // staying mounted underneath the auth sheet and is reachable from the
   // post-verification materialize step below.
   const [pendingGuestAddress, setPendingGuestAddress] = useState<DeliveryAddress>();
-  const [selectedOrderId, setSelectedOrderId] = useState<string>();
   const [configurationTarget, setConfigurationTarget] = useState<ConfigurationTarget>();
   const [viewingProductId, setViewingProductId] = useState<string>();
   const [cartActionError, setCartActionError] = useState<string>();
@@ -92,14 +118,26 @@ export function StorefrontApp() {
       return undefined;
     }
   }, [getCustomerId, queryClient]);
-  const checkout = useCheckoutFlow(getCartIdentity, getCustomerId, requestedOrderId);
+  // No requestedOrderId argument: with /orders/:orderId now fed by its own
+  // standalone useOrderById query (see use-order-by-id.ts), this hook goes
+  // back to being purely about the checkout this browser is actively going
+  // through, restored only from checkout-attempt-storage's localStorage
+  // pointer -- never re-derived from whatever order page happens to be open.
+  const checkout = useCheckoutFlow(getCartIdentity, getCustomerId);
   const ordersResource = useCustomerOrdersQuery(customerId, storefrontContext.businessId);
-  // A restored checkout, or a direct /orders/:orderid load, only knows the
-  // order *id* synchronously; the order itself is re-read from the server,
-  // so the screen opens in its "confirming" state and resolves once the
-  // server answers.
-  const [screen, setScreen] = useState<Screen>(() => checkout.restored ? "payment" : requestedOrderId ? "tracking" : "menu");
   useOrderingStatusChannel(storefrontContext.businessId, storefrontContext.locationId);
+
+  // A restored checkout attempt only makes sense to resume from /cart, where
+  // PaymentFlowScreen's phase-driven "confirming" state can render -- mirrors
+  // the pre-routing app's one-time `checkout.restored ? "payment" : ...`
+  // initial-screen check exactly (mount-only; checkout.restored is itself a
+  // one-time value that never changes after mount, so this never needs to
+  // re-fire).
+  useEffect(() => {
+    if (checkout.restored) navigate("/cart", { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const menu = useMemo(
     () => storefrontMenuResource.data ? menuFromStorefrontMenu(storefrontMenuResource.data) : null,
     [storefrontMenuResource.data],
@@ -124,7 +162,6 @@ export function StorefrontApp() {
   const orders = ordersResource.data ?? [];
   const currentOrders = orders.filter((order) => currentOrderStatuses.has(order.status));
   const pastOrders = orders.filter((order) => !currentOrderStatuses.has(order.status)).slice().sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt));
-  const selectedOrder = orders.find((order) => order.id === selectedOrderId);
 
   const configurationProduct = configurationTarget ? menu?.products.find((product) => product.id === configurationTarget.productId) : undefined;
   const configurationServerItem = configurationTarget?.lineId ? cart?.items.find((item) => item.id === configurationTarget.lineId) : undefined;
@@ -134,11 +171,6 @@ export function StorefrontApp() {
   function reportCartError(error: unknown, fallback: string) {
     const message = (error as { message?: unknown } | null)?.message;
     setCartActionError(typeof message === "string" && message.length > 0 ? message : fallback);
-  }
-
-  function openCart() {
-    setScreen("cart");
-    window.scrollTo({ top: 0 });
   }
 
   // `onAdded` is passed only by the add-to-cart entry points, never by the
@@ -201,6 +233,11 @@ export function StorefrontApp() {
     changeSimpleProductQuantity(product.id, existingQuantity + 1);
   }
 
+  function openConfigurationForLine(lineId: string) {
+    const item = cart?.items.find((candidate) => candidate.id === lineId);
+    if (item) setConfigurationTarget({ productId: item.productId, lineId });
+  }
+
   function saveConfiguration(selections: CartLineOptionSelection[]) {
     if (!configurationProduct) return;
     const optionInputs = selections.map((selection) => ({ optionId: selection.optionId }));
@@ -256,63 +293,22 @@ export function StorefrontApp() {
     setAuthRequest({
       ...request,
       onCancel: () => { request.onCancel?.(); setAuthRequest(undefined); },
-      onSuccess: (phone, customerId) => { request.onSuccess(phone, customerId); setAuthRequest(undefined); },
+      onSuccess: (phone, resolvedCustomerId) => { request.onSuccess(phone, resolvedCustomerId); setAuthRequest(undefined); },
     });
   }
 
-  function requestAccountAuthentication() {
-    // A signed-in customer goes straight to their account; only an anonymous
-    // visitor needs the phone/OTP sheet.
-    if (customer) { setScreen("account"); return; }
-    openAuth({
-      context: "account",
-      onSuccess: () => setScreen("account"),
-    });
-  }
-
-  function beginCheckout(request: CheckoutRequest) {
-    setScreen("payment");
-    void checkout.begin(request);
-  }
-
-  function beginCashOnDeliveryCheckout(request: CheckoutRequest) {
-    setScreen("payment");
-    void checkout.beginCashOnDelivery(request).then((order) => {
-      if (!order) return;
-      // Cash orders are already placed by checkout_cart, so there is no
-      // payment result to confirm. Take the customer straight to the same
-      // tracking screen used after an online payment succeeds.
-      window.history.replaceState({}, "", `/orders/${order.id}`);
-      setScreen("tracking");
-    });
-  }
-
-  function openTracking() {
-    if (!checkout.order) return;
-    window.history.replaceState({}, "", `/orders/${checkout.order.id}`);
-    setScreen("tracking");
-  }
-
-  function returnToRestaurant() {
-    window.history.replaceState({}, "", "/");
-    setScreen("menu");
-  }
-
-  function openOrderDetails(order: StorefrontOrder) {
-    setSelectedOrderId(order.id);
-    setScreen("order-details");
-    window.scrollTo({ top: 0 });
-  }
-
-  function orderAgain(order: StorefrontOrder) {
+  // Fire-and-forget from the caller's point of view (matches the pre-routing
+  // "Order again" behaviour: navigate immediately, let this run in the
+  // background) -- errors are reported the same way as every other cart
+  // action, via cartActionError, rather than propagated to the caller.
+  async function replaceCartWithOrder(order: StorefrontOrder) {
     if (!cart) return;
-    // A list of candidate ids to attempt clearing, not an identity value --
-    // each removal below resolves its own fresh cart id/credential
-    // independently, so a stale entry here just no-ops instead of being
-    // combined into a mismatched request (see cart-line-identity.ts).
-    const existingItemIds = cart.items.map((item) => item.id);
-
-    async function replaceCartWithOrder() {
+    try {
+      // A list of candidate ids to attempt clearing, not an identity value --
+      // each removal below resolves its own fresh cart id/credential
+      // independently, so a stale entry here just no-ops instead of being
+      // combined into a mismatched request (see cart-line-identity.ts).
+      const existingItemIds = cart.items.map((item) => item.id);
       for (const itemId of existingItemIds) {
         await removeExistingLine.mutateAsync({ lineId: itemId });
       }
@@ -321,11 +317,9 @@ export function StorefrontApp() {
         if (!product) continue;
         await setLineByContent.mutateAsync({ productId: product.id, selections: [], quantity: item.quantity });
       }
+    } catch (error) {
+      reportCartError(error, "Couldn't reorder this order right now.");
     }
-
-    replaceCartWithOrder().catch((error: unknown) => reportCartError(error, "Couldn't reorder this order right now."));
-    setScreen("menu");
-    requestAnimationFrame(() => window.scrollTo({ top: 0 }));
   }
 
   if (storefrontMenuResource.status === "error") {
@@ -336,40 +330,46 @@ export function StorefrontApp() {
     return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading menu</h1><p>Getting the latest menu for this location.</p></section></main>;
   }
 
-  // While a requested/restored order is still being verified against the
-  // server, checkout.order is legitimately null for a moment -- only a
-  // concluded failure (or a tracking screen with nothing to track at all)
-  // means the link is actually unavailable.
-  if (checkout.phase === "verification_error" || (screen === "tracking" && !checkout.order && !requestedOrderId && !checkout.restored)) {
-    return <LinkUnavailablePage venue={venue} onBrowseMenu={returnToRestaurant} />;
-  }
-
-  if (screen === "tracking" && !checkout.order) {
-    return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading your order</h1><p>Fetching the latest status.</p></section></main>;
-  }
+  const context: StorefrontLayoutContext = {
+    venue,
+    menu,
+    cart,
+    cartResource: { isPending: cartResource.isPending },
+    lines,
+    cartQuantities,
+    cartItemCount,
+    cartTotal,
+    cartActionError,
+    dismissCartError: () => setCartActionError(undefined),
+    settings: settingsResource.data ?? null,
+    customerDetails,
+    savedAddresses,
+    customerAddressesResource: {
+      isPending: customerAddressesResource.isPending,
+      isError: customerAddressesResource.isError,
+      isSuccess: customerAddressesResource.isSuccess,
+      refetch: () => void customerAddressesResource.refetch(),
+    },
+    pendingGuestAddress,
+    checkout,
+    ordersResource,
+    currentOrders,
+    pastOrders,
+    openAuth,
+    openProductConfiguration,
+    openConfigurationForLine,
+    viewProduct: (productId) => setViewingProductId(productId),
+    changeSimpleProductQuantity,
+    adjustConfigurableProductQuantity,
+    changeCartLineQuantity,
+    saveAddress,
+    removeAddress,
+    materializePendingAddress,
+    replaceCartWithOrder,
+  };
 
   return <>
-    {screen === "menu" ? <div className="ordering-app"><VenueHeader cartItemCount={cartItemCount} venue={venue} onGoToCart={openCart} onOpenAccount={requestAccountAuthentication} /><MenuScreen cartItemCount={cartItemCount} cartQuantities={cartQuantities} cartTotal={cartTotal} footer={<VenueFooter venue={venue} />} isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} menu={menu} onAddProduct={openProductConfiguration} onAdjustQuantity={adjustConfigurableProductQuantity} onGoToCart={openCart} onQuantityChange={changeSimpleProductQuantity} onViewProduct={(product) => setViewingProductId(product.id)} orderingStatus={venue.orderingStatus} /></div> : null}
-    {screen === "cart" ? <CartScreen cart={cart} cartError={cartActionError} onDismissCartError={() => setCartActionError(undefined)} isCartLoading={cartResource.isPending} lines={lines} settings={settingsResource.data ?? null} customerDetails={customerDetails} isCustomerVerified={Boolean(customer?.isPhoneVerified)} onBack={() => { setScreen("menu"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }} onCashCheckoutAttempt={beginCashOnDeliveryCheckout} onCheckoutAttempt={beginCheckout} onEditConfiguration={(lineId) => { const item = cart?.items.find((candidate) => candidate.id === lineId); if (item) setConfigurationTarget({ productId: item.productId, lineId }); }} onMaterializePendingAddress={materializePendingAddress} onQuantityChange={changeCartLineQuantity} onRequestAuthentication={openAuth} onSaveAddress={saveAddress} pendingAddress={pendingGuestAddress} savedAddresses={savedAddresses} venue={venue} /> : null}
-    {/*
-      Known limitation: verifying a different number here re-runs the full
-      MSG91 + customer-auth-msg91 exchange, which finds-or-creates a customer
-      keyed by that phone_e164. That signs the browser into whichever
-      identity the new number resolves to, rather than renaming the phone on
-      the currently signed-in customer - core.customers has no "reassign
-      phone_e164" operation. The session context picks up the new identity
-      on its own via onAuthStateChange, so no local merge is needed here,
-      but this is a real product gap worth a deliberate fix, not something
-      this task covers.
-    */}
-    {screen === "account" ? (customer
-      ? <AccountScreen addressCount={savedAddresses.length} customer={customer} onBack={() => setScreen("menu")} onOpenAddresses={() => setScreen("addresses")} onOpenOrders={() => setScreen("orders")} onRequestPhoneChange={() => openAuth({ context: "account", initialStep: "phone", phone: { countryCode: customer.countryCode, phone: customer.phone }, onSuccess: () => {} })} onSaveCustomer={customerSession.updateLocalProfile} onSignOut={() => { void customerSession.signOut(); setScreen("menu"); }} venue={venue} />
-      : <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading your account</h1></section></main>) : null}
-    {screen === "addresses" ? <SavedAddressesScreen addresses={savedAddresses} onBack={() => setScreen("account")} onDelete={removeAddress} onRetry={() => void customerAddressesResource.refetch()} onSave={saveAddress} state={customerAddressesResource.isPending ? "loading" : customerAddressesResource.isError ? "error" : "ready"} venue={venue} /> : null}
-    {screen === "orders" ? <OrdersScreen currentOrders={currentOrders} pastOrders={pastOrders} onBack={() => setScreen("account")} onBrowseMenu={() => setScreen("menu")} onOpenOrder={openOrderDetails} state={ordersResource.isPending ? "loading" : ordersResource.isError ? "error" : "ready"} venue={venue} /> : null}
-    {screen === "order-details" && selectedOrder ? <OrderDetailsScreen order={selectedOrder} onBack={() => setScreen("orders")} onOrderAgain={orderAgain} venue={venue} /> : null}
-    {screen === "payment" ? <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={openTracking} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} startError={checkout.startError} updatedAmount={checkout.updatedAmount} venue={venue} /> : null}
-    {screen === "tracking" && checkout.order ? <OrderTrackingScreen cancelError={checkout.cancelError} cancelling={checkout.cancelling} onBackToRestaurant={returnToRestaurant} onCancel={() => void checkout.cancelOrder()} order={checkout.order} venue={venue} /> : null}
+    <Outlet context={context} />
     {configurationProduct ? <ProductConfigurationSheet initialSelections={configurationLine} isAcceptingOrders={venue.isAcceptingOrders} product={configurationProduct} onClose={() => setConfigurationTarget(undefined)} onConfirm={saveConfiguration} /> : null}
     {viewingProduct ? <ProductDetailSheet isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} product={viewingProduct} onAdd={openProductConfiguration} onClose={() => setViewingProductId(undefined)} /> : null}
     {authRequest ? <AuthFlowSheet request={authRequest} /> : null}

@@ -71,7 +71,8 @@ function phaseFromOrder(order: PaymentPendingOrder): CheckoutPhase {
  */
 const readableErrorCodes = new Set(["22023", "55000"]);
 
-function checkoutErrorMessage(error: unknown, fallback: string) {
+/** Exported for reuse by the /orders/:orderId route's own cancel handler, which calls cancelOrder directly rather than through this hook -- see use-order-by-id.ts. */
+export function checkoutErrorMessage(error: unknown, fallback: string) {
   const code = (error as { code?: unknown } | null)?.code;
   const message = (error as { message?: unknown } | null)?.message;
 

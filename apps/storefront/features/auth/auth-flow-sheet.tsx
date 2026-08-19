@@ -8,7 +8,7 @@ import { OtpVerifyError, useOtpVerification } from "./use-otp-verification";
 export type AuthContext = "account" | "addresses" | "checkout" | "orders";
 type AuthStep = "otp" | "phone";
 type AuthRequestState = "idle" | "request-failed" | "sending";
-type VerificationState = "expired" | "idle" | "incorrect" | "rate-limited" | "verifying";
+type VerificationState = "already-verified" | "auth-incomplete" | "expired" | "idle" | "incorrect" | "provider-error" | "rate-limited" | "verifying";
 
 export interface AuthFlowCopy {
   phoneDescription?: string;
@@ -70,10 +70,33 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   const priorFocusRef = useRef<HTMLElement | null>(document.activeElement instanceof HTMLElement ? document.activeElement : null);
   const previousAutoSubmittedOtpRef = useRef<string | undefined>(undefined);
   const initialSendCancelledRef = useRef(false);
+  // Set when MSG91 already succeeded but a later stage (token exchange)
+  // failed - the current reqId is spent, and re-verifying it (whether via
+  // auto-submit or the button) would only replay the same failure or a 703
+  // from MSG91. While true, the OTP step is locked: no digits can be typed
+  // and "Verify & continue" cannot be pressed. Only a fresh reqId (Resend,
+  // or a new phone number) clears it - see resendOtp/returnToPhone below.
+  const [requestConsumed, setRequestConsumed] = useState(false);
+  // Synchronous mutual-exclusion guard for the shared verify entry point
+  // below. Holds the OTP value of the currently in-flight verification
+  // pipeline (MSG91 verifyOtp -> token exchange -> Supabase session
+  // install), or null when none is active. Checked and set before the first
+  // await, so - unlike `isVerifying` React state, which only reflects
+  // reality once a render commits - a second trigger (the auto-submit
+  // effect and a manual click both landing on the same OTP entry) can never
+  // slip through the gap between "6th digit committed" and "verifying state
+  // rendered". Cleared in `finally` so it can never outlive one attempt.
+  const verifyLockRef = useRef<string | null>(null);
 
   const isSending = requestState === "sending";
   const isVerifying = verificationState === "verifying";
-  const otpError = verificationState === "incorrect" ? "That code isn't right. Try again." : verificationState === "expired" ? "This code has expired. Request a new code to continue." : verificationState === "rate-limited" ? "Too many attempts. Please try again shortly." : undefined;
+  const otpError = verificationState === "incorrect" ? "That code isn't right. Try again."
+    : verificationState === "expired" ? "This code has expired. Request a new code to continue."
+    : verificationState === "rate-limited" ? "Too many attempts. Please try again shortly."
+    : verificationState === "already-verified" ? "This code has already been used. Tap \"Resend code\" to get a new one."
+    : verificationState === "provider-error" ? "Couldn't reach the verification service. Check your connection and try again."
+    : verificationState === "auth-incomplete" ? "Something went wrong finishing sign-in. Request a new code to continue."
+    : undefined;
   const resendLimitReached = resendAttempts >= otpVerification.maxResendAttempts;
 
   useEffect(() => {
@@ -136,6 +159,8 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
       setResendRemainingSeconds(otpVerification.resendDelaySeconds);
       setResendAttempts(0);
       setRequestState("idle");
+      // A fresh send just minted a new reqId - any earlier lock is stale.
+      setRequestConsumed(false);
       setStep("otp");
     } catch {
       setRequestState("request-failed");
@@ -143,7 +168,19 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   }
 
   const verifyOtp = useCallback(async (value: string) => {
-    if (value.length !== otpVerification.otpLength || isVerifying) return;
+    if (value.length !== otpVerification.otpLength) return;
+    // MSG91 already succeeded and burned this reqId once (see the
+    // auth-incomplete branch below) - refuse to verify again no matter what
+    // called this, not just via the disabled button/input. The UI disabling
+    // is a courtesy; this is the actual guarantee.
+    if (requestConsumed) return;
+    // One MSG91 reqId may have at most one active verification pipeline.
+    // This check-and-set is synchronous, so it closes the window (between
+    // the 6th digit committing and `verifying` state actually rendering)
+    // where both the auto-submit effect and a manual click could otherwise
+    // both pass this guard and each call MSG91 verifyOtp for the same code.
+    if (verifyLockRef.current !== null) return;
+    verifyLockRef.current = value;
 
     setVerificationState("verifying");
     try {
@@ -151,18 +188,49 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
       request.onSuccess(phone, customerId);
     } catch (error) {
       const reason = error instanceof OtpVerifyError ? error.reason : "incorrect";
-      setVerificationState(reason === "expired" ? "expired" : reason === "rate-limited" ? "rate-limited" : "incorrect");
+      setVerificationState(reason);
+      if (reason === "already-verified") {
+        // This reqId is already spent - re-submitting the same digits would
+        // just hit MSG91 again and get the same rejection. Clear the stale
+        // code and unblock "Resend code" immediately (instead of leaving it
+        // on the normal cooldown) so the customer's next action is getting a
+        // fresh reqId, not retrying the consumed one.
+        setOtp("");
+        previousAutoSubmittedOtpRef.current = undefined;
+        setResendRemainingSeconds(0);
+      } else if (reason === "auth-incomplete") {
+        // MSG91 already succeeded for this reqId before the exchange failed
+        // downstream - MSG91 verification must not become the retry
+        // mechanism for that failure. Unlike "already-verified" above,
+        // clearing the digits isn't enough on its own (the customer could
+        // just retype them and auto-submit would fire again against the
+        // same reqId), so this hard-locks the step: no typing, no Verify,
+        // until requestConsumed is cleared by a fresh reqId.
+        setOtp("");
+        previousAutoSubmittedOtpRef.current = undefined;
+        setResendRemainingSeconds(0);
+        setRequestConsumed(true);
+      }
+    } finally {
+      // Only clear if this call still owns the lock - a stale finally from
+      // an attempt that already lost the lock (shouldn't happen given the
+      // guard above, but keeps this robust) must not clear a newer one.
+      if (verifyLockRef.current === value) verifyLockRef.current = null;
     }
-  }, [isVerifying, otpVerification, phone, request]);
+  }, [otpVerification, phone, request, requestConsumed]);
 
   useEffect(() => {
-    if (step !== "otp" || otp.length !== otpVerification.otpLength || isVerifying || previousAutoSubmittedOtpRef.current === otp) return;
+    if (step !== "otp" || otp.length !== otpVerification.otpLength || isVerifying || requestConsumed || previousAutoSubmittedOtpRef.current === otp) return;
     previousAutoSubmittedOtpRef.current = otp;
     verifyOtp(otp);
-  }, [isVerifying, otp, otpVerification.otpLength, step, verifyOtp]);
+  }, [isVerifying, otp, otpVerification.otpLength, requestConsumed, step, verifyOtp]);
 
   async function resendOtp() {
     if (resendRemainingSeconds > 0 || isResending || resendLimitReached) return;
+    // A fresh reqId is about to replace whatever the lock was tracking (the
+    // resend button is disabled while isVerifying anyway, so this is
+    // defensive, not load-bearing).
+    verifyLockRef.current = null;
     setIsResending(true);
     // Started unconditionally, before we know the outcome: a resend that
     // keeps failing (e.g. a transport/config error) must not let the
@@ -175,6 +243,10 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
       previousAutoSubmittedOtpRef.current = undefined;
       setVerificationState("idle");
       setRequestState("idle");
+      // Only now is there actually a new reqId to verify against - a failed
+      // resend leaves whatever reqId MSG91 already had, so requestConsumed
+      // must not clear until the resend itself has succeeded.
+      setRequestConsumed(false);
     } catch (error) {
       console.error("Resend failed", error);
       setRequestState("request-failed");
@@ -187,6 +259,11 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
     initialSendCancelledRef.current = true;
     setOtp("");
     previousAutoSubmittedOtpRef.current = undefined;
+    // Defensive, like resendOtp's reset above: "Change phone number" is also
+    // disabled while isVerifying, but a new phone number means any locked
+    // reqId no longer applies.
+    verifyLockRef.current = null;
+    setRequestConsumed(false);
     setVerificationState("idle");
     setRequestState("idle");
     setStep("phone");
@@ -213,10 +290,10 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
       </form> : <div className="auth-sheet__body">
         <div className="auth-sheet__intro"><p className="section-kicker">{request.context === "checkout" ? "Checkout" : "Your details"}</p><h2 id={dialogTitleId}>{copy.otpTitle}</h2><p id={dialogDescriptionId}>{isInitialSend ? `Sending a ${otpVerification.otpLength}-digit code to ` : copy.otpDescription}<strong>{maskPhoneNumber(phone)}</strong></p></div>
         {isInitialSend ? null : <>
-          <OtpInput describedBy={otpError ? "auth-otp-error" : undefined} disabled={isVerifying} hasError={Boolean(otpError)} length={otpVerification.otpLength} onChange={(nextOtp) => { if (nextOtp !== otp) previousAutoSubmittedOtpRef.current = undefined; setOtp(nextOtp); if (verificationState !== "idle") setVerificationState("idle"); }} value={otp} />
+          <OtpInput describedBy={otpError ? "auth-otp-error" : undefined} disabled={isVerifying || requestConsumed} hasError={Boolean(otpError)} length={otpVerification.otpLength} onChange={(nextOtp) => { if (nextOtp !== otp) previousAutoSubmittedOtpRef.current = undefined; setOtp(nextOtp); if (verificationState !== "idle") setVerificationState("idle"); }} value={otp} />
           {otpError ? <p className="auth-error" id="auth-otp-error" role="alert">{otpError}</p> : requestState === "request-failed" ? <p className="auth-error" role="alert">Unable to send a code right now. Please try again.</p> : null}
           <OtpResendTimer disabled={isVerifying} isResending={isResending} limitReached={resendLimitReached} onResend={resendOtp} remainingSeconds={resendRemainingSeconds} />
-          <button className="primary-button auth-sheet__primary" disabled={otp.length !== otpVerification.otpLength || isVerifying} onClick={() => verifyOtp(otp)} type="button">{isVerifying ? "Verifying…" : copy.verifyLabel}</button>
+          <button className="primary-button auth-sheet__primary" disabled={requestConsumed || otp.length !== otpVerification.otpLength || isVerifying} onClick={() => verifyOtp(otp)} type="button">{isVerifying ? "Verifying…" : copy.verifyLabel}</button>
         </>}
         <button className="text-button auth-sheet__change-phone" disabled={isVerifying || isResending} onClick={returnToPhone} type="button">Change phone number</button>
       </div>}

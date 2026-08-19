@@ -97,6 +97,28 @@ export interface ServerOrder {
   databaseStatus: string;
 }
 
+/**
+ * Snake_case sibling of buildTimeline() in customer-orders-api.ts -- same
+ * named-timestamp columns, same shape out, but get_order returns them
+ * snake_case where list_customer_orders returns camelCase, so they can't
+ * share one function (see the file-level comment above on why these two
+ * RPCs get separate parsers).
+ */
+function buildTimelineFromOrder(order: Record<string, unknown>) {
+  const entries: { label: string; occurredAt: string }[] = [];
+  const push = (label: string, key: string) => {
+    const value = order[key];
+    if (typeof value === "string") entries.push({ label, occurredAt: value });
+  };
+
+  push("Order placed", "placed_at");
+  push("Accepted by the restaurant", "accepted_at");
+  push("Out for delivery", "out_for_delivery_at");
+  push("Delivered", "delivered_at");
+  push("Cancelled", "cancelled_at");
+  return entries.length ? entries : undefined;
+}
+
 function parseOrder(value: unknown): ServerOrder {
   const order = readRecord(value as never, "The order response");
   const id = readString(order.id, "The order ID");
@@ -111,10 +133,15 @@ function parseOrder(value: unknown): ServerOrder {
 
   const trackingOrder: StorefrontOrder = {
     id: orderNumber,
+    orderId: id,
     restaurantId: readString(order.business_id, "The order business ID"),
     placedAt: readNullableString(order.placed_at, "The order placed timestamp") ?? createdAt,
     status: orderStatusByDatabaseValue[databaseStatus] ?? "placed",
     paymentStatus: paymentStatusByDatabaseValue[databasePaymentStatus] ?? "pending",
+    // Only get_order returns this (list_customer_orders doesn't), so it's
+    // populated here and left undefined for the order-history parser --
+    // OrderDetailsScreen already renders it conditionally either way.
+    paymentMethod: readNullableString(order.payment_method, "The order payment method") ?? undefined,
     fulfilment,
     items,
     subtotal: readNumber(order.food_subtotal, "The order subtotal"),
@@ -128,6 +155,7 @@ function parseOrder(value: unknown): ServerOrder {
     estimatedFulfilment: estimatedMinutes ? `About ${estimatedMinutes} min` : undefined,
     completedAt: readNullableString(order.delivered_at, "The order delivered timestamp") ?? undefined,
     cancellationReason: readNullableString(order.cancel_reason, "The order cancellation reason") ?? undefined,
+    timeline: buildTimelineFromOrder(order),
   };
 
   return {

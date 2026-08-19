@@ -218,9 +218,13 @@ export const a2MandremAddresses: DeliveryAddress[] = [
 // a real inconsistency in the seed data, not something introduced here.
 // Overridden to "cancelled" below since that's what actually happened,
 // rather than reproducing the DB's contradiction in the UI.
+// orderId note: this frozen fixture data never distinguished the row UUID
+// (`id` here) from a separate human order number the way the real
+// list_customer_orders/get_order RPCs do, so orderId just mirrors id below
+// -- these fixtures aren't wired to any live route.
 export const a2MandremOrders: StorefrontOrder[] = [
   {
-    id: "d830d798-b323-4d42-8c1e-67793d03b512", restaurantId: "a2-mandrem", placedAt: "2026-08-14T10:50:00Z", status: "placed",
+    id: "d830d798-b323-4d42-8c1e-67793d03b512", orderId: "d830d798-b323-4d42-8c1e-67793d03b512", restaurantId: "a2-mandrem", placedAt: "2026-08-14T10:50:00Z", status: "placed",
     paymentStatus: "paid", fulfilment: "delivery",
     items: [
       { id: "023afcac-b4b4-4ac2-9038-db659143af82", productId: "9dec85b2-056e-4ae4-ba13-83d4c4a19da1", name: "Mango Shake", quantity: 1, unitPrice: 209 },
@@ -234,7 +238,7 @@ export const a2MandremOrders: StorefrontOrder[] = [
     ],
   },
   {
-    id: "7e8a1421-e25f-4565-875e-1fc9d5ad5bb2", restaurantId: "a2-mandrem", placedAt: "2026-08-14T10:48:00Z", status: "delivered",
+    id: "7e8a1421-e25f-4565-875e-1fc9d5ad5bb2", orderId: "7e8a1421-e25f-4565-875e-1fc9d5ad5bb2", restaurantId: "a2-mandrem", placedAt: "2026-08-14T10:48:00Z", status: "delivered",
     paymentStatus: "paid", fulfilment: "delivery",
     items: [
       { id: "6ff15f85-6b47-4feb-b8fb-d126980522f0", productId: "d31db1a9-c9e2-4acb-9af8-c75fc4708c2f", name: "Margherita Pizza", quantity: 1, unitPrice: 389 },
@@ -250,7 +254,7 @@ export const a2MandremOrders: StorefrontOrder[] = [
     ],
   },
   {
-    id: "44fca732-8dbf-4509-ad14-1c9b3105e747", restaurantId: "a2-mandrem", placedAt: "2026-08-12T13:40:00Z", status: "accepted",
+    id: "44fca732-8dbf-4509-ad14-1c9b3105e747", orderId: "44fca732-8dbf-4509-ad14-1c9b3105e747", restaurantId: "a2-mandrem", placedAt: "2026-08-12T13:40:00Z", status: "accepted",
     paymentStatus: "paid", fulfilment: "delivery",
     items: [
       { id: "64b25abe-0a2f-4c3b-896a-badb0ff718a1", productId: "57c47c6a-e55d-4b81-b8b4-fdb369fa20d9", name: "Paneer Tikka Pizza", quantity: 2, unitPrice: 349 },
@@ -265,7 +269,7 @@ export const a2MandremOrders: StorefrontOrder[] = [
     ],
   },
   {
-    id: "6386f564-22e0-4d38-943e-29c6826bece8", restaurantId: "a2-mandrem", placedAt: "2026-08-11T12:30:00Z", status: "delivered",
+    id: "6386f564-22e0-4d38-943e-29c6826bece8", orderId: "6386f564-22e0-4d38-943e-29c6826bece8", restaurantId: "a2-mandrem", placedAt: "2026-08-11T12:30:00Z", status: "delivered",
     paymentStatus: "paid", fulfilment: "delivery",
     items: [
       { id: "2a50d0f5-0511-411a-820b-dfff83139ac5", productId: "d93c8e3c-4b9f-41b3-9957-72e1bb05e420", name: "Classic Veg Burger", quantity: 2, unitPrice: 229 },
@@ -281,7 +285,7 @@ export const a2MandremOrders: StorefrontOrder[] = [
     ],
   },
   {
-    id: "3fc9ab8a-cd96-45ae-b4ba-c933909f77e1", restaurantId: "a2-mandrem", placedAt: "2026-08-08T07:30:00Z", status: "delivered",
+    id: "3fc9ab8a-cd96-45ae-b4ba-c933909f77e1", orderId: "3fc9ab8a-cd96-45ae-b4ba-c933909f77e1", restaurantId: "a2-mandrem", placedAt: "2026-08-08T07:30:00Z", status: "delivered",
     paymentStatus: "paid", fulfilment: "delivery",
     items: [
       { id: "9c8a3f71-9617-4fa3-9541-3a83d0bf0c2b", productId: "d31db1a9-c9e2-4acb-9af8-c75fc4708c2f", name: "Margherita Pizza", quantity: 1, unitPrice: 349 },
@@ -297,7 +301,7 @@ export const a2MandremOrders: StorefrontOrder[] = [
     ],
   },
   {
-    id: "0ea8d92f-1fc8-42f2-a8bb-b245d20c7f7d", restaurantId: "a2-mandrem", placedAt: "2026-08-06T14:30:00Z", status: "cancelled",
+    id: "0ea8d92f-1fc8-42f2-a8bb-b245d20c7f7d", orderId: "0ea8d92f-1fc8-42f2-a8bb-b245d20c7f7d", restaurantId: "a2-mandrem", placedAt: "2026-08-06T14:30:00Z", status: "cancelled",
     paymentStatus: "pending", fulfilment: "delivery",
     items: [
       { id: "2d4b9593-3592-45d0-a06e-46e31e45d5f1", productId: "3e1deb70-c03f-494d-ac40-407b3285375e", name: "Cold Coffee", quantity: 1, unitPrice: 149 },
@@ -311,7 +315,7 @@ export const a2MandremOrders: StorefrontOrder[] = [
     ],
   },
   {
-    id: "81b0d8fc-95e0-4f05-9f8e-f88e20538f2d", restaurantId: "a2-mandrem", placedAt: "2026-08-06T14:30:00Z", status: "cancelled",
+    id: "81b0d8fc-95e0-4f05-9f8e-f88e20538f2d", orderId: "81b0d8fc-95e0-4f05-9f8e-f88e20538f2d", restaurantId: "a2-mandrem", placedAt: "2026-08-06T14:30:00Z", status: "cancelled",
     paymentStatus: "pending", fulfilment: "delivery",
     items: [
       { id: "ef7685ab-09fe-4c02-9063-2be033ff895e", productId: "bbd93940-9890-4b85-9607-3ef4f1ee32b3", name: "Crispy Chicken Burger", quantity: 1, unitPrice: 424 },

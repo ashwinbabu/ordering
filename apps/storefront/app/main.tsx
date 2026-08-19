@@ -1,9 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router";
 import { CustomerSessionProvider } from "../features/auth/customer-session";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { QueryProvider } from "../lib/query-client";
-import { StorefrontApp } from "./storefront-app";
+import { StorefrontRoutes } from "./storefront-routes";
 import { StorefrontBootstrap } from "./storefront-bootstrap";
 import "./globals.css";
 
@@ -19,9 +20,11 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryProvider>
       <StorefrontBootstrap>
-        <CustomerSessionProvider>
-          <StorefrontApp />
-        </CustomerSessionProvider>
+        <BrowserRouter>
+          <CustomerSessionProvider>
+            <StorefrontRoutes />
+          </CustomerSessionProvider>
+        </BrowserRouter>
       </StorefrontBootstrap>
     </QueryProvider>
   </StrictMode>,

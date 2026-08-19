@@ -169,6 +169,19 @@ export type OrderStatus = "placed" | "accepted" | "preparing" | "out-for-deliver
 export type PaymentStatus = "awaiting_provider" | "confirmed" | "pending" | "failed" | "cancelled" | "verification_error";
 export type OrderPaymentStatus = "paid" | "pending" | "refunded";
 
+/**
+ * Statuses that represent an order still in progress, as opposed to a
+ * terminal one. Drives both the "Current orders" / "Past orders" split on
+ * the order-history screen and, for routing, which screen `/orders/:orderId`
+ * renders (OrderTrackingScreen for these, OrderDetailsScreen otherwise) --
+ * one partition, reused rather than re-decided per call site. "completed" and
+ * "refunded" are declared on OrderStatus but never produced by
+ * orderStatusByDatabaseValue (see customer-orders-api.ts), so they're not
+ * reachable in practice; excluding them here just means they fall through to
+ * the "past" side like every other terminal status would.
+ */
+export const currentOrderStatuses = new Set<OrderStatus>(["placed", "accepted", "preparing", "out-for-delivery"]);
+
 export interface OrderLineItem {
   id: string;
   productId?: string;
@@ -185,7 +198,10 @@ export interface OrderTimelineEntry {
 }
 
 export interface StorefrontOrder {
+  /** ordering.orders.order_number -- the human-facing reference shown as "Order #{id}". */
   id: string;
+  /** ordering.orders.id -- the real row UUID. Only this can be used to build an /orders/:orderId link or to call get_order; `id` above cannot. */
+  orderId: string;
   restaurantId: string;
   placedAt: string;
   status: OrderStatus;

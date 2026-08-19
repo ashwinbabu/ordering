@@ -85,9 +85,11 @@ function parseOrder(value: unknown, businessKey: string): StorefrontOrder {
   const estimatedMinutes = readNullableNumber(order.estimatedDeliveryMinutes, "An order delivery estimate");
 
   return {
-    // The UI prints this as "Order #{id}" and routes /orders/:id with it, so
-    // it carries the human-readable order number rather than the row UUID.
+    // The UI prints this as "Order #{id}", so it carries the human-readable
+    // order number rather than the row UUID -- see `orderId` below for the
+    // UUID get_order and /orders/:orderId links actually need.
     id: readString(order.orderNumber, "An order number"),
+    orderId: readString(order.id, "An order ID"),
     restaurantId: businessKey,
     placedAt: readNullableString(order.placedAt, "An order placed timestamp") ?? new Date().toISOString(),
     status: orderStatusByDatabaseValue[databaseStatus] ?? "placed",
