@@ -1,13 +1,12 @@
 import { AlertCircle, CircleDollarSign, Clock3, RefreshCw, ShieldCheck, Store } from "lucide-react";
 import { useEffect } from "react";
-import { formatRupees, type PaymentPendingOrder, type PaymentStatus, type Venue } from "../../domain/storefront";
+import { formatRupees, type PaymentPendingOrder, type Venue } from "../../domain/storefront";
 import type { CheckoutPhase } from "./use-checkout-flow";
 
 interface PaymentFlowScreenProps {
   onAcceptQuote: () => void;
   onBackToRestaurant: () => void;
   onConfirmed: () => void;
-  onProviderReturn: (status: PaymentStatus) => void;
   onRetry: () => void;
   onVerify: () => void;
   order: PaymentPendingOrder | null;
@@ -40,7 +39,7 @@ export function PaymentFlowScreen(props: PaymentFlowScreenProps) {
 
   if (phase === "quote_changed") return <PaymentState icon={<CircleDollarSign />} title="Your total has changed" body={`The final total is ${formatRupees(props.updatedAmount ?? 0)}. This can happen when delivery fees, availability or offers change.`} venue={venue} actions={<><button className="primary-button" type="button" onClick={props.onAcceptQuote}>Continue with {formatRupees(props.updatedAmount ?? 0)}</button><button className="secondary-button" type="button" onClick={props.onBackToRestaurant}>Review cart</button></>} />;
   if (busyCopy[phase]) return <PaymentPage venue={venue}><Securing title={busyCopy[phase]!.title} body={busyCopy[phase]!.body} /></PaymentPage>;
-  if (phase === "awaiting_provider") return <PaymentPage venue={venue}><GatewaySheet order={order} onReturn={props.onProviderReturn} /></PaymentPage>;
+  if (phase === "awaiting_provider") return <PaymentPage venue={venue}><GatewaySheet order={order} /></PaymentPage>;
   if (phase === "confirmed") {
     const isCashOnDelivery = order?.trackingOrder.paymentMethod === "Cash on delivery";
     return <PaymentPage venue={venue}><Securing done title={isCashOnDelivery ? "Order confirmed" : "Payment confirmed"} body="Your order is being opened." /></PaymentPage>;
@@ -73,7 +72,7 @@ function Securing({ body, done = false, title }: { body: string; done?: boolean;
   </section>;
 }
 
-function GatewaySheet({ order, onReturn }: { order: PaymentPendingOrder | null; onReturn: (status: PaymentStatus) => void }) {
+function GatewaySheet({ order }: { order: PaymentPendingOrder | null }) {
   return <section className="gateway-sheet">
     <div className="gateway-illustration">
       <span><Store aria-hidden="true" size={26} /></span>
@@ -82,13 +81,12 @@ function GatewaySheet({ order, onReturn }: { order: PaymentPendingOrder | null; 
     </div>
     <div className="gateway-copy">
       <h1>Payment in progress</h1>
-      <p>Complete the payment in your payment app. When you return, we&rsquo;ll check the status before confirming your order.</p>
+      <p>Complete the payment in the window that opened. When you return, we&rsquo;ll check the status before confirming your order.</p>
       {order ? <div><span>Amount</span><strong>{formatRupees(order.amount)}</strong></div> : null}
     </div>
     <div className="review-notice">
       <strong>Before you pay</strong>
-      <span>Only pay once. If the payment app doesn&rsquo;t open, come back and try again — we won&rsquo;t charge you twice.</span>
+      <span>Only pay once. If the payment window doesn&rsquo;t open, come back and try again — we won&rsquo;t charge you twice.</span>
     </div>
-    {import.meta.env.DEV ? <details className="demo-payment-controls"><summary>Demo payment controls</summary><p>These controls simulate a gateway return; they do not process payment.</p><div><button type="button" onClick={() => onReturn("confirmed")}>Return: confirmed</button><button type="button" onClick={() => onReturn("failed")}>Return: failed</button><button type="button" onClick={() => onReturn("cancelled")}>Return: cancelled</button><button type="button" onClick={() => onReturn("pending")}>Return: pending</button><button type="button" onClick={() => onReturn("verification_error")}>Return: unavailable</button></div></details> : null}
   </section>;
 }

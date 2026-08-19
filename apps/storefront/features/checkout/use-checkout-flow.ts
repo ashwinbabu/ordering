@@ -1,7 +1,17 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { beginCheckoutAttempt, clearCheckoutAttempt, readCheckoutAttempt } from "./checkout-attempt-storage";
-import { cancelOrder as cancelOrderRequest, checkoutCart, getOrder, quoteCart, type ServerOrder } from "./api/storefront-checkout-api";
+import { beginCheckoutAttempt, beginPaymentAttempt, clearCheckoutAttempt, readCheckoutAttempt } from "./checkout-attempt-storage";
+import {
+  cancelOrder as cancelOrderRequest,
+  checkoutCart,
+  getOrder,
+  PaymentVerificationError,
+  quoteCart,
+  startOnlinePayment,
+  verifyOnlinePayment,
+  type ServerOrder,
+} from "./api/storefront-checkout-api";
+import { openRazorpayCheckout } from "./razorpay-checkout";
 import { clearCartPointer } from "../cart/cart-pointer-storage";
 import { resolveCartIdentity, storefrontCartQueryKey } from "../cart/storefront-cart-query";
 import { storefrontContext } from "../../lib/storefront/storefront-context";
@@ -232,6 +242,65 @@ export function useCheckoutFlow(getCartIdentity: () => CartIdentity | undefined,
   }, []);
 
   /**
+   * Starts a Razorpay payment for an order already in payment_pending and
+   * drives the widget through to a real outcome. Reused by both the initial
+   * checkout and a payment-only retry (see retryPayment below) -- both cases
+   * reuse the same persisted paymentAttemptId, so a second call for the same
+   * order resumes the same Razorpay order rather than creating another one.
+   *
+   * Every exit path here ends in a phase change; callers never need to set
+   * one themselves afterward.
+   */
+  const startRazorpayPayment = useCallback(async (orderId: string) => {
+    setPhase("preparing_payment");
+    try {
+      const paymentAttemptId = beginPaymentAttempt(storefrontContext);
+      const start = await startOnlinePayment({ orderId, paymentAttemptId });
+
+      setPhase("awaiting_provider");
+      const outcome = await openRazorpayCheckout({
+        checkoutKey: start.checkoutKey,
+        providerOrderId: start.providerOrderId,
+        amount: start.amount,
+        currency: start.currency,
+        displayName: typeof start.display.displayName === "string" ? start.display.displayName : "Payment",
+        customerName: request?.customer.name,
+        customerPhone: request ? `${request.customer.countryCode}${request.customer.phone}` : undefined,
+      });
+
+      if (outcome.outcome === "dismissed") {
+        setPhase("cancelled");
+        return;
+      }
+      if (outcome.outcome === "failed") {
+        setPhase("failed");
+        return;
+      }
+
+      setPhase("confirming");
+      const result = await verifyOnlinePayment({
+        orderId,
+        razorpayPaymentId: outcome.razorpayPaymentId,
+        razorpayOrderId: outcome.razorpayOrderId,
+        razorpaySignature: outcome.razorpaySignature,
+      });
+      applyServerOrder(result);
+    } catch (error) {
+      // A verification failure means the true outcome is unknown, not that
+      // the payment failed -- never claim "failed" for that, since the
+      // customer may already have paid. Anything else (script load failure,
+      // start-online-payment rejecting) means the attempt never got far
+      // enough to know either way, which start_error already covers.
+      if (error instanceof PaymentVerificationError) {
+        setPhase("verification_error");
+        return;
+      }
+      setStartError(checkoutErrorMessage(error, "We couldn't start your payment."));
+      setPhase("start_error");
+    }
+  }, [applyServerOrder, request]);
+
+  /**
    * Calls checkout_cart with the given identity's cartId; on the narrow,
    * proven-safe 'cart access denied' failure (see isCartIdentityCheckoutError
    * above), refetches the cart and retries exactly once with a freshly
@@ -275,11 +344,8 @@ export function useCheckoutFlow(getCartIdentity: () => CartIdentity | undefined,
     void queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(getCustomerId()), exact: true });
     clearCartPointer(storefrontContext);
 
-    // The payment hand-off is still a stub: no gateway is configured, so this
-    // stops at "waiting for the provider" rather than claiming any outcome.
-    setPhase("preparing_payment");
-    setPhase("awaiting_provider");
-  }, [checkoutCartWithIdentityRecovery, getCartIdentity, getCustomerId, queryClient]);
+    await startRazorpayPayment(result.order.id);
+  }, [checkoutCartWithIdentityRecovery, getCartIdentity, getCustomerId, queryClient, startRazorpayPayment]);
 
   const begin = useCallback(async (checkoutRequest: CheckoutRequest) => {
     const identity = getCartIdentity();
@@ -381,22 +447,26 @@ export function useCheckoutFlow(getCartIdentity: () => CartIdentity | undefined,
   }, [createOrder, request]);
 
   /**
-   * Safe to call repeatedly: beginCheckoutAttempt hands back the *same* order
-   * id, so checkout_cart recognises the already-converted cart and replays the
-   * existing order rather than creating a second one.
+   * "failed"/"cancelled" mean the order exists and is still payment_pending
+   * but the payment attempt itself didn't land -- retrying means reopening
+   * Razorpay for that same order, not re-running checkout_cart. Any other
+   * phase with an order already loaded (e.g. a stale "pending" after a
+   * reload) just re-reads the server. Only with no order at all does this
+   * fall back to redoing checkout from the top -- safe to call repeatedly
+   * either way, since beginCheckoutAttempt/beginPaymentAttempt hand back the
+   * same ids and every RPC/Edge Function involved is idempotent on them.
    */
   const retryPayment = useCallback(() => {
+    if (order && (phase === "failed" || phase === "cancelled")) {
+      if (activeRequest.current) return;
+      activeRequest.current = true;
+      void startRazorpayPayment(order.id).finally(() => { activeRequest.current = false; });
+      return;
+    }
     if (order) { void verify(); return; }
     if (!request) return;
     void (lastAttemptWasCash.current ? beginCashOnDelivery(request) : begin(request));
-  }, [begin, beginCashOnDelivery, order, request, verify]);
-
-  /**
-   * Coming back from the payment app is a prompt to re-read the server, never a
-   * report of the outcome -- any status the caller passes is ignored on
-   * purpose, because the browser is not allowed to decide this.
-   */
-  const returnFromProvider = useCallback(() => { void verify(); }, [verify]);
+  }, [begin, beginCashOnDelivery, order, phase, request, startRazorpayPayment, verify]);
 
   /**
    * Cancels the tracked order for real (see cancelOrder in
@@ -429,5 +499,5 @@ export function useCheckoutFlow(getCartIdentity: () => CartIdentity | undefined,
     return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [phase, verify]);
 
-  return { acceptUpdatedQuote, begin, beginCashOnDelivery, cancelError, cancelling, cancelOrder, order, phase, restored, returnFromProvider, retryPayment, startError, updatedAmount, verify };
+  return { acceptUpdatedQuote, begin, beginCashOnDelivery, cancelError, cancelling, cancelOrder, order, phase, restored, retryPayment, startError, updatedAmount, verify };
 }

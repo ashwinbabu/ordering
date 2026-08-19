@@ -13,12 +13,21 @@ import type { StorefrontContext } from "../../lib/storefront/storefront-context"
 interface CheckoutAttempt {
   orderId: string;
   createdAt: string;
+  /**
+   * Mirrors orderId's own idempotency reasoning, for start-online-payment:
+   * ordering.create_payment_attempt/mark_payment_pending are idempotent on
+   * this id, so reusing it across a retry or reload reuses the same Razorpay
+   * order instead of minting a second one. Absent until the first online
+   * payment attempt actually starts (cash orders never set it).
+   */
+  paymentAttemptId?: string;
 }
 
 function isCheckoutAttempt(value: unknown): value is CheckoutAttempt {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as { orderId?: unknown; createdAt?: unknown };
-  return typeof candidate.orderId === "string" && typeof candidate.createdAt === "string";
+  const candidate = value as { orderId?: unknown; createdAt?: unknown; paymentAttemptId?: unknown };
+  if (typeof candidate.orderId !== "string" || typeof candidate.createdAt !== "string") return false;
+  return candidate.paymentAttemptId === undefined || typeof candidate.paymentAttemptId === "string";
 }
 
 function storageKey(context: StorefrontContext) {
@@ -45,4 +54,24 @@ export function beginCheckoutAttempt(context: StorefrontContext): string {
 /** Called once an order reaches a terminal state, so the next checkout starts a new attempt. */
 export function clearCheckoutAttempt(context: StorefrontContext) {
   removeJson(storageKey(context));
+}
+
+/**
+ * Returns the in-flight attempt's payment attempt id, minting and persisting
+ * one on first use. Requires an order attempt to already exist (checkout_cart
+ * must have run first) -- falls back to minting one if it somehow doesn't,
+ * so this never throws, but that path should be unreachable in practice.
+ */
+export function beginPaymentAttempt(context: StorefrontContext): string {
+  const existing = readCheckoutAttempt(context);
+  if (existing?.paymentAttemptId) return existing.paymentAttemptId;
+
+  const paymentAttemptId = window.crypto.randomUUID();
+  const attempt: CheckoutAttempt = {
+    orderId: existing?.orderId ?? window.crypto.randomUUID(),
+    createdAt: existing?.createdAt ?? new Date().toISOString(),
+    paymentAttemptId,
+  };
+  writeJson(storageKey(context), attempt);
+  return paymentAttemptId;
 }

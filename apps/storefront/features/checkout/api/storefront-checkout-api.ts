@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "../../../lib/supabase/client";
 import { readArray, readNullableNumber, readNullableString, readNumber, readRecord, readString } from "../../../lib/supabase/json-parsing";
 import { callUntypedRpc } from "../../../lib/supabase/untyped-rpc";
+import { functionErrorBody } from "../../../lib/supabase/edge-function-error";
 import { orderStatusByDatabaseValue, paymentStatusByDatabaseValue } from "../../orders/api/customer-orders-api";
 import type { DeliveryAddress, FulfilmentType, OrderLineItem, PaymentPendingOrder, PaymentStatus, StorefrontOrder } from "../../../domain/storefront";
 
@@ -212,6 +213,92 @@ export async function getOrder(orderId: string): Promise<ServerOrder> {
   const result = await callUntypedRpc(checkoutRpc(), "get_order", { p_order_id: orderId });
   if (result.error) throw result.error;
   return parseOrder(result.data);
+}
+
+export interface StartOnlinePaymentResult {
+  paymentAttemptId: string;
+  provider: string;
+  providerOrderId: string;
+  checkoutKey: string;
+  /** Smallest currency sub-unit (paise for INR) -- the exact value to hand Razorpay's widget. */
+  amount: number;
+  currency: string;
+  display: Record<string, unknown>;
+}
+
+function isStartOnlinePaymentResult(value: unknown): value is StartOnlinePaymentResult {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.providerOrderId === "string" &&
+    typeof record.checkoutKey === "string" &&
+    typeof record.amount === "number" &&
+    typeof record.currency === "string"
+  );
+}
+
+/**
+ * Starts (or resumes, if paymentAttemptId was already used) an online
+ * payment for an order checkout_cart already created in payment_pending.
+ * The Edge Function reads the authoritative amount from the order itself --
+ * nothing this call sends is trusted for that.
+ */
+export async function startOnlinePayment(args: { orderId: string; paymentAttemptId: string }): Promise<StartOnlinePaymentResult> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.functions.invoke<StartOnlinePaymentResult>("start-online-payment", {
+    body: { orderId: args.orderId, paymentAttemptId: args.paymentAttemptId },
+  });
+
+  if (error) {
+    const body = await functionErrorBody<{ error?: string }>(error);
+    throw new Error(typeof body?.error === "string" && body.error ? body.error : "We couldn't start your payment.");
+  }
+  if (!isStartOnlinePaymentResult(data)) throw new Error("We couldn't start your payment.");
+  return data;
+}
+
+/**
+ * Thrown when verify-online-payment could not establish the payment's true
+ * outcome at all (network failure, provider unreachable, an access error).
+ * Distinct from a normal failed/pending order state, which is a real answer
+ * and is applied like any other order snapshot -- this is the "we genuinely
+ * don't know" case, which the caller must not treat as a failure.
+ */
+export class PaymentVerificationError extends Error {}
+
+/**
+ * Verifies a Razorpay Standard Checkout success payload server-side and
+ * returns the resulting order. Safe to call even if razorpay-webhook already
+ * recorded the same payment (record_payment_result is idempotent on it) --
+ * the response still carries the current, authoritative order either way.
+ */
+export async function verifyOnlinePayment(args: {
+  orderId: string;
+  razorpayPaymentId: string;
+  razorpayOrderId: string;
+  razorpaySignature: string;
+}): Promise<ServerOrder> {
+  const client = getSupabaseClient();
+  const { data, error } = await client.functions.invoke<{ order?: unknown }>("verify-online-payment", {
+    body: {
+      orderId: args.orderId,
+      razorpayPaymentId: args.razorpayPaymentId,
+      razorpayOrderId: args.razorpayOrderId,
+      razorpaySignature: args.razorpaySignature,
+    },
+  });
+
+  if (error) {
+    // A 402 ("payment was not captured") still carries the real order --
+    // that is a genuine answer (payment_status will read failed/pending),
+    // not an unknown outcome, so it is applied the same as a 200.
+    const body = await functionErrorBody<{ order?: unknown; error?: string }>(error);
+    if (body?.order) return parseOrder(body.order);
+    throw new PaymentVerificationError(typeof body?.error === "string" && body.error ? body.error : "We couldn't confirm your payment.");
+  }
+
+  if (!data?.order) throw new PaymentVerificationError("We couldn't confirm your payment.");
+  return parseOrder(data.order);
 }
 
 /**
