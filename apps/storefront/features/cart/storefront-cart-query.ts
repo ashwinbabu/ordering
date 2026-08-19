@@ -84,6 +84,31 @@ async function ensureAnonymousCart(context: StorefrontContext): Promise<ServerCa
   return cart;
 }
 
+/**
+ * Awaitable counterpart to useStorefrontCartQuery for the one moment that
+ * can't wait for a render: immediately after OTP success, getCustomerId()
+ * (a ref) already reflects the new customer, but nothing has forced
+ * useStorefrontCartQuery(customerId) to run under that identity yet, so
+ * resolveCartIdentity() has no cache entry to read and throws. Fetching
+ * through the same queryKey/queryFn/staleTime as the hook - rather than
+ * inventing a separate readiness check - means this either reuses a fetch
+ * already in flight (TanStack Query dedupes by key) or a still-fresh result,
+ * or performs the exact same attach_anonymous_cart reconciliation the hook
+ * would have, and leaves the result cached under the key the hook reads
+ * from next render. Safe to call more than once for the same customerId.
+ */
+export function ensureCurrentCustomerCartReady(
+  queryClient: QueryClient,
+  customerId: string,
+  context: StorefrontContext = storefrontContext,
+): Promise<ServerCart> {
+  return queryClient.fetchQuery({
+    queryKey: storefrontCartQueryKey(customerId, context),
+    queryFn: () => ensureCustomerCart(context, customerId),
+    staleTime: 15_000,
+  });
+}
+
 export function useStorefrontCartQuery(customerId: string | null, context: StorefrontContext = storefrontContext) {
   return useQuery({
     queryKey: storefrontCartQueryKey(customerId, context),
