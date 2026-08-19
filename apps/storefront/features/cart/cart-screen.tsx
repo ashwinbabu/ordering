@@ -12,7 +12,7 @@ import { formatRupees, type CheckoutRequest, type CustomerDetails, type Delivery
 import type { CartLineView, ServerCart, StorefrontSettings } from "../../domain/cart";
 import { checkoutEligibilityMessage, evaluateCheckoutEligibility } from "./cart-eligibility";
 import { cartErrorMessage, useSetCartCouponMutation } from "./storefront-cart-mutations";
-import { storefrontCartQueryKey } from "./storefront-cart-query";
+import { ensureCurrentCustomerCartReady, storefrontCartQueryKey } from "./storefront-cart-query";
 import { useCartCouponDiscountQuery } from "./storefront-coupon-query";
 import { useDeliveryQuoteQuery } from "./storefront-delivery-quote-query";
 import { useOnlineStatus } from "../../lib/storefront/use-online-status";
@@ -168,6 +168,13 @@ export function CartScreen({ cart, cartError, customerDetails, isCartLoading, is
     // a real core.customer_business_addresses row (and its id, which
     // checkout_cart requires) can be created.
     async function proceedToCheckout(_phone?: PhoneNumber, authenticatedCustomerId?: string) {
+      // Closes the auth->render->cart-query timing gap: getCustomerId() (a
+      // ref) is already correct the instant OTP succeeds, but nothing has
+      // forced useStorefrontCartQuery(customerId) to run under that identity
+      // yet, so getCartIdentity() would find no cache entry and throw. This
+      // deterministically establishes/reconciles that cache entry itself
+      // instead of waiting on an incidental re-render to create it.
+      if (authenticatedCustomerId) await ensureCurrentCustomerCartReady(queryClient, authenticatedCustomerId);
       let deliveryAddress = checkoutRequest.deliveryAddress;
       if (authenticatedCustomerId && deliveryAddress?.id === "pending") {
         deliveryAddress = await onMaterializePendingAddress(authenticatedCustomerId);
