@@ -7,12 +7,19 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { AuthChangeEvent } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 
 interface AuthContextValue {
   authenticated: boolean;
   loading: boolean;
   userId: string | null;
+  /**
+   * Most recent Supabase auth event, e.g. "PASSWORD_RECOVERY". Informational
+   * only — it's transient and cleared on refresh, so the /reset-password
+   * route guards itself independently rather than relying on this.
+   */
+  lastAuthEvent: AuthChangeEvent | null;
   signOut: () => Promise<void>;
 }
 
@@ -22,6 +29,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
+  const [lastAuthEvent, setLastAuthEvent] = useState<AuthChangeEvent | null>(
+    null,
+  );
 
   useEffect(() => {
     let active = true;
@@ -35,9 +45,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthenticated(Boolean(session));
       setUserId(session?.user.id ?? null);
+      setLastAuthEvent(event);
       setLoading(false);
     });
 
@@ -53,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ authenticated, loading, userId, signOut }}>
+    <AuthContext.Provider
+      value={{ authenticated, loading, userId, lastAuthEvent, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   );
