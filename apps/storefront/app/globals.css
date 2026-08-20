@@ -3262,6 +3262,14 @@ p {
 .order-status-timeline li.is-active {
   color: var(--ink);
 }
+.order-status-timeline li.is-complete {
+  color: var(--ink);
+}
+.order-status-timeline li.is-complete .timeline-marker {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: #fff;
+}
 @keyframes timeline-current-pulse {
   0% {
     opacity: 0.75;

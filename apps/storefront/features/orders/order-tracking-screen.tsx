@@ -10,9 +10,25 @@ import {
 import { useEffect, useState } from "react";
 import {
   formatRupees,
+  type OrderStatus,
   type PaymentPendingOrder,
   type Venue,
 } from "../../domain/storefront";
+
+// Position of each in-progress status along the 4-step timeline below.
+// "delivered"/"completed" land past the last step so every step reads as
+// done; "cancelled"/"refunded" never reach this screen (see the early
+// return above) but resolve to -1 (nothing active) rather than crash.
+const timelineStepIndex: Record<OrderStatus, number> = {
+  placed: 0,
+  accepted: 1,
+  preparing: 2,
+  "out-for-delivery": 3,
+  delivered: 4,
+  completed: 4,
+  cancelled: -1,
+  refunded: -1,
+};
 
 interface OrderTrackingScreenProps {
   order: PaymentPendingOrder;
@@ -59,6 +75,7 @@ export function OrderTrackingScreen({
   const address = order.trackingOrder.deliveryAddress;
   const isCashOnDelivery =
     order.trackingOrder.paymentMethod === "Cash on delivery";
+  const currentStepIndex = timelineStepIndex[order.trackingOrder.status];
 
   // Driven by the server's own status, not a local click -- the cancel button
   // below only requests a transition; this only shows once ordering.orders
@@ -225,7 +242,8 @@ export function OrderTrackingScreen({
           </div>
           <ol>
             <StatusStep
-              active
+              active={currentStepIndex === 0}
+              complete={currentStepIndex > 0}
               icon={<Check size={15} />}
               title="Order received"
               body={
@@ -235,23 +253,31 @@ export function OrderTrackingScreen({
               }
             />
             <StatusStep
+              active={currentStepIndex === 1}
+              complete={currentStepIndex > 1}
               icon={<CircleCheck size={15} />}
               title="Accepted"
               body="The kitchen has accepted your order."
             />
             <StatusStep
+              active={currentStepIndex === 2}
+              complete={currentStepIndex > 2}
               icon={<Clock3 size={15} />}
               title="Preparing"
               body="Your food is being made fresh."
             />
             {isDelivery ? (
               <StatusStep
+                active={currentStepIndex === 3}
+                complete={currentStepIndex > 3}
                 icon={<Truck size={15} />}
                 title="Out for delivery"
                 body="Your order is on its way."
               />
             ) : (
               <StatusStep
+                active={currentStepIndex === 3}
+                complete={currentStepIndex > 3}
                 icon={<Check size={15} />}
                 title="Ready for pickup"
                 body="Collect your order from the outlet."
@@ -266,18 +292,23 @@ export function OrderTrackingScreen({
 
 function StatusStep({
   active = false,
+  complete = false,
   body,
   icon,
   title,
 }: {
   active?: boolean;
+  complete?: boolean;
   body: string;
   icon: React.ReactNode;
   title: string;
 }) {
+  const className = active ? "is-active" : complete ? "is-complete" : undefined;
   return (
-    <li className={active ? "is-active" : undefined}>
-      <span className="timeline-marker">{icon}</span>
+    <li className={className}>
+      <span className="timeline-marker">
+        {complete ? <Check size={15} /> : icon}
+      </span>
       <div>
         <strong>{title}</strong>
         <p>{body}</p>
