@@ -179,7 +179,11 @@ export function StorefrontLayout() {
   // back to being purely about the checkout this browser is actively going
   // through, restored only from checkout-attempt-storage's localStorage
   // pointer -- never re-derived from whatever order page happens to be open.
-  const checkout = useCheckoutFlow(getCartIdentity, getCustomerId);
+  const checkout = useCheckoutFlow(
+    getCartIdentity,
+    getCustomerId,
+    cartResource.data,
+  );
   const ordersResource = useCustomerOrdersQuery(
     customerId,
     storefrontContext.businessId,

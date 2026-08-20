@@ -27,6 +27,7 @@ import type {
   CheckoutRequest,
   PaymentPendingOrder,
 } from "../../domain/storefront";
+import type { ServerCart } from "../../domain/cart";
 
 /**
  * What quote_cart/checkout_cart need to identify and act on a cart, resolved
@@ -184,6 +185,7 @@ function isCartIdentityCheckoutError(error: unknown): boolean {
 export function useCheckoutFlow(
   getCartIdentity: () => CartIdentity | undefined,
   getCustomerId: () => string | null,
+  cart: ServerCart | undefined,
   requestedOrderId: string | null = null,
 ) {
   const queryClient = useQueryClient();
@@ -199,9 +201,23 @@ export function useCheckoutFlow(
     restored || requestedOrderId ? "confirming" : "idle",
   );
   const [order, setOrder] = useState<PaymentPendingOrder | null>(null);
-  const [trackedOrderId, setTrackedOrderId] = useState<string | null>(
+  const [trackedOrderId, setTrackedOrderIdState] = useState<string | null>(
     () => readCheckoutAttempt(storefrontContext)?.orderId ?? requestedOrderId,
   );
+  /**
+   * Ref mirror of trackedOrderId for callbacks that can outlive the render
+   * that captured them (applyServerOrder's guard below) -- the same
+   * reasoning as getCartIdentity/getCustomerId elsewhere in this file: a
+   * plain closure over state would keep targeting whichever order was
+   * tracked when that async chain started, not whichever order (if any) is
+   * still actually being tracked by the time it resolves. Always written
+   * together with the state via setTrackedOrder, never on its own.
+   */
+  const trackedOrderIdRef = useRef(trackedOrderId);
+  const setTrackedOrder = useCallback((id: string | null) => {
+    trackedOrderIdRef.current = id;
+    setTrackedOrderIdState(id);
+  }, []);
   const [request, setRequest] = useState<CheckoutRequest | null>(null);
   const [updatedAmount, setUpdatedAmount] = useState<number | null>(null);
   const [startError, setStartError] = useState<string>();
@@ -213,6 +229,15 @@ export function useCheckoutFlow(
   // status (e.g. "placed"), not the storefront-facing enum PaymentPendingOrder
   // carries -- tracked separately rather than widening that type for one caller.
   const databaseStatus = useRef<string | null>(null);
+  /**
+   * The cart a checkout attempt was created against -- the lifecycle
+   * boundary this hook resets on (see the retirement effect below). Set the
+   * moment an attempt starts, from the cart identity actually used for it;
+   * lazily anchored to whatever cart is current for a restored/direct-link
+   * attempt that never went through begin()/beginCashOnDelivery() in this
+   * tab. null whenever no attempt is being tracked.
+   */
+  const attemptCartId = useRef<string | null>(null);
 
   /**
    * An active TanStack observer on the same query key verify() populates.
@@ -233,25 +258,39 @@ export function useCheckoutFlow(
     refetchOnWindowFocus: true,
   });
 
-  const applyServerOrder = useCallback((result: ServerOrder) => {
-    databaseStatus.current = result.databaseStatus;
-    setOrder((current) => {
-      // The server response doesn't carry this label (see
-      // beginCashOnDelivery below) -- preserve whatever was already
-      // showing across any later refresh of the same order.
-      const paymentMethod =
-        current?.trackingOrder.paymentMethod ??
-        result.order.trackingOrder.paymentMethod;
-      return {
-        ...result.order,
-        trackingOrder: { ...result.order.trackingOrder, paymentMethod },
-      };
-    });
-    setTrackedOrderId(result.order.id);
-    if (terminalPaymentStatuses.has(result.order.paymentStatus))
-      clearCheckoutAttempt(storefrontContext);
-    setPhase(phaseFromOrder(result.order));
-  }, []);
+  const applyServerOrder = useCallback(
+    (result: ServerOrder) => {
+      // Refuses a result for an order this hook is no longer tracking. The
+      // realtime channel invalidates checkoutOrderQueryKey(orderId) for as
+      // long as anything has that key cached, so a broadcast -- or a
+      // fetch it triggered -- for a retired attempt's order can still
+      // resolve after the cart that attempt belonged to has been
+      // superseded (see the retirement effect below). Checking the *ref*
+      // is what makes this correct even though disabling trackingQuery
+      // (trackedOrderId flips to null, changing its query key) can't by
+      // itself stop a request that was already in flight when that
+      // happened.
+      if (trackedOrderIdRef.current !== result.order.id) return;
+      databaseStatus.current = result.databaseStatus;
+      setOrder((current) => {
+        // The server response doesn't carry this label (see
+        // beginCashOnDelivery below) -- preserve whatever was already
+        // showing across any later refresh of the same order.
+        const paymentMethod =
+          current?.trackingOrder.paymentMethod ??
+          result.order.trackingOrder.paymentMethod;
+        return {
+          ...result.order,
+          trackingOrder: { ...result.order.trackingOrder, paymentMethod },
+        };
+      });
+      setTrackedOrder(result.order.id);
+      if (terminalPaymentStatuses.has(result.order.paymentStatus))
+        clearCheckoutAttempt(storefrontContext);
+      setPhase(phaseFromOrder(result.order));
+    },
+    [setTrackedOrder],
+  );
 
   // Applies a background refetch -- realtime-invalidated or otherwise --
   // once we're already tracking a placed order, keeping the tracking
@@ -261,6 +300,68 @@ export function useCheckoutFlow(
     applyServerOrder(trackingQuery.data);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackingQuery.data]);
+
+  /**
+   * Retires the checkout attempt currently anchored to attemptCartId --
+   * called from the effect below once a genuinely different cart is
+   * established, never merely because /cart remounted or the old cart's
+   * pointer was cleared. Clears every piece of transient state this hook
+   * owns, including the persisted attempt pointer, so a reload after this
+   * point can't resurrect the retired order either -- from the customer's
+   * perspective that order is exactly as done as a confirmed/cancelled one,
+   * it just never reached one of those statuses in this tab.
+   */
+  const retireAttempt = useCallback(() => {
+    attemptCartId.current = null;
+    databaseStatus.current = null;
+    lastAttemptWasCash.current = false;
+    clearCheckoutAttempt(storefrontContext);
+    setPhase("idle");
+    setOrder(null);
+    setTrackedOrder(null);
+    setRequest(null);
+    setUpdatedAmount(null);
+    setStartError(undefined);
+    setCancelError(undefined);
+    setCancelling(false);
+  }, [setTrackedOrder]);
+
+  /**
+   * The lifecycle boundary: a checkout attempt belongs to one specific
+   * cart, not to every cart that ever exists in this tab. checkout_cart's
+   * own pointer-clearing (see createOrder/beginCashOnDelivery) makes a
+   * brand new -- empty -- cart appear in the cache almost immediately,
+   * well before the customer has actually finished paying, so this can't
+   * just compare against whatever cart is currently cached:
+   *
+   *   - While an attempt is in flight (activeRequest.current), never look.
+   *     Comparing against that instant replacement cart here would rip the
+   *     payment UI out from under the customer mid-flow (e.g. while the
+   *     Razorpay widget is open, or while a "pending" order is still
+   *     legitimately being confirmed by the payment provider).
+   *   - Once nothing is in flight, only retire once the new cart actually
+   *     has items in it. An empty replacement cart is bookkeeping, not the
+   *     customer moving on -- this is what keeps a completed order's
+   *     confirmation/tracking state alive long enough to navigate away on
+   *     its own, and keeps a still-pending attempt recoverable if the
+   *     customer leaves /cart and comes back without touching a new cart.
+   *   - The same cart id (a same-cart payment retry after a cancel/failure)
+   *     is never treated as a new lifecycle.
+   *
+   * A restored or direct-link attempt (see the mount-only effect further
+   * down) has no recorded cart at all -- anchor it to whatever cart is
+   * current the first time one loads, so a later, genuinely different cart
+   * can still retire it, without ever retiring on this same pass.
+   */
+  useEffect(() => {
+    if (activeRequest.current || !cart) return;
+    if (attemptCartId.current === null) {
+      if (phase !== "idle") attemptCartId.current = cart.id;
+      return;
+    }
+    if (cart.id === attemptCartId.current || cart.items.length === 0) return;
+    retireAttempt();
+  }, [cart, phase, retireAttempt]);
 
   const verify = useCallback(async () => {
     const orderId =
@@ -411,7 +512,7 @@ export function useCheckoutFlow(
         paymentMethod: "online",
       });
       setOrder(result.order);
-      setTrackedOrderId(result.order.id);
+      setTrackedOrder(result.order.id);
 
       // checkout_cart marks the cart 'converted', so the cached copy is stale and
       // the next add has to open a fresh cart. Only clear the pointer now that
@@ -430,6 +531,7 @@ export function useCheckoutFlow(
       getCartIdentity,
       getCustomerId,
       queryClient,
+      setTrackedOrder,
       startRazorpayPayment,
     ],
   );
@@ -439,6 +541,7 @@ export function useCheckoutFlow(
       const identity = getCartIdentity();
       if (activeRequest.current || !identity) return;
       activeRequest.current = true;
+      attemptCartId.current = identity.cartId;
       lastAttemptWasCash.current = false;
       setRequest(checkoutRequest);
       setStartError(undefined);
@@ -488,6 +591,7 @@ export function useCheckoutFlow(
       const identity = getCartIdentity();
       if (activeRequest.current || !identity) return null;
       activeRequest.current = true;
+      attemptCartId.current = identity.cartId;
       lastAttemptWasCash.current = true;
       setRequest(checkoutRequest);
       setStartError(undefined);
@@ -522,7 +626,7 @@ export function useCheckoutFlow(
           },
         };
         setOrder(cashOrder);
-        setTrackedOrderId(cashOrder.id);
+        setTrackedOrder(cashOrder.id);
         clearCheckoutAttempt(storefrontContext);
         setPhase("confirmed");
         return cashOrder;
@@ -541,6 +645,7 @@ export function useCheckoutFlow(
       getCartIdentity,
       getCustomerId,
       queryClient,
+      setTrackedOrder,
     ],
   );
 
