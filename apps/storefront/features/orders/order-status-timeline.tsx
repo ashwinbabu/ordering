@@ -1,11 +1,13 @@
-import { Check, CircleCheck, Clock3, Truck } from "lucide-react";
+import { Check, CircleCheck, Clock3, PackageCheck, Truck } from "lucide-react";
 import type { FulfilmentType, OrderStatus } from "../../domain/storefront";
 
-// Position of each in-progress status along the 4-step timeline below.
-// "delivered"/"completed" land past the last step so every step reads as
-// done; "cancelled"/"refunded" resolve to -1 (nothing active) rather than
-// crash -- callers showing a cancelled/refunded order should route to a
-// dedicated cancelled state instead of rendering this timeline.
+// Position of each in-progress status along the 5-step timeline below.
+// "completed" lands on the same step as "delivered" -- the database only
+// distinguishes them for pickup vs delivery order-completion bookkeeping,
+// not for anything this timeline needs to show separately.
+// "cancelled"/"refunded" resolve to -1 (nothing active) rather than crash --
+// callers showing a cancelled/refunded order should route to a dedicated
+// cancelled state instead of rendering this timeline.
 const timelineStepIndex: Record<OrderStatus, number> = {
   placed: 0,
   accepted: 1,
@@ -88,6 +90,17 @@ export function OrderStatusTimeline({
             body="Collect your order from the outlet."
           />
         )}
+        <StatusStep
+          active={false}
+          complete={currentStepIndex >= 4}
+          icon={<PackageCheck size={15} />}
+          title={isDelivery ? "Delivered" : "Picked up"}
+          body={
+            isDelivery
+              ? "Your order has been delivered."
+              : "Your order has been collected."
+          }
+        />
       </ol>
     </section>
   );

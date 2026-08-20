@@ -2,6 +2,7 @@ import { Check, MapPin, RotateCcw, Store } from "lucide-react";
 import type { StorefrontOrder, Venue } from "../../domain/storefront";
 import { formatRupees } from "../../domain/storefront";
 import { CustomerPageHeader } from "../venue/customer-page-header";
+import { OrderStatusTimeline } from "./order-status-timeline";
 import { displayStatus, formatOrderDate } from "./orders-screen";
 
 interface OrderDetailsScreenProps {
@@ -24,6 +25,7 @@ export function OrderDetailsScreen({
     "out-for-delivery",
   ].includes(order.status);
   const finalOrder = ["delivered", "completed"].includes(order.status);
+  const isCashOnDelivery = order.paymentMethod === "Cash on delivery";
   return (
     <main className="ordering-app customer-page order-details-page">
       <CustomerPageHeader
@@ -49,8 +51,13 @@ export function OrderDetailsScreen({
             {order.fulfilment === "delivery" ? "Delivery" : "Pickup"}
           </p>
         </section>
-        {isCurrent && order.timeline?.length ? (
-          <OrderTimeline entries={order.timeline} />
+        {isCurrent ? (
+          <OrderStatusTimeline
+            status={order.status}
+            fulfilment={order.fulfilment}
+            venueName={venue.displayName}
+            isCashOnDelivery={isCashOnDelivery}
+          />
         ) : null}
         {order.status === "cancelled" && order.cancellationReason ? (
           <section className="order-detail-section cancellation-details">
@@ -162,8 +169,13 @@ export function OrderDetailsScreen({
             <p>{order.orderNote}</p>
           </section>
         ) : null}
-        {!isCurrent && order.timeline?.length ? (
-          <OrderTimeline entries={order.timeline} />
+        {finalOrder ? (
+          <OrderStatusTimeline
+            status={order.status}
+            fulfilment={order.fulfilment}
+            venueName={venue.displayName}
+            isCashOnDelivery={isCashOnDelivery}
+          />
         ) : null}
         {finalOrder ? (
           <button
@@ -177,36 +189,5 @@ export function OrderDetailsScreen({
         ) : null}
       </div>
     </main>
-  );
-}
-
-function OrderTimeline({
-  entries,
-}: {
-  entries: NonNullable<StorefrontOrder["timeline"]>;
-}) {
-  return (
-    <section
-      className="order-detail-section order-timeline"
-      aria-label="Order timeline"
-    >
-      <h2>Order timeline</h2>
-      <ol>
-        {entries.map((entry) => (
-          <li key={`${entry.label}-${entry.occurredAt}`}>
-            <span aria-hidden="true" />
-            <div>
-              <strong>{entry.label}</strong>
-              <time dateTime={entry.occurredAt}>
-                {new Intl.DateTimeFormat("en-IN", {
-                  hour: "numeric",
-                  minute: "2-digit",
-                }).format(new Date(entry.occurredAt))}
-              </time>
-            </div>
-          </li>
-        ))}
-      </ol>
-    </section>
   );
 }
