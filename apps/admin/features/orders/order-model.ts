@@ -19,6 +19,8 @@ export interface Order {
   backendStatus?: string;
   id: string;
   status: OrderStatus;
+  /** ISO-8601 instant the order was placed -- the raw value backing `received`/`age`, kept for callers (e.g. the new-order alarm) that need to do arithmetic rather than display a formatted string. Null when the backend didn't supply one; callers must treat that as "never eligible" rather than defaulting to now. */
+  placedAt: string | null;
   /**
    * Milestone timestamps, ISO-8601, as stored. The day's figures are derived
    * from these rather than from whichever orders happen to be in the queue,

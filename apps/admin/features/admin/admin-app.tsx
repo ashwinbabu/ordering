@@ -24,6 +24,7 @@ import {
   useOrdersQuery,
   useTransitionOrderMutation,
 } from "@/features/orders/orders-query";
+import { useNewOrderAlarm } from "@/features/orders/use-new-order-alarm";
 import {
   KotView,
   OrderDetails,
@@ -168,6 +169,7 @@ export function AdminApp() {
     ? selectedCategoryId
     : (categories[0]?.id ?? "");
   const orders = ordersQuery.data ?? [];
+  useNewOrderAlarm(orders, activeLocation?.id ?? null);
 
   const selectedOrder =
     orders.find((order) => order.recordId === selectedOrderId) || orders[0];

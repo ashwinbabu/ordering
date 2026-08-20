@@ -180,6 +180,7 @@ function parseOrder(value: Json): Order {
     backendStatus,
     id: stringValue(row, "order_number"),
     status,
+    placedAt,
     deliveredAt: nullableStringValue(row, "delivered_at"),
     cancelledAt: nullableStringValue(row, "cancelled_at"),
     customer: stringValue(row, "customer_name"),
