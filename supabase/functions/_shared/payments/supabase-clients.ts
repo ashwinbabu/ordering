@@ -10,15 +10,26 @@ export interface ServerConfig {
 export function getServerConfig(): ServerConfig {
   return {
     supabaseUrl: Deno.env.get("SUPABASE_URL"),
-    serviceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? getNamedKey(Deno.env.get("SUPABASE_SECRET_KEYS")),
-    anonKey: Deno.env.get("SUPABASE_ANON_KEY") ?? getNamedKey(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS")),
+    serviceRoleKey:
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+      getNamedKey(Deno.env.get("SUPABASE_SECRET_KEYS")),
+    anonKey:
+      Deno.env.get("SUPABASE_ANON_KEY") ??
+      getNamedKey(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS")),
   };
 }
 
 /** Service-role client for the payment write RPCs, which are intentionally service-role-only. */
-export function createAdminClient(supabaseUrl: string, serviceRoleKey: string): SupabaseClient {
+export function createAdminClient(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+): SupabaseClient {
   return createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
 }
 
@@ -28,9 +39,17 @@ export function createAdminClient(supabaseUrl: string, serviceRoleKey: string): 
  * how order-ownership checks (private.can_view_order, via ordering.get_order)
  * get enforced -- never by trusting an id the browser sends.
  */
-export function createUserClient(supabaseUrl: string, anonKey: string, authorizationHeader: string): SupabaseClient {
+export function createUserClient(
+  supabaseUrl: string,
+  anonKey: string,
+  authorizationHeader: string,
+): SupabaseClient {
   return createClient(supabaseUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
     global: { headers: { Authorization: authorizationHeader } },
   });
 }

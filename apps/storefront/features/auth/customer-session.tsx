@@ -1,5 +1,14 @@
 import type { Session } from "@supabase/supabase-js";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { splitE164, type PhoneNumber } from "../../domain/phone";
 import type { CustomerProfile } from "../../domain/storefront";
 import { getSupabaseClient } from "../../lib/supabase/client";
@@ -80,7 +89,9 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [baseProfile, setBaseProfile] = useState<CustomerProfile | null>(null);
   const [demoProfile, setDemoProfile] = useState<CustomerProfile | null>(null);
-  const [localOverride, setLocalOverride] = useState<Partial<CustomerProfile>>({});
+  const [localOverride, setLocalOverride] = useState<Partial<CustomerProfile>>(
+    {},
+  );
   const [customerLoaded, setCustomerLoaded] = useState(true);
   const [customerLoadError, setCustomerLoadError] = useState(false);
   // Bumped by retryCustomerLoad() to re-run the effect below without
@@ -109,7 +120,11 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   // order-change notifications while on any screen, with exactly one
   // subscription for the whole session -- re-subscribing automatically if
   // they sign in/out (authUserId changes) via the hook's own cleanup.
-  useCustomerOrdersChannel(session?.user.id ?? null, customerId, customerBusinessReady);
+  useCustomerOrdersChannel(
+    session?.user.id ?? null,
+    customerId,
+    customerBusinessReady,
+  );
 
   useEffect(() => {
     let active = true;
@@ -121,7 +136,9 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
       setSessionLoaded(true);
     });
 
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, nextSession) => {
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setSessionLoaded(true);
     });
@@ -152,7 +169,10 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
 
       if (error || !data) {
         if (error) {
-          console.error("Could not load the signed-in customer profile.", error);
+          console.error(
+            "Could not load the signed-in customer profile.",
+            error,
+          );
           // Only a genuine read failure, never a legitimate "no row yet" --
           // that case (no error, just !data) stays on the ordinary
           // sign-in path below via customer === null.
@@ -182,7 +202,10 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
         await resolveCustomerBusinessId(storefrontContext.businessId, row.id);
         if (active) setCustomerBusinessReady(true);
       } catch (linkError) {
-        console.error("Could not link this customer to the current business.", linkError);
+        console.error(
+          "Could not link this customer to the current business.",
+          linkError,
+        );
       }
     }
 
@@ -193,7 +216,10 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     };
   }, [session, setCurrentCustomerId, reloadToken]);
 
-  const retryCustomerLoad = useCallback(() => setReloadToken((token) => token + 1), []);
+  const retryCustomerLoad = useCallback(
+    () => setReloadToken((token) => token + 1),
+    [],
+  );
 
   async function signOut() {
     setDemoProfile(null);
@@ -209,7 +235,12 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   }
 
   function completeDemoSignIn(phone: PhoneNumber) {
-    setDemoProfile({ name: "", countryCode: phone.countryCode, phone: phone.phone, isPhoneVerified: true });
+    setDemoProfile({
+      name: "",
+      countryCode: phone.countryCode,
+      phone: phone.phone,
+      isPhoneVerified: true,
+    });
     setLocalOverride({});
   }
 
@@ -230,11 +261,18 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     completeDemoSignIn,
   };
 
-  return <CustomerSessionContext.Provider value={value}>{children}</CustomerSessionContext.Provider>;
+  return (
+    <CustomerSessionContext.Provider value={value}>
+      {children}
+    </CustomerSessionContext.Provider>
+  );
 }
 
 export function useCustomerSession() {
   const context = useContext(CustomerSessionContext);
-  if (!context) throw new Error("useCustomerSession must be used within CustomerSessionProvider.");
+  if (!context)
+    throw new Error(
+      "useCustomerSession must be used within CustomerSessionProvider.",
+    );
   return context;
 }

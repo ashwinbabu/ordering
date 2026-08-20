@@ -61,11 +61,7 @@ export interface BusinessSettingsDraft {
 }
 
 export type SettingsSection =
-  | "general"
-  | "ordering"
-  | "hours"
-  | "tax"
-  | "delivery";
+  "general" | "ordering" | "hours" | "tax" | "delivery";
 
 export function cloneBusinessSettingsDraft(
   draft: BusinessSettingsDraft,

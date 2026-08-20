@@ -352,7 +352,9 @@ function BusinessSettingsEditor({
                 }))
               }
               onSaved={() => {
-                void queryClient.invalidateQueries({ queryKey: ["outlet-context"] });
+                void queryClient.invalidateQueries({
+                  queryKey: ["outlet-context"],
+                });
                 onSaved("Logo");
               }}
             />

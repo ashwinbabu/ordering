@@ -2,22 +2,58 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Outlet, useNavigate } from "react-router";
 import { defaultCountryCode } from "../domain/phone";
-import { currentOrderStatuses, type CartLineOptionSelection, type CustomerDetails, type DeliveryAddress, type MenuProduct, type StorefrontOrder } from "../domain/storefront";
-import type { CartLineView, ServerCart, StorefrontSettings } from "../domain/cart";
-import { useCustomerAddressesQuery, useDeleteCustomerAddressMutation, useSaveCustomerAddressMutation } from "../features/addresses/customer-addresses-query";
-import { createCustomerAddress, resolveCustomerBusinessId } from "../features/addresses/api/customer-address-api";
+import {
+  currentOrderStatuses,
+  type CartLineOptionSelection,
+  type CustomerDetails,
+  type DeliveryAddress,
+  type MenuProduct,
+  type StorefrontOrder,
+} from "../domain/storefront";
+import type {
+  CartLineView,
+  ServerCart,
+  StorefrontSettings,
+} from "../domain/cart";
+import {
+  useCustomerAddressesQuery,
+  useDeleteCustomerAddressMutation,
+  useSaveCustomerAddressMutation,
+} from "../features/addresses/customer-addresses-query";
+import {
+  createCustomerAddress,
+  resolveCustomerBusinessId,
+} from "../features/addresses/api/customer-address-api";
 import type { AddressDraft } from "../features/addresses/address-form";
-import { AuthFlowSheet, type AuthFlowRequest } from "../features/auth/auth-flow-sheet";
+import {
+  AuthFlowSheet,
+  type AuthFlowRequest,
+} from "../features/auth/auth-flow-sheet";
 import { useCustomerSession } from "../features/auth/customer-session";
 import { findLineByContent } from "../lib/storefront/cart-line-identity";
-import { reconcileCartLines, selectionsFromServerItem } from "../features/cart/cart-reconciliation";
-import { useRemoveExistingLineMutation, useSaveCartLineConfigurationMutation, useSetLineByContentMutation, useUpdateExistingLineMutation } from "../features/cart/storefront-cart-mutations";
-import { readCurrentCart, resolveCartIdentity, useStorefrontCartQuery } from "../features/cart/storefront-cart-query";
+import {
+  reconcileCartLines,
+  selectionsFromServerItem,
+} from "../features/cart/cart-reconciliation";
+import {
+  useRemoveExistingLineMutation,
+  useSaveCartLineConfigurationMutation,
+  useSetLineByContentMutation,
+  useUpdateExistingLineMutation,
+} from "../features/cart/storefront-cart-mutations";
+import {
+  readCurrentCart,
+  resolveCartIdentity,
+  useStorefrontCartQuery,
+} from "../features/cart/storefront-cart-query";
 import { useStorefrontSettingsQuery } from "../features/cart/storefront-settings-query";
 import { useCheckoutFlow } from "../features/checkout/use-checkout-flow";
 import { ProductConfigurationSheet } from "../features/menu/product-configuration-sheet";
 import { ProductDetailSheet } from "../features/menu/product-detail-sheet";
-import { menuFromStorefrontMenu, venueFromStorefrontMenu } from "../features/menu/storefront-menu-adapter";
+import {
+  menuFromStorefrontMenu,
+  venueFromStorefrontMenu,
+} from "../features/menu/storefront-menu-adapter";
 import { useStorefrontMenuQuery } from "../features/menu/storefront-menu-query";
 import { useOrderingStatusChannel } from "../features/ordering-status/use-ordering-status-channel";
 import { useCustomerOrdersQuery } from "../features/orders/customer-orders-query";
@@ -25,7 +61,10 @@ import { storefrontContext } from "../lib/storefront/storefront-context";
 import type { Menu, Venue } from "../domain/storefront";
 import type { UseQueryResult } from "@tanstack/react-query";
 
-interface ConfigurationTarget { productId: string; lineId?: string; }
+interface ConfigurationTarget {
+  productId: string;
+  lineId?: string;
+}
 
 const noAddresses: DeliveryAddress[] = [];
 
@@ -51,7 +90,12 @@ export interface StorefrontLayoutContext {
   settings: StorefrontSettings | null;
   customerDetails: CustomerDetails;
   savedAddresses: DeliveryAddress[];
-  customerAddressesResource: { isPending: boolean; isError: boolean; isSuccess: boolean; refetch: () => void };
+  customerAddressesResource: {
+    isPending: boolean;
+    isError: boolean;
+    isSuccess: boolean;
+    refetch: () => void;
+  };
   pendingGuestAddress: DeliveryAddress | undefined;
   checkout: ReturnType<typeof useCheckoutFlow>;
   ordersResource: UseQueryResult<StorefrontOrder[]>;
@@ -61,12 +105,18 @@ export interface StorefrontLayoutContext {
   openProductConfiguration: (product: MenuProduct) => void;
   openConfigurationForLine: (lineId: string) => void;
   viewProduct: (productId: string) => void;
-  changeSimpleProductQuantity: (productId: string, quantity: number, onAdded?: () => void) => void;
+  changeSimpleProductQuantity: (
+    productId: string,
+    quantity: number,
+    onAdded?: () => void,
+  ) => void;
   adjustConfigurableProductQuantity: (productId: string, delta: number) => void;
   changeCartLineQuantity: (lineId: string, quantity: number) => void;
   saveAddress: (draft: AddressDraft, editingId?: string) => Promise<string>;
   removeAddress: (addressId: string) => Promise<void>;
-  materializePendingAddress: (authenticatedCustomerId: string) => Promise<DeliveryAddress | undefined>;
+  materializePendingAddress: (
+    authenticatedCustomerId: string,
+  ) => Promise<DeliveryAddress | undefined>;
   replaceCartWithOrder: (order: StorefrontOrder) => Promise<void>;
 }
 
@@ -91,11 +141,16 @@ export function StorefrontLayout() {
   // Held here (not in CartScreen's local state) so it survives the screen
   // staying mounted underneath the auth sheet and is reachable from the
   // post-verification materialize step below.
-  const [pendingGuestAddress, setPendingGuestAddress] = useState<DeliveryAddress>();
-  const [configurationTarget, setConfigurationTarget] = useState<ConfigurationTarget>();
+  const [pendingGuestAddress, setPendingGuestAddress] =
+    useState<DeliveryAddress>();
+  const [configurationTarget, setConfigurationTarget] =
+    useState<ConfigurationTarget>();
   const [viewingProductId, setViewingProductId] = useState<string>();
   const [cartActionError, setCartActionError] = useState<string>();
-  const storefrontMenuResource = useStorefrontMenuQuery(storefrontContext.businessId, storefrontContext.locationId);
+  const storefrontMenuResource = useStorefrontMenuQuery(
+    storefrontContext.businessId,
+    storefrontContext.locationId,
+  );
   const cartResource = useStorefrontCartQuery(customerId);
   const customerAddressesResource = useCustomerAddressesQuery(customerId);
   const saveCustomerAddress = useSaveCustomerAddressMutation(customerId);
@@ -104,7 +159,8 @@ export function StorefrontLayout() {
   const setLineByContent = useSetLineByContentMutation(getCustomerId);
   const updateExistingLine = useUpdateExistingLineMutation(getCustomerId);
   const removeExistingLine = useRemoveExistingLineMutation(getCustomerId);
-  const saveCartLineConfiguration = useSaveCartLineConfigurationMutation(getCustomerId);
+  const saveCartLineConfiguration =
+    useSaveCartLineConfigurationMutation(getCustomerId);
   // The same single identity-resolution function every cart mutation uses
   // (see storefront-cart-query.ts) -- called fresh at the moment each
   // checkout RPC actually fires (see use-checkout-flow.ts), never a value
@@ -124,8 +180,14 @@ export function StorefrontLayout() {
   // through, restored only from checkout-attempt-storage's localStorage
   // pointer -- never re-derived from whatever order page happens to be open.
   const checkout = useCheckoutFlow(getCartIdentity, getCustomerId);
-  const ordersResource = useCustomerOrdersQuery(customerId, storefrontContext.businessId);
-  useOrderingStatusChannel(storefrontContext.businessId, storefrontContext.locationId);
+  const ordersResource = useCustomerOrdersQuery(
+    customerId,
+    storefrontContext.businessId,
+  );
+  useOrderingStatusChannel(
+    storefrontContext.businessId,
+    storefrontContext.locationId,
+  );
 
   // A restored checkout attempt only makes sense to resume from /cart, where
   // PaymentFlowScreen's phase-driven "confirming" state can render -- mirrors
@@ -139,11 +201,17 @@ export function StorefrontLayout() {
   }, []);
 
   const menu = useMemo(
-    () => storefrontMenuResource.data ? menuFromStorefrontMenu(storefrontMenuResource.data) : null,
+    () =>
+      storefrontMenuResource.data
+        ? menuFromStorefrontMenu(storefrontMenuResource.data)
+        : null,
     [storefrontMenuResource.data],
   );
   const venue = useMemo(
-    () => storefrontMenuResource.data ? venueFromStorefrontMenu(storefrontMenuResource.data) : null,
+    () =>
+      storefrontMenuResource.data
+        ? venueFromStorefrontMenu(storefrontMenuResource.data)
+        : null,
     [storefrontMenuResource.data],
   );
   const cart = cartResource.data;
@@ -151,26 +219,55 @@ export function StorefrontLayout() {
   const lines = useMemo(() => reconcileCartLines(cart, menu), [cart, menu]);
   const cartQuantities = useMemo(() => {
     const quantities: Record<string, number> = {};
-    for (const item of cart?.items ?? []) quantities[item.productId] = (quantities[item.productId] ?? 0) + item.quantity;
+    for (const item of cart?.items ?? [])
+      quantities[item.productId] =
+        (quantities[item.productId] ?? 0) + item.quantity;
     return quantities;
   }, [cart]);
-  const cartItemCount = useMemo(() => lines.reduce((count, line) => count + line.quantity, 0), [lines]);
+  const cartItemCount = useMemo(
+    () => lines.reduce((count, line) => count + line.quantity, 0),
+    [lines],
+  );
   const cartTotal = cart?.estimatedFoodSubtotal ?? 0;
   const customerDetails: CustomerDetails = customer
-    ? { name: customer.name, countryCode: customer.countryCode, phone: customer.phone }
+    ? {
+        name: customer.name,
+        countryCode: customer.countryCode,
+        phone: customer.phone,
+      }
     : { name: "", countryCode: defaultCountryCode, phone: "" };
   const orders = ordersResource.data ?? [];
-  const currentOrders = orders.filter((order) => currentOrderStatuses.has(order.status));
-  const pastOrders = orders.filter((order) => !currentOrderStatuses.has(order.status)).slice().sort((left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt));
+  const currentOrders = orders.filter((order) =>
+    currentOrderStatuses.has(order.status),
+  );
+  const pastOrders = orders
+    .filter((order) => !currentOrderStatuses.has(order.status))
+    .slice()
+    .sort(
+      (left, right) => Date.parse(right.placedAt) - Date.parse(left.placedAt),
+    );
 
-  const configurationProduct = configurationTarget ? menu?.products.find((product) => product.id === configurationTarget.productId) : undefined;
-  const configurationServerItem = configurationTarget?.lineId ? cart?.items.find((item) => item.id === configurationTarget.lineId) : undefined;
-  const configurationLine = configurationServerItem && configurationProduct ? selectionsFromServerItem(configurationServerItem, configurationProduct) : undefined;
-  const viewingProduct = viewingProductId ? menu?.products.find((product) => product.id === viewingProductId) : undefined;
+  const configurationProduct = configurationTarget
+    ? menu?.products.find(
+        (product) => product.id === configurationTarget.productId,
+      )
+    : undefined;
+  const configurationServerItem = configurationTarget?.lineId
+    ? cart?.items.find((item) => item.id === configurationTarget.lineId)
+    : undefined;
+  const configurationLine =
+    configurationServerItem && configurationProduct
+      ? selectionsFromServerItem(configurationServerItem, configurationProduct)
+      : undefined;
+  const viewingProduct = viewingProductId
+    ? menu?.products.find((product) => product.id === viewingProductId)
+    : undefined;
 
   function reportCartError(error: unknown, fallback: string) {
     const message = (error as { message?: unknown } | null)?.message;
-    setCartActionError(typeof message === "string" && message.length > 0 ? message : fallback);
+    setCartActionError(
+      typeof message === "string" && message.length > 0 ? message : fallback,
+    );
   }
 
   // `onAdded` is passed only by the add-to-cart entry points, never by the
@@ -178,24 +275,41 @@ export function StorefrontLayout() {
   // Identity (cart id, credential, and existing-vs-new line id) is resolved
   // inside the mutation from one fresh snapshot at execution time -- this
   // component never derives or passes any of it (see cart-line-identity.ts).
-  function changeSimpleProductQuantity(productId: string, quantity: number, onAdded?: () => void) {
+  function changeSimpleProductQuantity(
+    productId: string,
+    quantity: number,
+    onAdded?: () => void,
+  ) {
     if (!cart) return;
     setLineByContent.mutate(
       { productId, selections: [], quantity },
       {
-        onError: (error) => reportCartError(error, quantity <= 0 ? "Couldn't update your cart." : "This item couldn't be added right now."),
+        onError: (error) =>
+          reportCartError(
+            error,
+            quantity <= 0
+              ? "Couldn't update your cart."
+              : "This item couldn't be added right now.",
+          ),
         onSettled: onAdded,
       },
     );
   }
 
   function adjustConfigurableProductQuantity(productId: string, delta: number) {
-    const existingLine = cart?.items.find((item) => item.productId === productId);
+    const existingLine = cart?.items.find(
+      (item) => item.productId === productId,
+    );
     if (!existingLine) return;
-    const selections = existingLine.options.map((option) => ({ optionId: option.optionId }));
+    const selections = existingLine.options.map((option) => ({
+      optionId: option.optionId,
+    }));
     updateExistingLine.mutate(
       { lineId: existingLine.id, productId, selections, delta },
-      { onError: (error) => reportCartError(error, "Couldn't update your cart.") },
+      {
+        onError: (error) =>
+          reportCartError(error, "Couldn't update your cart."),
+      },
     );
   }
 
@@ -208,28 +322,40 @@ export function StorefrontLayout() {
   function changeCartLineQuantity(lineId: string, quantity: number) {
     const item = cart?.items.find((candidate) => candidate.id === lineId);
     if (!item) return;
-    const selections = item.options.map((option) => ({ optionId: option.optionId }));
+    const selections = item.options.map((option) => ({
+      optionId: option.optionId,
+    }));
     if (quantity <= 0) {
       removeExistingLine.mutate(
         { lineId, productId: item.productId, selections },
-        { onError: (error) => reportCartError(error, "Couldn't update your cart.") },
+        {
+          onError: (error) =>
+            reportCartError(error, "Couldn't update your cart."),
+        },
       );
       return;
     }
     updateExistingLine.mutate(
       { lineId, productId: item.productId, selections, quantity },
-      { onError: (error) => reportCartError(error, "This item couldn't be updated right now.") },
+      {
+        onError: (error) =>
+          reportCartError(error, "This item couldn't be updated right now."),
+      },
     );
   }
 
   function openProductConfiguration(product: MenuProduct) {
-    if ((product.optionGroups?.length ?? 0) > 0) { setConfigurationTarget({ productId: product.id }); return; }
+    if ((product.optionGroups?.length ?? 0) > 0) {
+      setConfigurationTarget({ productId: product.id });
+      return;
+    }
     // Same-tick peek purely for the "+1 to whatever's already there" default
     // shown to the user -- not an identity value. The mutation this calls
     // re-resolves everything fresh regardless of whether this peek is stale.
     const currentCart = readCurrentCart(queryClient, customerId);
     if (!currentCart) return;
-    const existingQuantity = findLineByContent(currentCart, product.id, [])?.quantity ?? 0;
+    const existingQuantity =
+      findLineByContent(currentCart, product.id, [])?.quantity ?? 0;
     changeSimpleProductQuantity(product.id, existingQuantity + 1);
   }
 
@@ -240,10 +366,19 @@ export function StorefrontLayout() {
 
   function saveConfiguration(selections: CartLineOptionSelection[]) {
     if (!configurationProduct) return;
-    const optionInputs = selections.map((selection) => ({ optionId: selection.optionId }));
+    const optionInputs = selections.map((selection) => ({
+      optionId: selection.optionId,
+    }));
     saveCartLineConfiguration.mutate(
-      { sourceLineId: configurationTarget?.lineId, productId: configurationProduct.id, selections: optionInputs },
-      { onError: (error) => reportCartError(error, "This item couldn't be added right now.") },
+      {
+        sourceLineId: configurationTarget?.lineId,
+        productId: configurationProduct.id,
+        selections: optionInputs,
+      },
+      {
+        onError: (error) =>
+          reportCartError(error, "This item couldn't be added right now."),
+      },
     );
     setConfigurationTarget(undefined);
   }
@@ -253,13 +388,23 @@ export function StorefrontLayout() {
       // No customer to own the row yet - keep the draft in memory as the
       // guest's presumptive first (default) address until checkout carries
       // them through OTP verification.
-      const address: DeliveryAddress = { ...draft, isDefault: true, id: "pending" };
+      const address: DeliveryAddress = {
+        ...draft,
+        isDefault: true,
+        id: "pending",
+      };
       setPendingGuestAddress(address);
       return address.id;
     }
-    const isFirstAddress = customerAddressesResource.isSuccess && savedAddresses.length === 0;
-    const addressDraft = editingId ? draft : { ...draft, isDefault: isFirstAddress };
-    return saveCustomerAddress.mutateAsync({ draft: addressDraft, addressId: editingId });
+    const isFirstAddress =
+      customerAddressesResource.isSuccess && savedAddresses.length === 0;
+    const addressDraft = editingId
+      ? draft
+      : { ...draft, isDefault: isFirstAddress };
+    return saveCustomerAddress.mutateAsync({
+      draft: addressDraft,
+      addressId: editingId,
+    });
   }
 
   async function removeAddress(addressId: string) {
@@ -275,16 +420,30 @@ export function StorefrontLayout() {
    * as other cart actions and swallowed here (returning undefined) so the
    * caller can just bail out without needing its own error UI.
    */
-  async function materializePendingAddress(authenticatedCustomerId: string): Promise<DeliveryAddress | undefined> {
+  async function materializePendingAddress(
+    authenticatedCustomerId: string,
+  ): Promise<DeliveryAddress | undefined> {
     if (!pendingGuestAddress) return undefined;
     try {
-      const customerBusinessId = await resolveCustomerBusinessId(storefrontContext.businessId, authenticatedCustomerId);
-      const addressId = await createCustomerAddress(customerBusinessId, pendingGuestAddress);
-      const address: DeliveryAddress = { ...pendingGuestAddress, id: addressId };
+      const customerBusinessId = await resolveCustomerBusinessId(
+        storefrontContext.businessId,
+        authenticatedCustomerId,
+      );
+      const addressId = await createCustomerAddress(
+        customerBusinessId,
+        pendingGuestAddress,
+      );
+      const address: DeliveryAddress = {
+        ...pendingGuestAddress,
+        id: addressId,
+      };
       setPendingGuestAddress(undefined);
       return address;
     } catch (error) {
-      reportCartError(error, "We couldn't save your delivery address. Please try again.");
+      reportCartError(
+        error,
+        "We couldn't save your delivery address. Please try again.",
+      );
       return undefined;
     }
   }
@@ -292,8 +451,14 @@ export function StorefrontLayout() {
   function openAuth(request: AuthFlowRequest) {
     setAuthRequest({
       ...request,
-      onCancel: () => { request.onCancel?.(); setAuthRequest(undefined); },
-      onSuccess: (phone, resolvedCustomerId) => { request.onSuccess(phone, resolvedCustomerId); setAuthRequest(undefined); },
+      onCancel: () => {
+        request.onCancel?.();
+        setAuthRequest(undefined);
+      },
+      onSuccess: (phone, resolvedCustomerId) => {
+        request.onSuccess(phone, resolvedCustomerId);
+        setAuthRequest(undefined);
+      },
     });
   }
 
@@ -313,9 +478,15 @@ export function StorefrontLayout() {
         await removeExistingLine.mutateAsync({ lineId: itemId });
       }
       for (const item of order.items) {
-        const product = item.productId ? menu?.products.find((candidate) => candidate.id === item.productId) : undefined;
+        const product = item.productId
+          ? menu?.products.find((candidate) => candidate.id === item.productId)
+          : undefined;
         if (!product) continue;
-        await setLineByContent.mutateAsync({ productId: product.id, selections: [], quantity: item.quantity });
+        await setLineByContent.mutateAsync({
+          productId: product.id,
+          selections: [],
+          quantity: item.quantity,
+        });
       }
     } catch (error) {
       reportCartError(error, "Couldn't reorder this order right now.");
@@ -323,11 +494,32 @@ export function StorefrontLayout() {
   }
 
   if (storefrontMenuResource.status === "error") {
-    return <main className="ordering-app"><section className="customer-empty-state" role="alert"><h1>Menu unavailable</h1><p>{storefrontMenuResource.error.message}</p><button className="primary-button" type="button" onClick={() => void storefrontMenuResource.refetch()}>Try again</button></section></main>;
+    return (
+      <main className="ordering-app">
+        <section className="customer-empty-state" role="alert">
+          <h1>Menu unavailable</h1>
+          <p>{storefrontMenuResource.error.message}</p>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={() => void storefrontMenuResource.refetch()}
+          >
+            Try again
+          </button>
+        </section>
+      </main>
+    );
   }
 
   if (storefrontMenuResource.status === "pending" || !menu || !venue) {
-    return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading menu</h1><p>Getting the latest menu for this location.</p></section></main>;
+    return (
+      <main className="ordering-app">
+        <section className="customer-empty-state" aria-busy="true">
+          <h1>Loading menu</h1>
+          <p>Getting the latest menu for this location.</p>
+        </section>
+      </main>
+    );
   }
 
   const context: StorefrontLayoutContext = {
@@ -368,10 +560,28 @@ export function StorefrontLayout() {
     replaceCartWithOrder,
   };
 
-  return <>
-    <Outlet context={context} />
-    {configurationProduct ? <ProductConfigurationSheet initialSelections={configurationLine} isAcceptingOrders={venue.isAcceptingOrders} product={configurationProduct} onClose={() => setConfigurationTarget(undefined)} onConfirm={saveConfiguration} /> : null}
-    {viewingProduct ? <ProductDetailSheet isAcceptingOrders={venue.isAcceptingOrders} locationName={venue.locationName} product={viewingProduct} onAdd={openProductConfiguration} onClose={() => setViewingProductId(undefined)} /> : null}
-    {authRequest ? <AuthFlowSheet request={authRequest} /> : null}
-  </>;
+  return (
+    <>
+      <Outlet context={context} />
+      {configurationProduct ? (
+        <ProductConfigurationSheet
+          initialSelections={configurationLine}
+          isAcceptingOrders={venue.isAcceptingOrders}
+          product={configurationProduct}
+          onClose={() => setConfigurationTarget(undefined)}
+          onConfirm={saveConfiguration}
+        />
+      ) : null}
+      {viewingProduct ? (
+        <ProductDetailSheet
+          isAcceptingOrders={venue.isAcceptingOrders}
+          locationName={venue.locationName}
+          product={viewingProduct}
+          onAdd={openProductConfiguration}
+          onClose={() => setViewingProductId(undefined)}
+        />
+      ) : null}
+      {authRequest ? <AuthFlowSheet request={authRequest} /> : null}
+    </>
+  );
 }

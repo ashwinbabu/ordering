@@ -56,7 +56,11 @@ export type TaxMode = "none" | "inclusive" | "exclusive";
 export interface StorefrontPaymentMethods {
   defaultMethod: "cash" | "online";
   cash: { enabled: boolean };
-  online: { configured: boolean; enabled: boolean; status: "available" | "disabled" | "not_configured" };
+  online: {
+    configured: boolean;
+    enabled: boolean;
+    status: "available" | "disabled" | "not_configured";
+  };
 }
 
 export interface StorefrontSettings {
@@ -91,7 +95,8 @@ export interface DeliveryQuote {
   deliveryFee: number | null;
 }
 
-export type CartUnavailableReason = "product-unavailable" | "product-removed" | "option-unavailable";
+export type CartUnavailableReason =
+  "product-unavailable" | "product-removed" | "option-unavailable";
 
 // A cart item reconciled against the current live menu for display. Pricing
 // always comes straight from the server cart (never recomputed locally);

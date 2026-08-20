@@ -10,17 +10,27 @@ export function buildAllowedOrigins(): Set<string> {
   return new Set([...configured, ...devOrigins]);
 }
 
-export function corsHeaders(origin: string | null, allowedOrigins: Set<string>): Headers {
+export function corsHeaders(
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Headers {
   const headers = new Headers({
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
     Vary: "Origin",
   });
-  if (origin && allowedOrigins.has(origin)) headers.set("Access-Control-Allow-Origin", origin);
+  if (origin && allowedOrigins.has(origin))
+    headers.set("Access-Control-Allow-Origin", origin);
   return headers;
 }
 
-export function jsonResponse(body: unknown, status: number, origin: string | null, allowedOrigins: Set<string>): Response {
+export function jsonResponse(
+  body: unknown,
+  status: number,
+  origin: string | null,
+  allowedOrigins: Set<string>,
+): Response {
   const headers = corsHeaders(origin, allowedOrigins);
   headers.set("Content-Type", "application/json");
   return new Response(JSON.stringify(body), { status, headers });
@@ -32,7 +42,10 @@ export function jsonResponse(body: unknown, status: number, origin: string | nul
  * single-value env vars. Both are read so this keeps working either way
  * (mirrors customer-auth-msg91's getNamedKey).
  */
-export function getNamedKey(raw: string | undefined, name = "default"): string | undefined {
+export function getNamedKey(
+  raw: string | undefined,
+  name = "default",
+): string | undefined {
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw) as Record<string, string>;

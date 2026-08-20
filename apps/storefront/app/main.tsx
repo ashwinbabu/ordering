@@ -13,7 +13,9 @@ import "./globals.css";
 // import.meta.env.DEV is stripped by Vite at build time, so this branch does
 // not exist in a production bundle.
 if (import.meta.env.DEV) {
-  (window as unknown as { supabase: ReturnType<typeof getSupabaseClient> }).supabase = getSupabaseClient();
+  (
+    window as unknown as { supabase: ReturnType<typeof getSupabaseClient> }
+  ).supabase = getSupabaseClient();
 }
 
 createRoot(document.getElementById("root")!).render(

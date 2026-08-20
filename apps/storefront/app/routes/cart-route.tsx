@@ -17,9 +17,22 @@ import type { StorefrontLayoutContext } from "../storefront-layout";
  */
 export function CartRoute() {
   const {
-    cart, cartActionError, dismissCartError, cartResource, lines, settings, customerDetails,
-    checkout, openAuth, openConfigurationForLine, materializePendingAddress, changeCartLineQuantity,
-    saveAddress, pendingGuestAddress, savedAddresses, venue,
+    cart,
+    cartActionError,
+    dismissCartError,
+    cartResource,
+    lines,
+    settings,
+    customerDetails,
+    checkout,
+    openAuth,
+    openConfigurationForLine,
+    materializePendingAddress,
+    changeCartLineQuantity,
+    saveAddress,
+    pendingGuestAddress,
+    savedAddresses,
+    venue,
   } = useOutletContext<StorefrontLayoutContext>();
   const { customer } = useCustomerSession();
   const navigate = useNavigate();
@@ -48,28 +61,50 @@ export function CartRoute() {
   }
 
   if (checkout.phase !== "idle") {
-    return <PaymentFlowScreen onAcceptQuote={checkout.acceptUpdatedQuote} onBackToRestaurant={returnToRestaurant} onConfirmed={onConfirmed} onRetry={checkout.retryPayment} onVerify={() => void checkout.verify()} order={checkout.order} phase={checkout.phase} startError={checkout.startError} updatedAmount={checkout.updatedAmount} venue={venue} />;
+    return (
+      <PaymentFlowScreen
+        onAcceptQuote={checkout.acceptUpdatedQuote}
+        onBackToRestaurant={returnToRestaurant}
+        onConfirmed={onConfirmed}
+        onRetry={checkout.retryPayment}
+        onVerify={() => void checkout.verify()}
+        order={checkout.order}
+        phase={checkout.phase}
+        startError={checkout.startError}
+        updatedAmount={checkout.updatedAmount}
+        venue={venue}
+      />
+    );
   }
 
-  return <CartScreen
-    cart={cart}
-    cartError={cartActionError}
-    onDismissCartError={dismissCartError}
-    isCartLoading={cartResource.isPending}
-    lines={lines}
-    settings={settings}
-    customerDetails={customerDetails}
-    isCustomerVerified={Boolean(customer?.isPhoneVerified)}
-    onBack={() => { navigate("/"); requestAnimationFrame(() => document.querySelector(".category-discovery")?.scrollIntoView({ block: "start" })); }}
-    onCashCheckoutAttempt={beginCashOnDeliveryCheckout}
-    onCheckoutAttempt={beginCheckout}
-    onEditConfiguration={openConfigurationForLine}
-    onMaterializePendingAddress={materializePendingAddress}
-    onQuantityChange={changeCartLineQuantity}
-    onRequestAuthentication={openAuth}
-    onSaveAddress={saveAddress}
-    pendingAddress={pendingGuestAddress}
-    savedAddresses={savedAddresses}
-    venue={venue}
-  />;
+  return (
+    <CartScreen
+      cart={cart}
+      cartError={cartActionError}
+      onDismissCartError={dismissCartError}
+      isCartLoading={cartResource.isPending}
+      lines={lines}
+      settings={settings}
+      customerDetails={customerDetails}
+      isCustomerVerified={Boolean(customer?.isPhoneVerified)}
+      onBack={() => {
+        navigate("/");
+        requestAnimationFrame(() =>
+          document
+            .querySelector(".category-discovery")
+            ?.scrollIntoView({ block: "start" }),
+        );
+      }}
+      onCashCheckoutAttempt={beginCashOnDeliveryCheckout}
+      onCheckoutAttempt={beginCheckout}
+      onEditConfiguration={openConfigurationForLine}
+      onMaterializePendingAddress={materializePendingAddress}
+      onQuantityChange={changeCartLineQuantity}
+      onRequestAuthentication={openAuth}
+      onSaveAddress={saveAddress}
+      pendingAddress={pendingGuestAddress}
+      savedAddresses={savedAddresses}
+      venue={venue}
+    />
+  );
 }

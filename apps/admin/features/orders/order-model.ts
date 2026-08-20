@@ -1,9 +1,5 @@
 export type OrderStatus =
-  | "New"
-  | "Preparing"
-  | "Out for delivery"
-  | "Delivered"
-  | "Cancelled";
+  "New" | "Preparing" | "Out for delivery" | "Delivered" | "Cancelled";
 
 export interface OrderItem {
   name: string;
@@ -100,14 +96,20 @@ export function ordersDateRangeQueryWindow(range: OrdersDateRange) {
   return { from: from.toISOString(), to: to.toISOString() };
 }
 
-export function formatOrdersDateRangeLabel(range: OrdersDateRange, now = new Date()) {
+export function formatOrdersDateRangeLabel(
+  range: OrdersDateRange,
+  now = new Date(),
+) {
   const today = startOfLocalDay(now);
   const yesterday = new Date(today);
   yesterday.setDate(yesterday.getDate() - 1);
   const from = startOfLocalDay(range.from);
   const to = startOfLocalDay(range.to);
 
-  if (from.getTime() === yesterday.getTime() && to.getTime() === today.getTime()) {
+  if (
+    from.getTime() === yesterday.getTime() &&
+    to.getTime() === today.getTime()
+  ) {
     return "Yesterday & today";
   }
   if (from.getTime() === today.getTime() && to.getTime() === today.getTime()) {
@@ -122,7 +124,10 @@ export function formatOrdersDateRangeLabel(range: OrdersDateRange, now = new Dat
  * The operator's device is assumed to be in the outlet's own timezone, which
  * holds for restaurant floor staff.
  */
-export function isOnLocalDay(value: string | null | undefined, day = new Date()) {
+export function isOnLocalDay(
+  value: string | null | undefined,
+  day = new Date(),
+) {
   if (!value) return false;
   const at = new Date(value);
   if (Number.isNaN(at.getTime())) return false;

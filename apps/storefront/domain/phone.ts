@@ -18,16 +18,27 @@ export interface CountryDialCode {
 }
 
 export const supportedCountries: CountryDialCode[] = [
-  { iso2: "IN", name: "India", dialCode: "+91", digitLength: 10, smsOtpEnabled: true },
+  {
+    iso2: "IN",
+    name: "India",
+    dialCode: "+91",
+    digitLength: 10,
+    smsOtpEnabled: true,
+  },
 ];
 
 export const defaultCountryCode = supportedCountries[0].dialCode;
 
-export function findCountryByDialCode(dialCode: string): CountryDialCode | undefined {
+export function findCountryByDialCode(
+  dialCode: string,
+): CountryDialCode | undefined {
   return supportedCountries.find((country) => country.dialCode === dialCode);
 }
 
-export function normalizePhoneInput(value: string, countryCode: string = defaultCountryCode) {
+export function normalizePhoneInput(
+  value: string,
+  countryCode: string = defaultCountryCode,
+) {
   const digitLength = findCountryByDialCode(countryCode)?.digitLength ?? 10;
   return value.replace(/\D/g, "").slice(0, digitLength);
 }
@@ -40,7 +51,9 @@ export function isValidPhoneNumber(phone: PhoneNumber) {
 
 export function formatPhoneForInput(phone: string) {
   const digits = phone.replace(/\D/g, "");
-  return digits.length > 5 ? `${digits.slice(0, 5)} ${digits.slice(5)}` : digits;
+  return digits.length > 5
+    ? `${digits.slice(0, 5)} ${digits.slice(5)}`
+    : digits;
 }
 
 export function maskPhoneNumber({ countryCode, phone }: PhoneNumber) {
@@ -65,7 +78,18 @@ export function toMsg91Identifier(phone: PhoneNumber) {
 
 /** Inverse of toE164() - splits a stored E.164 value back into countryCode/phone using the country table. Falls back to the default country if no dial code matches (only one is configured today, so this only matters once more are added). */
 export function splitE164(e164: string): PhoneNumber {
-  const match = supportedCountries.find((country) => e164.startsWith(country.dialCode) && e164.length === country.dialCode.length + country.digitLength);
-  if (match) return { countryCode: match.dialCode, phone: e164.slice(match.dialCode.length) };
-  return { countryCode: defaultCountryCode, phone: e164.replace(defaultCountryCode, "") };
+  const match = supportedCountries.find(
+    (country) =>
+      e164.startsWith(country.dialCode) &&
+      e164.length === country.dialCode.length + country.digitLength,
+  );
+  if (match)
+    return {
+      countryCode: match.dialCode,
+      phone: e164.slice(match.dialCode.length),
+    };
+  return {
+    countryCode: defaultCountryCode,
+    phone: e164.replace(defaultCountryCode, ""),
+  };
 }

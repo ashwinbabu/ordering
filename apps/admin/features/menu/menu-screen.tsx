@@ -157,7 +157,9 @@ export function MenuAvailability({
                       checked={category.available}
                       onChange={() => onToggleCategory(category)}
                       label={`Toggle ${category.name}`}
-                      disabled={category.available && categoryScheduledUnavailable}
+                      disabled={
+                        category.available && categoryScheduledUnavailable
+                      }
                     />
                   )}
                 </div>
@@ -218,14 +220,14 @@ export function MenuAvailability({
                               <Toggle
                                 checked={product.available}
                                 onChange={() =>
-                                onToggleProduct(category, product)
-                              }
-                              label={`Toggle ${product.name}`}
-                              disabled={
-                                !category.available ||
-                                (product.available && scheduledUnavailable)
-                              }
-                            />
+                                  onToggleProduct(category, product)
+                                }
+                                label={`Toggle ${product.name}`}
+                                disabled={
+                                  !category.available ||
+                                  (product.available && scheduledUnavailable)
+                                }
+                              />
                             )}
                           </div>
                         </div>

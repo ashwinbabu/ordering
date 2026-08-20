@@ -3,8 +3,14 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useOutletContext, useParams } from "react-router";
 import { currentOrderStatuses } from "../../domain/storefront";
 import { useCustomerSession } from "../../features/auth/customer-session";
-import { cancelOrder as cancelOrderRequest, type ServerOrder } from "../../features/checkout/api/storefront-checkout-api";
-import { checkoutErrorMessage, checkoutOrderQueryKey } from "../../features/checkout/use-checkout-flow";
+import {
+  cancelOrder as cancelOrderRequest,
+  type ServerOrder,
+} from "../../features/checkout/api/storefront-checkout-api";
+import {
+  checkoutErrorMessage,
+  checkoutOrderQueryKey,
+} from "../../features/checkout/use-checkout-flow";
 import { OrderDetailsScreen } from "../../features/orders/order-details-screen";
 import { OrderTrackingScreen } from "../../features/orders/order-tracking-screen";
 import { useOrderById } from "../../features/orders/use-order-by-id";
@@ -23,7 +29,8 @@ import type { StorefrontLayoutContext } from "../storefront-layout";
  */
 export function OrderRoute() {
   const { orderId } = useParams<{ orderId: string }>();
-  const { checkout, replaceCartWithOrder, venue } = useOutletContext<StorefrontLayoutContext>();
+  const { checkout, replaceCartWithOrder, venue } =
+    useOutletContext<StorefrontLayoutContext>();
   const { customerId } = useCustomerSession();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -35,9 +42,10 @@ export function OrderRoute() {
   // and every order checkout creates starts out 'placed' in the database --
   // the real query below still resolves independently and corrects this if
   // anything has changed by the time it lands.
-  const initialData: ServerOrder | undefined = checkout.order && checkout.order.id === orderId
-    ? { order: checkout.order, databaseStatus: "placed" }
-    : undefined;
+  const initialData: ServerOrder | undefined =
+    checkout.order && checkout.order.id === orderId
+      ? { order: checkout.order, databaseStatus: "placed" }
+      : undefined;
 
   const orderQuery = useOrderById(orderId, customerId, initialData);
 
@@ -46,10 +54,19 @@ export function OrderRoute() {
     setCancelling(true);
     setCancelError(undefined);
     try {
-      const result = await cancelOrderRequest(orderQuery.data.order.id, orderQuery.data.databaseStatus, "Cancelled by customer");
+      const result = await cancelOrderRequest(
+        orderQuery.data.order.id,
+        orderQuery.data.databaseStatus,
+        "Cancelled by customer",
+      );
       queryClient.setQueryData(checkoutOrderQueryKey(orderId ?? null), result);
     } catch (error) {
-      setCancelError(checkoutErrorMessage(error, "We couldn't cancel this order. It may have already been accepted."));
+      setCancelError(
+        checkoutErrorMessage(
+          error,
+          "We couldn't cancel this order. It may have already been accepted.",
+        ),
+      );
       void orderQuery.refetch();
     } finally {
       setCancelling(false);
@@ -61,30 +78,50 @@ export function OrderRoute() {
   }
 
   if (orderQuery.isError) {
-    return <LinkUnavailablePage venue={venue} onBrowseMenu={returnToRestaurant} />;
+    return (
+      <LinkUnavailablePage venue={venue} onBrowseMenu={returnToRestaurant} />
+    );
   }
 
   if (!orderQuery.data) {
-    return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading your order</h1><p>Fetching the latest status.</p></section></main>;
+    return (
+      <main className="ordering-app">
+        <section className="customer-empty-state" aria-busy="true">
+          <h1>Loading your order</h1>
+          <p>Fetching the latest status.</p>
+        </section>
+      </main>
+    );
   }
 
   const { order } = orderQuery.data;
   const isCurrent = currentOrderStatuses.has(order.trackingOrder.status);
 
   if (isCurrent) {
-    return <OrderTrackingScreen cancelError={cancelError} cancelling={cancelling} onBackToRestaurant={returnToRestaurant} onCancel={() => void handleCancel()} order={order} venue={venue} />;
+    return (
+      <OrderTrackingScreen
+        cancelError={cancelError}
+        cancelling={cancelling}
+        onBackToRestaurant={returnToRestaurant}
+        onCancel={() => void handleCancel()}
+        order={order}
+        venue={venue}
+      />
+    );
   }
 
-  return <OrderDetailsScreen
-    order={order.trackingOrder}
-    onBack={() => navigate("/orders")}
-    onOrderAgain={(pastOrder) => {
-      // Matches the pre-routing "Order again": navigate immediately, let the
-      // cart replacement run in the background (replaceCartWithOrder reports
-      // its own failures via cartActionError).
-      void replaceCartWithOrder(pastOrder);
-      navigate("/");
-    }}
-    venue={venue}
-  />;
+  return (
+    <OrderDetailsScreen
+      order={order.trackingOrder}
+      onBack={() => navigate("/orders")}
+      onOrderAgain={(pastOrder) => {
+        // Matches the pre-routing "Order again": navigate immediately, let the
+        // cart replacement run in the background (replaceCartWithOrder reports
+        // its own failures via cartActionError).
+        void replaceCartWithOrder(pastOrder);
+        navigate("/");
+      }}
+      venue={venue}
+    />
+  );
 }

@@ -17,7 +17,10 @@ const maxJoinAttempts = 3;
  * rather than the Orders page, so switching outlets naturally unsubscribes
  * the old room and joins the new one via the effect's own cleanup.
  */
-export function useLocationOrdersChannel(businessId: string | null, locationId: string | null) {
+export function useLocationOrdersChannel(
+  businessId: string | null,
+  locationId: string | null,
+) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -33,7 +36,9 @@ export function useLocationOrdersChannel(businessId: string | null, locationId: 
       channel = supabase
         .channel(topic, { config: { private: true } })
         .on("broadcast", { event: "order-changed" }, () => {
-          void queryClient.invalidateQueries({ queryKey: ["orders", businessId, locationId] });
+          void queryClient.invalidateQueries({
+            queryKey: ["orders", businessId, locationId],
+          });
         })
         .subscribe((status, error) => {
           if (cancelled) return;
@@ -44,7 +49,10 @@ export function useLocationOrdersChannel(businessId: string | null, locationId: 
           }
 
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            console.error(`Realtime: ${topic} failed to subscribe (${status}).`, error);
+            console.error(
+              `Realtime: ${topic} failed to subscribe (${status}).`,
+              error,
+            );
             if (attempt >= maxJoinAttempts || !channel) return;
             attempt += 1;
             const failedChannel = channel;

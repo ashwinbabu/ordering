@@ -11,7 +11,20 @@ export async function callUntypedRpc(
   client: ReturnType<SupabaseClient["schema"]>,
   name: string,
   args: Record<string, unknown>,
-): Promise<{ data: unknown; error: { message: string; code?: string } | null }> {
-  const result = await (client as unknown as { rpc: (name: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string; code?: string } | null }> }).rpc(name, args);
+): Promise<{
+  data: unknown;
+  error: { message: string; code?: string } | null;
+}> {
+  const result = await (
+    client as unknown as {
+      rpc: (
+        name: string,
+        args: Record<string, unknown>,
+      ) => Promise<{
+        data: unknown;
+        error: { message: string; code?: string } | null;
+      }>;
+    }
+  ).rpc(name, args);
   return result;
 }

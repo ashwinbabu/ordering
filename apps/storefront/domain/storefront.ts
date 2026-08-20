@@ -165,8 +165,22 @@ export interface CustomerProfile {
   isPhoneVerified: boolean;
 }
 
-export type OrderStatus = "placed" | "accepted" | "preparing" | "out-for-delivery" | "delivered" | "completed" | "cancelled" | "refunded";
-export type PaymentStatus = "awaiting_provider" | "confirmed" | "pending" | "failed" | "cancelled" | "verification_error";
+export type OrderStatus =
+  | "placed"
+  | "accepted"
+  | "preparing"
+  | "out-for-delivery"
+  | "delivered"
+  | "completed"
+  | "cancelled"
+  | "refunded";
+export type PaymentStatus =
+  | "awaiting_provider"
+  | "confirmed"
+  | "pending"
+  | "failed"
+  | "cancelled"
+  | "verification_error";
 export type OrderPaymentStatus = "paid" | "pending" | "refunded";
 
 /**
@@ -180,7 +194,12 @@ export type OrderPaymentStatus = "paid" | "pending" | "refunded";
  * reachable in practice; excluding them here just means they fall through to
  * the "past" side like every other terminal status would.
  */
-export const currentOrderStatuses = new Set<OrderStatus>(["placed", "accepted", "preparing", "out-for-delivery"]);
+export const currentOrderStatuses = new Set<OrderStatus>([
+  "placed",
+  "accepted",
+  "preparing",
+  "out-for-delivery",
+]);
 
 export interface OrderLineItem {
   id: string;

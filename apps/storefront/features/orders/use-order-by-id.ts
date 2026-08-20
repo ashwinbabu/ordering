@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { checkoutOrderQueryKey } from "../checkout/use-checkout-flow";
-import { getOrder, type ServerOrder } from "../checkout/api/storefront-checkout-api";
+import {
+  getOrder,
+  type ServerOrder,
+} from "../checkout/api/storefront-checkout-api";
 
 /**
  * The canonical data source for the /orders/:orderId route -- a standalone
@@ -22,7 +25,11 @@ import { getOrder, type ServerOrder } from "../checkout/api/storefront-checkout-
  * loading state, purely a UX nicety -- this hook fetches independently of
  * whether that's ever supplied.
  */
-export function useOrderById(orderId: string | undefined, customerId: string | null, initialData?: ServerOrder) {
+export function useOrderById(
+  orderId: string | undefined,
+  customerId: string | null,
+  initialData?: ServerOrder,
+) {
   return useQuery({
     queryKey: checkoutOrderQueryKey(orderId ?? null),
     queryFn: () => getOrder(orderId as string),

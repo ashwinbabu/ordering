@@ -1,4 +1,14 @@
-import { ChevronDown, ChevronRight, Clock3, Grid2X2, List, Menu as MenuIcon, Minus, Plus, Sparkle } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Clock3,
+  Grid2X2,
+  List,
+  Menu as MenuIcon,
+  Minus,
+  Plus,
+  Sparkle,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   formatRupees,
@@ -29,11 +39,27 @@ interface MenuScreenProps {
   locationName: string;
 }
 
-export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, isAcceptingOrders, locationName, menu, onAddProduct, onAdjustQuantity, onGoToCart, onQuantityChange, onViewProduct, orderingStatus }: MenuScreenProps) {
+export function MenuScreen({
+  cartItemCount,
+  cartQuantities,
+  cartTotal,
+  footer,
+  isAcceptingOrders,
+  locationName,
+  menu,
+  onAddProduct,
+  onAdjustQuantity,
+  onGoToCart,
+  onQuantityChange,
+  onViewProduct,
+  orderingStatus,
+}: MenuScreenProps) {
   const initialCategoryId = menu.categories[0]?.id ?? "";
   const [activeCategoryId, setActiveCategoryId] = useState(initialCategoryId);
   const [isNavigatorOpen, setIsNavigatorOpen] = useState(false);
-  const [presentation, setPresentation] = useState<MenuPresentation>(menu.defaultPresentation);
+  const [presentation, setPresentation] = useState<MenuPresentation>(
+    menu.defaultPresentation,
+  );
   const [showFloatingNavigator, setShowFloatingNavigator] = useState(false);
   const categoryRowRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
@@ -41,7 +67,10 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
   const productCounts = useMemo(
     () =>
       Object.fromEntries(
-        menu.categories.map((category) => [category.id, productsForCategory(menu, category.id).length]),
+        menu.categories.map((category) => [
+          category.id,
+          productsForCategory(menu, category.id).length,
+        ]),
       ),
     [menu],
   );
@@ -53,7 +82,11 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
           ...featuredProduct,
           product: productById(menu, featuredProduct.productId),
         }))
-        .filter((featuredProduct) => featuredProduct.product !== undefined && featuredProduct.product.availability === "available"),
+        .filter(
+          (featuredProduct) =>
+            featuredProduct.product !== undefined &&
+            featuredProduct.product.availability === "available",
+        ),
     [menu],
   );
 
@@ -74,15 +107,21 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
 
   useEffect(() => {
     function updateActiveCategory() {
-      const categoryAtReadingPosition = menu.categories.reduce((currentCategory, category) => {
-        const section = sectionRefs.current.get(category.id);
+      const categoryAtReadingPosition = menu.categories.reduce(
+        (currentCategory, category) => {
+          const section = sectionRefs.current.get(category.id);
 
-        if (section && section.getBoundingClientRect().top <= window.innerHeight * 0.36) {
-          return category;
-        }
+          if (
+            section &&
+            section.getBoundingClientRect().top <= window.innerHeight * 0.36
+          ) {
+            return category;
+          }
 
-        return currentCategory;
-      }, menu.categories[0]);
+          return currentCategory;
+        },
+        menu.categories[0],
+      );
 
       if (categoryAtReadingPosition) {
         setActiveCategoryId((currentCategoryId) =>
@@ -106,7 +145,9 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
   function selectCategory(categoryId: string) {
     setActiveCategoryId(categoryId);
     setIsNavigatorOpen(false);
-    sectionRefs.current.get(categoryId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    sectionRefs.current
+      .get(categoryId)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
@@ -115,16 +156,29 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
         <section className="menu-intro">
           {/* role="status" so the change is announced when the operator pauses
               ordering mid-session, since it happens without any user action. */}
-          <p className={`service-status${isAcceptingOrders ? "" : " service-status--paused"}`} role="status"><span aria-hidden="true" />{orderingStatus}</p>
+          <p
+            className={`service-status${isAcceptingOrders ? "" : " service-status--paused"}`}
+            role="status"
+          >
+            <span aria-hidden="true" />
+            {orderingStatus}
+          </p>
           <h1 id="menu-title">What are you craving?</h1>
-          <p className="menu-intro__message">Made fresh in {locationName}. Choose delivery or pickup in your cart.</p>
+          <p className="menu-intro__message">
+            Made fresh in {locationName}. Choose delivery or pickup in your
+            cart.
+          </p>
           <p className="menu-intro__delivery-note">
             <Clock3 aria-hidden="true" size={14} strokeWidth={1.9} />
             Typical delivery · 25–35 min
           </p>
         </section>
 
-        <section className="category-discovery" aria-label="Menu categories" ref={categoryRowRef}>
+        <section
+          className="category-discovery"
+          aria-label="Menu categories"
+          ref={categoryRowRef}
+        >
           <div className="category-boxes">
             {menu.categories.map((category, index) => (
               <button
@@ -145,7 +199,10 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
         </section>
 
         {featuredProducts.length ? (
-          <section className="featured-section" aria-labelledby="featured-title">
+          <section
+            className="featured-section"
+            aria-labelledby="featured-title"
+          >
             <div className="section-heading">
               <div>
                 <p className="section-kicker">From our kitchen</p>
@@ -161,36 +218,110 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
 
                 return (
                   <article className="featured-card" key={product.id}>
-                    <button aria-label={`View ${product.name}`} className="featured-card__surface" type="button" onClick={() => onViewProduct(product)}>
-                      <MenuImage src={product.imageUrl} alt={product.name} className="featured-card__image" />
+                    <button
+                      aria-label={`View ${product.name}`}
+                      className="featured-card__surface"
+                      type="button"
+                      onClick={() => onViewProduct(product)}
+                    >
+                      <MenuImage
+                        src={product.imageUrl}
+                        alt={product.name}
+                        className="featured-card__image"
+                      />
                       <span className="featured-card__gradient" />
                       <span className="featured-card__content">
                         {editorialLabel ? (
                           <span className="featured-card__tag">
-                            {editorialLabel === "A Mandrem favourite" ? <Sparkle aria-hidden="true" size={12} /> : null}
+                            {editorialLabel === "A Mandrem favourite" ? (
+                              <Sparkle aria-hidden="true" size={12} />
+                            ) : null}
                             {editorialLabel}
                           </span>
                         ) : null}
                         <strong>{product.name}</strong>
-                        <span className="product-price">From ₹{product.price}</span>
+                        <span className="product-price">
+                          From ₹{product.price}
+                        </span>
                       </span>
                     </button>
-                    {product.availability === "available" && (product.optionGroups?.length ?? 0) > 0 ? (
+                    {product.availability === "available" &&
+                    (product.optionGroups?.length ?? 0) > 0 ? (
                       cartQuantities[product.id] ? (
-                        <div className="featured-card__add quantity-control" aria-label={`Quantity of ${product.name}`}>
-                          <button type="button" aria-label={`Remove one ${product.name}`} onClick={() => onAdjustQuantity(product.id, -1)}><Minus aria-hidden="true" size={15} /></button>
+                        <div
+                          className="featured-card__add quantity-control"
+                          aria-label={`Quantity of ${product.name}`}
+                        >
+                          <button
+                            type="button"
+                            aria-label={`Remove one ${product.name}`}
+                            onClick={() => onAdjustQuantity(product.id, -1)}
+                          >
+                            <Minus aria-hidden="true" size={15} />
+                          </button>
                           <span>{cartQuantities[product.id]}</span>
-                          <button type="button" aria-label={`Add one ${product.name}`} disabled={!isAcceptingOrders} onClick={() => onAdjustQuantity(product.id, 1)}><Plus aria-hidden="true" size={15} /></button>
+                          <button
+                            type="button"
+                            aria-label={`Add one ${product.name}`}
+                            disabled={!isAcceptingOrders}
+                            onClick={() => onAdjustQuantity(product.id, 1)}
+                          >
+                            <Plus aria-hidden="true" size={15} />
+                          </button>
                         </div>
-                      ) : <button className="featured-card__add" type="button" disabled={!isAcceptingOrders} onClick={() => onAddProduct(product)}>Add</button>
+                      ) : (
+                        <button
+                          className="featured-card__add"
+                          type="button"
+                          disabled={!isAcceptingOrders}
+                          onClick={() => onAddProduct(product)}
+                        >
+                          Add
+                        </button>
+                      )
                     ) : product.availability === "available" ? (
                       cartQuantities[product.id] ? (
-                        <div className="featured-card__add quantity-control" aria-label={`Quantity of ${product.name}`}>
-                          <button type="button" aria-label={`Remove one ${product.name}`} onClick={() => onQuantityChange(product.id, cartQuantities[product.id] - 1)}><Minus aria-hidden="true" size={15} /></button>
+                        <div
+                          className="featured-card__add quantity-control"
+                          aria-label={`Quantity of ${product.name}`}
+                        >
+                          <button
+                            type="button"
+                            aria-label={`Remove one ${product.name}`}
+                            onClick={() =>
+                              onQuantityChange(
+                                product.id,
+                                cartQuantities[product.id] - 1,
+                              )
+                            }
+                          >
+                            <Minus aria-hidden="true" size={15} />
+                          </button>
                           <span>{cartQuantities[product.id]}</span>
-                          <button type="button" aria-label={`Add one ${product.name}`} disabled={!isAcceptingOrders} onClick={() => onQuantityChange(product.id, cartQuantities[product.id] + 1)}><Plus aria-hidden="true" size={15} /></button>
+                          <button
+                            type="button"
+                            aria-label={`Add one ${product.name}`}
+                            disabled={!isAcceptingOrders}
+                            onClick={() =>
+                              onQuantityChange(
+                                product.id,
+                                cartQuantities[product.id] + 1,
+                              )
+                            }
+                          >
+                            <Plus aria-hidden="true" size={15} />
+                          </button>
                         </div>
-                      ) : <button className="featured-card__add" type="button" disabled={!isAcceptingOrders} onClick={() => onAddProduct(product)}>Add</button>
+                      ) : (
+                        <button
+                          className="featured-card__add"
+                          type="button"
+                          disabled={!isAcceptingOrders}
+                          onClick={() => onAddProduct(product)}
+                        >
+                          Add
+                        </button>
+                      )
                     ) : null}
                   </article>
                 );
@@ -202,7 +333,9 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
         <section className="full-menu" aria-labelledby="full-menu-title">
           <div className="section-heading full-menu__heading">
             <div>
-              <p className="full-menu__note">Made with love in {locationName}</p>
+              <p className="full-menu__note">
+                Made with love in {locationName}
+              </p>
               <h2 id="full-menu-title">Full menu</h2>
             </div>
             {menu.allowPresentationChange ? (
@@ -226,54 +359,72 @@ export function MenuScreen({ cartItemCount, cartQuantities, cartTotal, footer, i
               </div>
             ) : null}
           </div>
-        {menu.categories.map((category) => {
-          const products = productsForCategory(menu, category.id);
-          const availableProducts = products.filter((product) => product.availability === "available");
+          {menu.categories.map((category) => {
+            const products = productsForCategory(menu, category.id);
+            const availableProducts = products.filter(
+              (product) => product.availability === "available",
+            );
 
-          return (
-            <section
-              aria-labelledby={`menu-category-title-${category.id}`}
-              className="menu-category"
-              id={`menu-category-${category.id}`}
-              key={category.id}
-              ref={(element) => {
-                if (element) {
-                  sectionRefs.current.set(category.id, element);
-                } else {
-                  sectionRefs.current.delete(category.id);
-                }
-              }}
-            >
-              <div className="menu-category__heading">
-                <h3 id={`menu-category-title-${category.id}`}>{category.name}</h3>
-                <span>{availableProducts.length} available</span>
-              </div>
-              <div className={presentation === "list" ? "product-collection--list" : "product-collection--grid"}>
-                {products.map((product) => (
-                  <MenuProductCard
-                    key={product.id}
-                    isAcceptingOrders={isAcceptingOrders}
-                    onAdd={onAddProduct}
-                    onAdjustQuantity={onAdjustQuantity}
-                    onQuantityChange={onQuantityChange}
-                    onView={onViewProduct}
-                    presentation={presentation}
-                    product={product}
-                    quantity={cartQuantities[product.id] ?? 0}
-                  />
-                ))}
-              </div>
-            </section>
-          );
-        })}
+            return (
+              <section
+                aria-labelledby={`menu-category-title-${category.id}`}
+                className="menu-category"
+                id={`menu-category-${category.id}`}
+                key={category.id}
+                ref={(element) => {
+                  if (element) {
+                    sectionRefs.current.set(category.id, element);
+                  } else {
+                    sectionRefs.current.delete(category.id);
+                  }
+                }}
+              >
+                <div className="menu-category__heading">
+                  <h3 id={`menu-category-title-${category.id}`}>
+                    {category.name}
+                  </h3>
+                  <span>{availableProducts.length} available</span>
+                </div>
+                <div
+                  className={
+                    presentation === "list"
+                      ? "product-collection--list"
+                      : "product-collection--grid"
+                  }
+                >
+                  {products.map((product) => (
+                    <MenuProductCard
+                      key={product.id}
+                      isAcceptingOrders={isAcceptingOrders}
+                      onAdd={onAddProduct}
+                      onAdjustQuantity={onAdjustQuantity}
+                      onQuantityChange={onQuantityChange}
+                      onView={onViewProduct}
+                      presentation={presentation}
+                      product={product}
+                      quantity={cartQuantities[product.id] ?? 0}
+                    />
+                  ))}
+                </div>
+              </section>
+            );
+          })}
         </section>
         {footer}
       </div>
 
       {showFloatingNavigator ? (
-        <button className="floating-category-button" type="button" onClick={() => setIsNavigatorOpen(true)}>
+        <button
+          className="floating-category-button"
+          type="button"
+          onClick={() => setIsNavigatorOpen(true)}
+        >
           <MenuIcon aria-hidden="true" size={18} />
-          <span>{menu.categories.find((category) => category.id === activeCategoryId)?.name ?? "Menu"}</span>
+          <span>
+            {menu.categories.find(
+              (category) => category.id === activeCategoryId,
+            )?.name ?? "Menu"}
+          </span>
           <ChevronDown aria-hidden="true" size={16} />
         </button>
       ) : null}

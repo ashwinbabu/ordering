@@ -46,7 +46,9 @@ function readCoordinate(value: number | string | null): number | undefined {
  */
 function addressFromRow(row: CustomerAddressRow): DeliveryAddress {
   const storedLabel = row.label?.trim() ?? "";
-  const matchedLabel = knownLabels.find((label) => label.toLowerCase() === storedLabel.toLowerCase());
+  const matchedLabel = knownLabels.find(
+    (label) => label.toLowerCase() === storedLabel.toLowerCase(),
+  );
 
   return {
     id: row.id,
@@ -69,14 +71,21 @@ function addressFromRow(row: CustomerAddressRow): DeliveryAddress {
 }
 
 function labelForStorage(draft: AddressDraft) {
-  return draft.label === "Other" ? (draft.customLabel?.trim() || "Other") : draft.label;
+  return draft.label === "Other"
+    ? draft.customLabel?.trim() || "Other"
+    : draft.label;
 }
 
-export async function listCustomerAddresses(businessId: string, customerId: string): Promise<DeliveryAddress[]> {
+export async function listCustomerAddresses(
+  businessId: string,
+  customerId: string,
+): Promise<DeliveryAddress[]> {
   const result = await getSupabaseClient()
     .schema("core")
     .from("customer_business_addresses")
-    .select("id, label, recipient_name, recipient_phone, address_line_1, address_line_2, landmark, locality, city, state, postal_code, latitude, longitude, delivery_instructions, is_default")
+    .select(
+      "id, label, recipient_name, recipient_phone, address_line_1, address_line_2, landmark, locality, city, state, postal_code, latitude, longitude, delivery_instructions, is_default",
+    )
     .eq("business_id", businessId)
     .eq("customer_id", customerId)
     .order("is_default", { ascending: false })
@@ -86,60 +95,85 @@ export async function listCustomerAddresses(businessId: string, customerId: stri
   return (result.data as CustomerAddressRow[]).map(addressFromRow);
 }
 
-export async function createCustomerAddress(customerBusinessId: string, draft: AddressDraft): Promise<string> {
-  const result = await callUntypedRpc(getSupabaseClient().schema("core"), "create_customer_business_address", {
-    p_customer_business_id: customerBusinessId,
-    p_label: labelForStorage(draft),
-    p_recipient_name: draft.recipientName,
-    p_recipient_phone: draft.recipientPhone,
-    p_address_line_1: draft.line1,
-    p_locality: draft.locality,
-    p_city: draft.city,
-    p_state: draft.state,
-    p_latitude: draft.latitude ?? null,
-    p_longitude: draft.longitude ?? null,
-    p_address_line_2: draft.line2 || null,
-    p_landmark: draft.landmark || null,
-    p_postal_code: draft.postalCode || null,
-    p_delivery_instructions: draft.instructions || null,
-    p_is_default: draft.isDefault,
-  });
+export async function createCustomerAddress(
+  customerBusinessId: string,
+  draft: AddressDraft,
+): Promise<string> {
+  const result = await callUntypedRpc(
+    getSupabaseClient().schema("core"),
+    "create_customer_business_address",
+    {
+      p_customer_business_id: customerBusinessId,
+      p_label: labelForStorage(draft),
+      p_recipient_name: draft.recipientName,
+      p_recipient_phone: draft.recipientPhone,
+      p_address_line_1: draft.line1,
+      p_locality: draft.locality,
+      p_city: draft.city,
+      p_state: draft.state,
+      p_latitude: draft.latitude ?? null,
+      p_longitude: draft.longitude ?? null,
+      p_address_line_2: draft.line2 || null,
+      p_landmark: draft.landmark || null,
+      p_postal_code: draft.postalCode || null,
+      p_delivery_instructions: draft.instructions || null,
+      p_is_default: draft.isDefault,
+    },
+  );
   if (result.error) throw result.error;
   return typeof result.data === "string" ? result.data : "";
 }
 
-export async function updateCustomerAddress(addressId: string, draft: AddressDraft): Promise<void> {
-  const result = await callUntypedRpc(getSupabaseClient().schema("core"), "update_customer_business_address", {
-    p_address_id: addressId,
-    p_label: labelForStorage(draft),
-    p_recipient_name: draft.recipientName,
-    p_recipient_phone: draft.recipientPhone,
-    p_address_line_1: draft.line1,
-    p_locality: draft.locality,
-    p_city: draft.city,
-    p_state: draft.state,
-    p_latitude: draft.latitude ?? null,
-    p_longitude: draft.longitude ?? null,
-    p_is_default: draft.isDefault,
-    p_address_line_2: draft.line2 || null,
-    p_landmark: draft.landmark || null,
-    p_postal_code: draft.postalCode || null,
-    p_delivery_instructions: draft.instructions || null,
-  });
+export async function updateCustomerAddress(
+  addressId: string,
+  draft: AddressDraft,
+): Promise<void> {
+  const result = await callUntypedRpc(
+    getSupabaseClient().schema("core"),
+    "update_customer_business_address",
+    {
+      p_address_id: addressId,
+      p_label: labelForStorage(draft),
+      p_recipient_name: draft.recipientName,
+      p_recipient_phone: draft.recipientPhone,
+      p_address_line_1: draft.line1,
+      p_locality: draft.locality,
+      p_city: draft.city,
+      p_state: draft.state,
+      p_latitude: draft.latitude ?? null,
+      p_longitude: draft.longitude ?? null,
+      p_is_default: draft.isDefault,
+      p_address_line_2: draft.line2 || null,
+      p_landmark: draft.landmark || null,
+      p_postal_code: draft.postalCode || null,
+      p_delivery_instructions: draft.instructions || null,
+    },
+  );
   if (result.error) throw result.error;
 }
 
 export async function deleteCustomerAddress(addressId: string): Promise<void> {
-  const result = await callUntypedRpc(getSupabaseClient().schema("core"), "delete_customer_business_address", {
-    p_address_id: addressId,
-  });
+  const result = await callUntypedRpc(
+    getSupabaseClient().schema("core"),
+    "delete_customer_business_address",
+    {
+      p_address_id: addressId,
+    },
+  );
   if (result.error) throw result.error;
 }
 
-export async function setDefaultCustomerAddress(customerBusinessId: string, addressId: string): Promise<void> {
-  const result = await callUntypedRpc(getSupabaseClient().schema("core"), "set_default_customer_business_address", {
-    p_customer_business_id: customerBusinessId,
-    p_address_id: addressId,
-  });
+export async function setDefaultCustomerAddress(
+  customerBusinessId: string,
+  addressId: string,
+): Promise<void> {
+  const result = await callUntypedRpc(
+    getSupabaseClient().schema("core"),
+    "set_default_customer_business_address",
+    {
+      p_customer_business_id: customerBusinessId,
+      p_address_id: addressId,
+    },
+  );
   if (result.error) throw result.error;
 }

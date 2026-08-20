@@ -37,10 +37,12 @@ const identifierWindowMinutes = 10;
 function corsHeaders(origin: string | null) {
   const headers = new Headers({
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type",
     Vary: "Origin",
   });
-  if (origin && allowedOrigins.has(origin)) headers.set("Access-Control-Allow-Origin", origin);
+  if (origin && allowedOrigins.has(origin))
+    headers.set("Access-Control-Allow-Origin", origin);
   return headers;
 }
 
@@ -80,7 +82,9 @@ function decodeJwtPayload(token: string): unknown {
     let base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     while (base64.length % 4) base64 += "=";
     const decoded = atob(base64);
-    const bytes = Uint8Array.from(decoded, (character) => character.charCodeAt(0));
+    const bytes = Uint8Array.from(decoded, (character) =>
+      character.charCodeAt(0),
+    );
     return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     return null;
@@ -108,7 +112,11 @@ const identityKeys = new Set([
  * means we cannot prove who this is, and more than one means the response is
  * ambiguous. Either way we refuse rather than pick.
  */
-function collectIdentityCandidates(value: unknown, depth = 0, out = new Set<string>()): Set<string> {
+function collectIdentityCandidates(
+  value: unknown,
+  depth = 0,
+  out = new Set<string>(),
+): Set<string> {
   if (depth > 5 || value == null) return out;
   if (Array.isArray(value)) {
     for (const item of value) collectIdentityCandidates(item, depth + 1, out);
@@ -122,22 +130,34 @@ function collectIdentityCandidates(value: unknown, depth = 0, out = new Set<stri
       const phone = normalizePhone(child);
       if (phone) out.add(phone);
     }
-    if (child && typeof child === "object") collectIdentityCandidates(child, depth + 1, out);
+    if (child && typeof child === "object")
+      collectIdentityCandidates(child, depth + 1, out);
   }
   return out;
 }
 
 async function sha256Hex(value: string) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 async function verifyMsg91AccessToken(authKey: string, accessToken: string) {
-  const response = await fetch("https://control.msg91.com/api/v5/widget/verifyAccessToken", {
-    method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json" },
-    body: JSON.stringify({ authkey: authKey, "access-token": accessToken }),
-  });
+  const response = await fetch(
+    "https://control.msg91.com/api/v5/widget/verifyAccessToken",
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ authkey: authKey, "access-token": accessToken }),
+    },
+  );
 
   let body: unknown = null;
   try {
@@ -152,8 +172,15 @@ async function verifyMsg91AccessToken(authKey: string, accessToken: string) {
 
   const record = body as Record<string, unknown>;
   const type = typeof record.type === "string" ? record.type.toLowerCase() : "";
-  const status = typeof record.status === "string" ? record.status.toLowerCase() : "";
-  if (type === "error" || type === "failed" || type === "failure" || status === "failed" || record.success === false) {
+  const status =
+    typeof record.status === "string" ? record.status.toLowerCase() : "";
+  if (
+    type === "error" ||
+    type === "failed" ||
+    type === "failure" ||
+    status === "failed" ||
+    record.success === false
+  ) {
     return { ok: false as const, status: 401 };
   }
 
@@ -165,7 +192,11 @@ async function verifyMsg91AccessToken(authKey: string, accessToken: string) {
   }
 
   if (candidates.size !== 1) {
-    return { ok: false as const, status: 401, reason: "verified identity was missing or ambiguous" };
+    return {
+      ok: false as const,
+      status: 401,
+      reason: "verified identity was missing or ambiguous",
+    };
   }
 
   return { ok: true as const, phoneE164: [...candidates][0] };
@@ -182,13 +213,23 @@ Deno.serve(async (request) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const adminKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? getNamedKey(Deno.env.get("SUPABASE_SECRET_KEYS"));
-  const publicKey = Deno.env.get("SUPABASE_ANON_KEY") ?? getNamedKey(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"));
+  const adminKey =
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+    getNamedKey(Deno.env.get("SUPABASE_SECRET_KEYS"));
+  const publicKey =
+    Deno.env.get("SUPABASE_ANON_KEY") ??
+    getNamedKey(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS"));
   const msg91AuthKey = Deno.env.get("MSG91_AUTHKEY");
 
   if (!supabaseUrl || !adminKey || !publicKey || !msg91AuthKey) {
-    console.error("customer-auth-msg91: required server configuration is missing");
-    return jsonResponse({ error: "Authentication service is not configured." }, 500, origin);
+    console.error(
+      "customer-auth-msg91: required server configuration is missing",
+    );
+    return jsonResponse(
+      { error: "Authentication service is not configured." },
+      500,
+      origin,
+    );
   }
 
   let payload: Record<string, unknown>;
@@ -198,8 +239,13 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "Invalid JSON body." }, 400, origin);
   }
 
-  const accessToken = [payload.accessToken, payload.access_token, payload.token].find(
-    (value): value is string => typeof value === "string" && value.length > 20 && value.length <= 8000,
+  const accessToken = [
+    payload.accessToken,
+    payload.access_token,
+    payload.token,
+  ].find(
+    (value): value is string =>
+      typeof value === "string" && value.length > 20 && value.length <= 8000,
   );
   if (!accessToken) {
     return jsonResponse({ error: "Missing MSG91 access token." }, 400, origin);
@@ -207,22 +253,45 @@ Deno.serve(async (request) => {
 
   const verified = await verifyMsg91AccessToken(msg91AuthKey, accessToken);
   if (!verified.ok) {
-    console.warn(`customer-auth-msg91: MSG91 access-token verification failed (${verified.status})`);
-    return jsonResponse({ error: "OTP verification could not be confirmed." }, 401, origin);
+    console.warn(
+      `customer-auth-msg91: MSG91 access-token verification failed (${verified.status})`,
+    );
+    return jsonResponse(
+      { error: "OTP verification could not be confirmed." },
+      401,
+      origin,
+    );
   }
 
   const phoneE164 = verified.phoneE164;
-  const suppliedIdentifier = typeof payload.identifier === "string" ? normalizePhone(payload.identifier) : null;
+  const suppliedIdentifier =
+    typeof payload.identifier === "string"
+      ? normalizePhone(payload.identifier)
+      : null;
   if (suppliedIdentifier && suppliedIdentifier !== phoneE164) {
-    console.warn("customer-auth-msg91: client identifier did not match MSG91 verified identity");
-    return jsonResponse({ error: "Verified phone number mismatch." }, 401, origin);
+    console.warn(
+      "customer-auth-msg91: client identifier did not match MSG91 verified identity",
+    );
+    return jsonResponse(
+      { error: "Verified phone number mismatch." },
+      401,
+      origin,
+    );
   }
 
   const admin = createClient(supabaseUrl, adminKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
   const publicClient = createClient(supabaseUrl, publicKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
 
   // Burn the token before anything is created or touched on its behalf, so a
@@ -231,18 +300,38 @@ Deno.serve(async (request) => {
   const replayInsert = await admin
     .schema("core")
     .from("customer_auth_verifications")
-    .insert({ token_hash: tokenHash, identifier_e164: phoneE164, channel: "sms" });
+    .insert({
+      token_hash: tokenHash,
+      identifier_e164: phoneE164,
+      channel: "sms",
+    });
 
   if (replayInsert.error) {
     if (replayInsert.error.code === "23505") {
       console.warn("customer-auth-msg91: rejected replayed MSG91 access token");
-      return jsonResponse({ error: "This verification has already been used. Please request a new code." }, 409, origin);
+      return jsonResponse(
+        {
+          error:
+            "This verification has already been used. Please request a new code.",
+        },
+        409,
+        origin,
+      );
     }
-    console.error("customer-auth-msg91: replay guard insert failed", replayInsert.error.code);
-    return jsonResponse({ error: "Unable to complete authentication safely." }, 500, origin);
+    console.error(
+      "customer-auth-msg91: replay guard insert failed",
+      replayInsert.error.code,
+    );
+    return jsonResponse(
+      { error: "Unable to complete authentication safely." },
+      500,
+      origin,
+    );
   }
 
-  const windowStart = new Date(Date.now() - identifierWindowMinutes * 60_000).toISOString();
+  const windowStart = new Date(
+    Date.now() - identifierWindowMinutes * 60_000,
+  ).toISOString();
   const { count: recentAttempts } = await admin
     .schema("core")
     .from("customer_auth_verifications")
@@ -251,8 +340,14 @@ Deno.serve(async (request) => {
     .gte("created_at", windowStart);
 
   if ((recentAttempts ?? 0) > identifierAttemptsPerWindow) {
-    console.warn("customer-auth-msg91: identifier exceeded the verification rate limit");
-    return jsonResponse({ error: "Too many attempts. Please try again shortly." }, 429, origin);
+    console.warn(
+      "customer-auth-msg91: identifier exceeded the verification rate limit",
+    );
+    return jsonResponse(
+      { error: "Too many attempts. Please try again shortly." },
+      429,
+      origin,
+    );
   }
 
   let { data: customer, error: customerLookupError } = await admin
@@ -263,15 +358,25 @@ Deno.serve(async (request) => {
     .maybeSingle();
 
   if (customerLookupError) {
-    console.error("customer-auth-msg91: customer lookup failed", customerLookupError.code);
-    return jsonResponse({ error: "Unable to resolve customer account." }, 500, origin);
+    console.error(
+      "customer-auth-msg91: customer lookup failed",
+      customerLookupError.code,
+    );
+    return jsonResponse(
+      { error: "Unable to resolve customer account." },
+      500,
+      origin,
+    );
   }
 
   if (!customer) {
     const inserted = await admin
       .schema("core")
       .from("customers")
-      .insert({ phone_e164: phoneE164, phone_verified_at: new Date().toISOString() })
+      .insert({
+        phone_e164: phoneE164,
+        phone_verified_at: new Date().toISOString(),
+      })
       .select("id, auth_user_id, phone_e164")
       .single();
 
@@ -285,8 +390,15 @@ Deno.serve(async (request) => {
         .eq("phone_e164", phoneE164)
         .maybeSingle();
       if (retry.error || !retry.data) {
-        console.error("customer-auth-msg91: customer creation failed", inserted.error.code);
-        return jsonResponse({ error: "Unable to create customer account." }, 500, origin);
+        console.error(
+          "customer-auth-msg91: customer creation failed",
+          inserted.error.code,
+        );
+        return jsonResponse(
+          { error: "Unable to create customer account." },
+          500,
+          origin,
+        );
       }
       customer = retry.data;
     } else {
@@ -315,7 +427,11 @@ Deno.serve(async (request) => {
     const existing = await admin.auth.admin.getUserById(authUserId);
     if (existing.error || !existing.data.user) {
       console.error("customer-auth-msg91: linked auth user is missing");
-      return jsonResponse({ error: "Customer authentication link is invalid." }, 500, origin);
+      return jsonResponse(
+        { error: "Customer authentication link is invalid." },
+        500,
+        origin,
+      );
     }
     if (existing.data.user.email) {
       authEmail = existing.data.user.email;
@@ -326,8 +442,15 @@ Deno.serve(async (request) => {
         user_metadata: { phone_e164: phoneE164, auth_provider: "msg91_widget" },
       });
       if (updated.error) {
-        console.error("customer-auth-msg91: could not attach synthetic email to auth user", updated.error.code);
-        return jsonResponse({ error: "Unable to prepare customer session." }, 500, origin);
+        console.error(
+          "customer-auth-msg91: could not attach synthetic email to auth user",
+          updated.error.code,
+        );
+        return jsonResponse(
+          { error: "Unable to prepare customer session." },
+          500,
+          origin,
+        );
       }
       authEmail = syntheticEmail;
     }
@@ -358,7 +481,10 @@ Deno.serve(async (request) => {
       // Most likely a concurrent request already created this identity.
       // generateLink still resolves it by email below, and the trigger has
       // already run for whichever request won the race.
-      console.warn("customer-auth-msg91: createUser did not return a new user, continuing", created.error.code);
+      console.warn(
+        "customer-auth-msg91: createUser did not return a new user, continuing",
+        created.error.code,
+      );
     } else if (created.data.user) {
       authUserId = created.data.user.id;
     }
@@ -371,19 +497,36 @@ Deno.serve(async (request) => {
   });
 
   if (generated.error || !generated.data.user) {
-    console.error("customer-auth-msg91: Supabase magic-link generation failed", generated.error?.code ?? "unknown");
-    return jsonResponse({ error: "Unable to create customer session." }, 500, origin);
+    console.error(
+      "customer-auth-msg91: Supabase magic-link generation failed",
+      generated.error?.code ?? "unknown",
+    );
+    return jsonResponse(
+      { error: "Unable to create customer session." },
+      500,
+      origin,
+    );
   }
 
   authUserId = generated.data.user.id;
-  const properties = generated.data.properties as Record<string, unknown> | null;
-  let tokenHashForSupabase = properties && typeof properties.hashed_token === "string"
-    ? properties.hashed_token
-    : null;
+  const properties = generated.data.properties as Record<
+    string,
+    unknown
+  > | null;
+  let tokenHashForSupabase =
+    properties && typeof properties.hashed_token === "string"
+      ? properties.hashed_token
+      : null;
 
-  if (!tokenHashForSupabase && properties && typeof properties.action_link === "string") {
+  if (
+    !tokenHashForSupabase &&
+    properties &&
+    typeof properties.action_link === "string"
+  ) {
     try {
-      tokenHashForSupabase = new URL(properties.action_link).searchParams.get("token");
+      tokenHashForSupabase = new URL(properties.action_link).searchParams.get(
+        "token",
+      );
     } catch {
       tokenHashForSupabase = null;
     }
@@ -391,7 +534,11 @@ Deno.serve(async (request) => {
 
   if (!tokenHashForSupabase) {
     console.error("customer-auth-msg91: Supabase did not return a token hash");
-    return jsonResponse({ error: "Unable to create customer session." }, 500, origin);
+    return jsonResponse(
+      { error: "Unable to create customer session." },
+      500,
+      origin,
+    );
   }
 
   if (customer.auth_user_id !== authUserId) {
@@ -400,15 +547,28 @@ Deno.serve(async (request) => {
     const linked = await admin
       .schema("core")
       .from("customers")
-      .update({ auth_user_id: authUserId, phone_verified_at: new Date().toISOString() })
+      .update({
+        auth_user_id: authUserId,
+        phone_verified_at: new Date().toISOString(),
+      })
       .eq("id", customer.id)
       .or(`auth_user_id.is.null,auth_user_id.eq.${authUserId}`)
       .select("id, auth_user_id, phone_e164")
       .maybeSingle();
 
-    if (linked.error || !linked.data || linked.data.auth_user_id !== authUserId) {
-      console.error("customer-auth-msg91: refused or failed customer/auth-user link");
-      return jsonResponse({ error: "Unable to link customer authentication safely." }, 409, origin);
+    if (
+      linked.error ||
+      !linked.data ||
+      linked.data.auth_user_id !== authUserId
+    ) {
+      console.error(
+        "customer-auth-msg91: refused or failed customer/auth-user link",
+      );
+      return jsonResponse(
+        { error: "Unable to link customer authentication safely." },
+        409,
+        origin,
+      );
     }
     customer = linked.data;
   }
@@ -421,9 +581,20 @@ Deno.serve(async (request) => {
     type: "email",
   });
 
-  if (verifiedSession.error || !verifiedSession.data.session || !verifiedSession.data.user) {
-    console.error("customer-auth-msg91: Supabase session exchange failed", verifiedSession.error?.code ?? "unknown");
-    return jsonResponse({ error: "Unable to establish customer session." }, 500, origin);
+  if (
+    verifiedSession.error ||
+    !verifiedSession.data.session ||
+    !verifiedSession.data.user
+  ) {
+    console.error(
+      "customer-auth-msg91: Supabase session exchange failed",
+      verifiedSession.error?.code ?? "unknown",
+    );
+    return jsonResponse(
+      { error: "Unable to establish customer session." },
+      500,
+      origin,
+    );
   }
 
   const session = verifiedSession.data.session;

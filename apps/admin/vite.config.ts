@@ -35,10 +35,7 @@ export default defineConfig(async () => {
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= "false";
-  process.env.WRANGLER_LOG_PATH ??= resolve(
-    repositoryRoot,
-    ".wrangler/logs",
-  );
+  process.env.WRANGLER_LOG_PATH ??= resolve(repositoryRoot, ".wrangler/logs");
   process.env.MINIFLARE_REGISTRY_PATH ??= resolve(
     repositoryRoot,
     ".wrangler/registry",
@@ -56,12 +53,7 @@ export default defineConfig(async () => {
           ? { watch: { useFsEvents: false, usePolling: true } }
           : {}),
       },
-      plugins: [
-        tailwindcss(),
-        vinext(),
-        sites(repositoryRoot),
-        nitro(),
-      ],
+      plugins: [tailwindcss(), vinext(), sites(repositoryRoot), nitro()],
     };
   }
 

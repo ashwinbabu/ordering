@@ -4,11 +4,17 @@ import { useEffect, useState } from "react";
 // checkout) must not pretend to succeed while offline; this is the single
 // signal those call sites gate on.
 export function useOnlineStatus() {
-  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [isOnline, setIsOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine,
+  );
 
   useEffect(() => {
-    function goOnline() { setIsOnline(true); }
-    function goOffline() { setIsOnline(false); }
+    function goOnline() {
+      setIsOnline(true);
+    }
+    function goOffline() {
+      setIsOnline(false);
+    }
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
     return () => {

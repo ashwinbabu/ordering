@@ -11,7 +11,12 @@
  * actively rejecting the code. "incorrect" stays the fallback for anything
  * that doesn't match a more specific signal.
  */
-export type Msg91VerifyFailureReason = "already-verified" | "expired" | "incorrect" | "provider-error" | "rate-limited";
+export type Msg91VerifyFailureReason =
+  | "already-verified"
+  | "expired"
+  | "incorrect"
+  | "provider-error"
+  | "rate-limited";
 
 function messageFrom(error: unknown): string {
   if (typeof error === "string") return error;
@@ -28,21 +33,34 @@ function codeFrom(error: unknown): number | undefined {
   if (!error || typeof error !== "object") return undefined;
   const record = error as Record<string, unknown>;
   if (typeof record.code === "number") return record.code;
-  if (typeof record.code === "string" && /^\d+$/.test(record.code)) return Number(record.code);
+  if (typeof record.code === "string" && /^\d+$/.test(record.code))
+    return Number(record.code);
   return undefined;
 }
 
 // MSG91 703: "otp already verifed" (their typo) - this reqId was already consumed.
 const alreadyVerifiedCodes = new Set([703]);
 
-export function classifyMsg91VerifyFailure(error: unknown): Msg91VerifyFailureReason {
+export function classifyMsg91VerifyFailure(
+  error: unknown,
+): Msg91VerifyFailureReason {
   const code = codeFrom(error);
-  if (code !== undefined && alreadyVerifiedCodes.has(code)) return "already-verified";
+  if (code !== undefined && alreadyVerifiedCodes.has(code))
+    return "already-verified";
 
   const text = messageFrom(error).toLowerCase();
-  if (text.includes("already") && (text.includes("verif") || text.includes("used"))) return "already-verified";
+  if (
+    text.includes("already") &&
+    (text.includes("verif") || text.includes("used"))
+  )
+    return "already-verified";
   if (text.includes("expire")) return "expired";
-  if (text.includes("limit") || text.includes("attempt") || text.includes("many")) return "rate-limited";
+  if (
+    text.includes("limit") ||
+    text.includes("attempt") ||
+    text.includes("many")
+  )
+    return "rate-limited";
   // MSG91's own failure payloads are plain objects with a message/type/code
   // shape (matched above). A genuine JS Error here means the request never
   // got a real MSG91 response - e.g. withTimeout()'s timeout, or a network

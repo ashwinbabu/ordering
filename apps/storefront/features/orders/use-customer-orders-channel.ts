@@ -3,7 +3,10 @@ import { useQueryClient } from "@tanstack/react-query";
 import { getSupabaseClient } from "../../lib/supabase/client";
 import { customerOrdersQueryKey } from "./customer-orders-query";
 import { checkoutOrderQueryKey } from "../checkout/use-checkout-flow";
-import { storefrontContext, type StorefrontContext } from "../../lib/storefront/storefront-context";
+import {
+  storefrontContext,
+  type StorefrontContext,
+} from "../../lib/storefront/storefront-context";
 
 const maxJoinAttempts = 3;
 
@@ -48,10 +51,15 @@ export function useCustomerOrdersChannel(
       channel = client
         .channel(topic, { config: { private: true } })
         .on("broadcast", { event: "order-changed" }, (message) => {
-          const orderId = (message.payload as { order_id?: unknown } | null)?.order_id;
-          void queryClient.invalidateQueries({ queryKey: customerOrdersQueryKey(customerId, context) });
+          const orderId = (message.payload as { order_id?: unknown } | null)
+            ?.order_id;
+          void queryClient.invalidateQueries({
+            queryKey: customerOrdersQueryKey(customerId, context),
+          });
           if (typeof orderId === "string") {
-            void queryClient.invalidateQueries({ queryKey: checkoutOrderQueryKey(orderId) });
+            void queryClient.invalidateQueries({
+              queryKey: checkoutOrderQueryKey(orderId),
+            });
           }
         })
         .subscribe((status, error) => {
@@ -63,7 +71,10 @@ export function useCustomerOrdersChannel(
           }
 
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            console.error(`Realtime: ${topic} failed to subscribe (${status}).`, error);
+            console.error(
+              `Realtime: ${topic} failed to subscribe (${status}).`,
+              error,
+            );
             // Supabase already retries the underlying websocket transport;
             // this only covers a join that failed because application state
             // (customer_businesses) wasn't actually ready yet, bounded so a

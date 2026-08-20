@@ -17,7 +17,10 @@ export function LoginScreen() {
 
   useEffect(() => {
     if (phoneStep !== "otp" || resendSeconds <= 0) return;
-    const timer = window.setInterval(() => setResendSeconds((value) => value - 1), 1000);
+    const timer = window.setInterval(
+      () => setResendSeconds((value) => value - 1),
+      1000,
+    );
     return () => window.clearInterval(timer);
   }, [phoneStep, resendSeconds]);
 
@@ -50,11 +53,19 @@ export function LoginScreen() {
     try {
       if (phoneStep === "number") await sendPhoneOtp();
       else {
-        const { error } = await supabase.auth.verifyOtp({ phone: phoneE164(), token: otp, type: "sms" });
+        const { error } = await supabase.auth.verifyOtp({
+          phone: phoneE164(),
+          token: otp,
+          type: "sms",
+        });
         if (error) throw error;
       }
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to sign in. Try again.");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in. Try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -69,10 +80,17 @@ export function LoginScreen() {
     setBusy(true);
     setError("");
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
       if (error) throw error;
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to sign in. Try again.");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in. Try again.",
+      );
     } finally {
       setBusy(false);
     }
@@ -84,7 +102,9 @@ export function LoginScreen() {
     try {
       await sendPhoneOtp();
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to send a new code.");
+      setError(
+        error instanceof Error ? error.message : "Unable to send a new code.",
+      );
     } finally {
       setBusy(false);
     }
@@ -98,11 +118,17 @@ export function LoginScreen() {
     setBusy(true);
     setError("");
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
       if (error) throw error;
       setError("If this account exists, reset instructions have been sent.");
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Unable to send reset instructions.");
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Unable to send reset instructions.",
+      );
     } finally {
       setBusy(false);
     }
@@ -165,7 +191,11 @@ export function LoginScreen() {
               <>
                 <div className="otp-sent-row">
                   <span>Code sent to +91 {phone}</span>
-                  <button type="button" className="text-button" onClick={() => setPhoneStep("number")}>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setPhoneStep("number")}
+                  >
                     Edit
                   </button>
                 </div>
@@ -174,7 +204,9 @@ export function LoginScreen() {
                   <input
                     className="otp-input"
                     value={otp}
-                    onChange={(event) => setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                    onChange={(event) =>
+                      setOtp(event.target.value.replace(/\D/g, "").slice(0, 6))
+                    }
                     inputMode="numeric"
                     autoComplete="one-time-code"
                     placeholder="• • • • • •"
@@ -185,13 +217,21 @@ export function LoginScreen() {
                   type="button"
                   className="resend-button"
                   disabled={resendSeconds > 0 || busy}
-                  onClick={() => { void resendPhoneOtp(); }}
+                  onClick={() => {
+                    void resendPhoneOtp();
+                  }}
                 >
-                  {resendSeconds > 0 ? `Resend in 00:${String(resendSeconds).padStart(2, "0")}` : "Resend code"}
+                  {resendSeconds > 0
+                    ? `Resend in 00:${String(resendSeconds).padStart(2, "0")}`
+                    : "Resend code"}
                 </button>
               </>
             )}
-            {error && <p className="field-error" role="alert">{error}</p>}
+            {error && (
+              <p className="field-error" role="alert">
+                {error}
+              </p>
+            )}
             <button className="primary-button auth-submit" disabled={busy}>
               {busy && <LoaderCircle className="spin" size={17} />}
               {phoneStep === "number" ? "Send code" : "Verify & sign in"}
@@ -201,7 +241,12 @@ export function LoginScreen() {
           <form onSubmit={submitEmail} className="auth-form">
             <label className="field-label">
               Email address
-              <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" autoComplete="email" />
+              <input
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
+                autoComplete="email"
+              />
             </label>
             <label className="field-label">
               Password
@@ -213,10 +258,21 @@ export function LoginScreen() {
                 placeholder="Enter your password"
               />
             </label>
-            <button type="button" className="text-button forgot-button" disabled={busy} onClick={() => { void sendPasswordReset(); }}>
+            <button
+              type="button"
+              className="text-button forgot-button"
+              disabled={busy}
+              onClick={() => {
+                void sendPasswordReset();
+              }}
+            >
               Forgot password?
             </button>
-            {error && <p className="neutral-message" role="status">{error}</p>}
+            {error && (
+              <p className="neutral-message" role="status">
+                {error}
+              </p>
+            )}
             <button className="primary-button auth-submit" disabled={busy}>
               {busy && <LoaderCircle className="spin" size={17} />}
               Sign in

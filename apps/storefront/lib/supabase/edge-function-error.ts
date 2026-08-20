@@ -6,9 +6,9 @@
  * functions actually send back (`{ error: "..." }`, optionally with other
  * fields) so callers can surface the real reason.
  */
-export async function functionErrorBody<T extends Record<string, unknown> = Record<string, unknown>>(
-  error: unknown,
-): Promise<T | null> {
+export async function functionErrorBody<
+  T extends Record<string, unknown> = Record<string, unknown>,
+>(error: unknown): Promise<T | null> {
   const context = (error as { context?: unknown } | null)?.context;
   if (!(context instanceof Response)) return null;
   try {

@@ -25,7 +25,12 @@ export function CategoryNavigator({
 
   return (
     <div className="sheet-layer" role="presentation" onMouseDown={onClose}>
-      <button aria-label="Close categories" className="sheet-scrim" type="button" onClick={onClose} />
+      <button
+        aria-label="Close categories"
+        className="sheet-scrim"
+        type="button"
+        onClick={onClose}
+      />
       <section
         className="bottom-sheet category-sheet"
         role="dialog"
@@ -38,7 +43,12 @@ export function CategoryNavigator({
             <p className="eyebrow">Browse the menu</p>
             <h2 id="category-dialog-title">Categories</h2>
           </div>
-          <button className="icon-button sheet-close" type="button" onClick={onClose} aria-label="Close categories">
+          <button
+            className="icon-button sheet-close"
+            type="button"
+            onClick={onClose}
+            aria-label="Close categories"
+          >
             <X aria-hidden="true" size={20} />
           </button>
         </div>
@@ -59,10 +69,15 @@ export function CategoryNavigator({
                 <span className="category-nav-copy">
                   <strong>{category.name}</strong>
                   <small>
-                    {productCounts[category.id] ?? 0} {productCounts[category.id] === 1 ? "item" : "items"}
+                    {productCounts[category.id] ?? 0}{" "}
+                    {productCounts[category.id] === 1 ? "item" : "items"}
                   </small>
                 </span>
-                {isSelected ? <Check aria-hidden="true" size={19} /> : <ChevronRight aria-hidden="true" size={18} />}
+                {isSelected ? (
+                  <Check aria-hidden="true" size={19} />
+                ) : (
+                  <ChevronRight aria-hidden="true" size={18} />
+                )}
               </button>
             );
           })}

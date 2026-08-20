@@ -19,10 +19,26 @@ export function Modal({
   wide = false,
 }: ModalProps) {
   return (
-    <div className="modal-layer" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-      <button className="modal-scrim" onClick={onClose} aria-label="Close dialog" />
-      <section className={`modal-card ${destructive ? "destructive-modal" : ""} ${wide ? "wide-modal" : ""}`}>
-        <header><h2 id="modal-title">{title}</h2><button onClick={onClose} aria-label="Close"><X size={20} /></button></header>
+    <div
+      className="modal-layer"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="modal-title"
+    >
+      <button
+        className="modal-scrim"
+        onClick={onClose}
+        aria-label="Close dialog"
+      />
+      <section
+        className={`modal-card ${destructive ? "destructive-modal" : ""} ${wide ? "wide-modal" : ""}`}
+      >
+        <header>
+          <h2 id="modal-title">{title}</h2>
+          <button onClick={onClose} aria-label="Close">
+            <X size={20} />
+          </button>
+        </header>
         <div className="modal-body">{children}</div>
         <footer>{footer}</footer>
       </section>

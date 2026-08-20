@@ -15,10 +15,18 @@ interface NotFoundScreenProps {
 export function NotFoundScreen({ onBrowseMenu, venue }: NotFoundScreenProps) {
   return (
     <section className="link-unavailable">
-      <span className="link-unavailable__mark" aria-hidden="true">{venue.displayName}</span>
+      <span className="link-unavailable__mark" aria-hidden="true">
+        {venue.displayName}
+      </span>
       <h1>Page not found</h1>
       <p>The page you&rsquo;re looking for doesn&rsquo;t exist.</p>
-      <button className="link-unavailable__cta" type="button" onClick={onBrowseMenu}>Browse the menu</button>
+      <button
+        className="link-unavailable__cta"
+        type="button"
+        onClick={onBrowseMenu}
+      >
+        Browse the menu
+      </button>
     </section>
   );
 }

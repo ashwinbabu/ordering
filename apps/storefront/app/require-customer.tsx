@@ -1,5 +1,10 @@
 import { useEffect, useRef } from "react";
-import { Outlet, useLocation, useNavigate, useOutletContext } from "react-router";
+import {
+  Outlet,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+} from "react-router";
 import { useCustomerSession } from "../features/auth/customer-session";
 import type { StorefrontLayoutContext } from "./storefront-layout";
 
@@ -15,7 +20,8 @@ import type { StorefrontLayoutContext } from "./storefront-layout";
  * already authenticated and OTP can't repair a failed database read.
  */
 export function RequireCustomer() {
-  const { customer, isLoading, customerLoadError, retryCustomerLoad } = useCustomerSession();
+  const { customer, isLoading, customerLoadError, retryCustomerLoad } =
+    useCustomerSession();
   const layoutContext = useOutletContext<StorefrontLayoutContext>();
   const { openAuth } = layoutContext;
   const navigate = useNavigate();
@@ -27,7 +33,10 @@ export function RequireCustomer() {
 
   useEffect(() => {
     if (isLoading || customerLoadError) return;
-    if (customer) { requestedAuth.current = false; return; }
+    if (customer) {
+      requestedAuth.current = false;
+      return;
+    }
     if (requestedAuth.current) return;
     requestedAuth.current = true;
     const intendedPath = location.pathname;
@@ -42,15 +51,41 @@ export function RequireCustomer() {
   }, [isLoading, customerLoadError, customer]);
 
   if (isLoading) {
-    return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading your account</h1></section></main>;
+    return (
+      <main className="ordering-app">
+        <section className="customer-empty-state" aria-busy="true">
+          <h1>Loading your account</h1>
+        </section>
+      </main>
+    );
   }
 
   if (customerLoadError) {
-    return <main className="ordering-app"><section className="customer-empty-state" role="alert"><h1>Couldn&rsquo;t load your account</h1><p>Please try again.</p><button className="primary-button" type="button" onClick={retryCustomerLoad}>Try again</button></section></main>;
+    return (
+      <main className="ordering-app">
+        <section className="customer-empty-state" role="alert">
+          <h1>Couldn&rsquo;t load your account</h1>
+          <p>Please try again.</p>
+          <button
+            className="primary-button"
+            type="button"
+            onClick={retryCustomerLoad}
+          >
+            Try again
+          </button>
+        </section>
+      </main>
+    );
   }
 
   if (!customer) {
-    return <main className="ordering-app"><section className="customer-empty-state" aria-busy="true"><h1>Loading your account</h1></section></main>;
+    return (
+      <main className="ordering-app">
+        <section className="customer-empty-state" aria-busy="true">
+          <h1>Loading your account</h1>
+        </section>
+      </main>
+    );
   }
 
   return <Outlet context={layoutContext} />;

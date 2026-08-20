@@ -1,7 +1,17 @@
 import { supabase } from "@/lib/supabase/client";
-import type { AccessibleBusiness, AccessibleLocation, BusinessRole, OperatorOutletContext } from "@/features/outlet-context/outlet-context-model";
+import type {
+  AccessibleBusiness,
+  AccessibleLocation,
+  BusinessRole,
+  OperatorOutletContext,
+} from "@/features/outlet-context/outlet-context-model";
 
-const businessRoles = new Set<BusinessRole>(["owner", "admin", "manager", "staff"]);
+const businessRoles = new Set<BusinessRole>([
+  "owner",
+  "admin",
+  "manager",
+  "staff",
+]);
 
 function asBusinessRole(role: string): BusinessRole {
   if (!businessRoles.has(role as BusinessRole)) {
@@ -13,7 +23,8 @@ function asBusinessRole(role: string): BusinessRole {
 export async function getOperatorOutletContext(): Promise<OperatorOutletContext> {
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
-  if (!authData.user) throw new Error("Your session has expired. Please sign in again.");
+  if (!authData.user)
+    throw new Error("Your session has expired. Please sign in again.");
 
   const core = supabase.schema("core");
   const { data: operator, error: operatorError } = await core
@@ -22,7 +33,8 @@ export async function getOperatorOutletContext(): Promise<OperatorOutletContext>
     .eq("auth_user_id", authData.user.id)
     .maybeSingle();
   if (operatorError) throw operatorError;
-  if (!operator) throw new Error("This account is not linked to an Admin operator.");
+  if (!operator)
+    throw new Error("This account is not linked to an Admin operator.");
 
   const { data: memberships, error: membershipError } = await core
     .from("business_users")
@@ -43,15 +55,22 @@ export async function getOperatorOutletContext(): Promise<OperatorOutletContext>
     .order("name");
   if (businessError) throw businessError;
 
-  const roleByBusinessId = new Map(memberships.map((membership) => [membership.business_id, asBusinessRole(membership.role)]));
-  const accessibleBusinesses: AccessibleBusiness[] = businesses.map((business) => ({
-    id: business.id,
-    name: business.name,
-    currency: business.currency,
-    timezone: business.timezone,
-    logoUrl: business.logo_url,
-    role: roleByBusinessId.get(business.id) ?? "staff",
-  }));
+  const roleByBusinessId = new Map(
+    memberships.map((membership) => [
+      membership.business_id,
+      asBusinessRole(membership.role),
+    ]),
+  );
+  const accessibleBusinesses: AccessibleBusiness[] = businesses.map(
+    (business) => ({
+      id: business.id,
+      name: business.name,
+      currency: business.currency,
+      timezone: business.timezone,
+      logoUrl: business.logo_url,
+      role: roleByBusinessId.get(business.id) ?? "staff",
+    }),
+  );
 
   if (!accessibleBusinesses.length) {
     return { operatorName: operator.name, businesses: [], locations: [] };
@@ -60,20 +79,31 @@ export async function getOperatorOutletContext(): Promise<OperatorOutletContext>
   const { data: locations, error: locationError } = await core
     .from("business_locations")
     .select("id, business_id, name, city, state")
-    .in("business_id", accessibleBusinesses.map((business) => business.id))
+    .in(
+      "business_id",
+      accessibleBusinesses.map((business) => business.id),
+    )
     .eq("is_active", true)
     .order("name");
   if (locationError) throw locationError;
 
-  const businessNameById = new Map(accessibleBusinesses.map((business) => [business.id, business.name]));
-  const accessibleLocations: AccessibleLocation[] = locations.map((location) => ({
-    id: location.id,
-    businessId: location.business_id,
-    businessName: businessNameById.get(location.business_id) ?? "Business",
-    name: location.name,
-    city: location.city,
-    state: location.state,
-  }));
+  const businessNameById = new Map(
+    accessibleBusinesses.map((business) => [business.id, business.name]),
+  );
+  const accessibleLocations: AccessibleLocation[] = locations.map(
+    (location) => ({
+      id: location.id,
+      businessId: location.business_id,
+      businessName: businessNameById.get(location.business_id) ?? "Business",
+      name: location.name,
+      city: location.city,
+      state: location.state,
+    }),
+  );
 
-  return { operatorName: operator.name, businesses: accessibleBusinesses, locations: accessibleLocations };
+  return {
+    operatorName: operator.name,
+    businesses: accessibleBusinesses,
+    locations: accessibleLocations,
+  };
 }

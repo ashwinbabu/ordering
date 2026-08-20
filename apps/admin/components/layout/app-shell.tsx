@@ -13,12 +13,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 export type AdminView =
-  | "orders"
-  | "menu"
-  | "menu-editor"
-  | "settings"
-  | "order-detail"
-  | "kot";
+  "orders" | "menu" | "menu-editor" | "settings" | "order-detail" | "kot";
 
 type PrimaryView = "orders" | "menu" | "settings";
 
@@ -125,8 +120,15 @@ export function AppShell({
           })}
         </nav>
         <div className="sidebar-foot">
-          <span className="service-state"><span className={`service-dot ${orderingOpen ? "" : "offline"}`} />{orderingOpen ? "Service online" : "Orders paused"}</span>
-          <button className={`kill-switch ${orderingOpen ? "" : "is-killed"}`} onClick={onKillSwitch} aria-pressed={!orderingOpen}>
+          <span className="service-state">
+            <span className={`service-dot ${orderingOpen ? "" : "offline"}`} />
+            {orderingOpen ? "Service online" : "Orders paused"}
+          </span>
+          <button
+            className={`kill-switch ${orderingOpen ? "" : "is-killed"}`}
+            onClick={onKillSwitch}
+            aria-pressed={!orderingOpen}
+          >
             <span className="kill-switch-dot" />
             {orderingOpen ? "Kill" : "Resume"}
           </button>
@@ -165,21 +167,33 @@ export function AppShell({
                       <button
                         key={branch.id}
                         role="menuitem"
-                        className={branch.id === activeBranch.id ? "selected" : ""}
+                        className={
+                          branch.id === activeBranch.id ? "selected" : ""
+                        }
                         onClick={() => {
                           onBranchChange(branch.id);
                           setAccountOpen(false);
                         }}
                       >
-                        <span><Store size={16} />{branch.label}</span>
+                        <span>
+                          <Store size={16} />
+                          {branch.label}
+                        </span>
                         {branch.id === activeBranch.id && <Check size={16} />}
                       </button>
                     ))}
                     <div className="menu-divider" />
                   </>
                 )}
-                <button role="menuitem" onClick={onSignOut} className="signout-item">
-                  <span><LogOut size={16} />Sign out</span>
+                <button
+                  role="menuitem"
+                  onClick={onSignOut}
+                  className="signout-item"
+                >
+                  <span>
+                    <LogOut size={16} />
+                    Sign out
+                  </span>
                 </button>
               </div>
             )}

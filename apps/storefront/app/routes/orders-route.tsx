@@ -10,16 +10,25 @@ import type { StorefrontLayoutContext } from "../storefront-layout";
  * (`order.id`), which get_order does not accept.
  */
 export function OrdersRoute() {
-  const { currentOrders, pastOrders, ordersResource, venue } = useOutletContext<StorefrontLayoutContext>();
+  const { currentOrders, pastOrders, ordersResource, venue } =
+    useOutletContext<StorefrontLayoutContext>();
   const navigate = useNavigate();
 
-  return <OrdersScreen
-    currentOrders={currentOrders}
-    pastOrders={pastOrders}
-    onBack={() => navigate("/account")}
-    onBrowseMenu={() => navigate("/")}
-    onOpenOrder={(order) => navigate(`/orders/${order.orderId}`)}
-    state={ordersResource.isPending ? "loading" : ordersResource.isError ? "error" : "ready"}
-    venue={venue}
-  />;
+  return (
+    <OrdersScreen
+      currentOrders={currentOrders}
+      pastOrders={pastOrders}
+      onBack={() => navigate("/account")}
+      onBrowseMenu={() => navigate("/")}
+      onOpenOrder={(order) => navigate(`/orders/${order.orderId}`)}
+      state={
+        ordersResource.isPending
+          ? "loading"
+          : ordersResource.isError
+            ? "error"
+            : "ready"
+      }
+      venue={venue}
+    />
+  );
 }

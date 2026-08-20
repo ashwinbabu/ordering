@@ -1,7 +1,10 @@
 // Persisted browser data is untrusted: it may be absent, corrupted, or from
 // an older shape. Every read is guarded so a bad value degrades to "not
 // present" instead of throwing during render.
-export function readJson<T>(key: string, isValid: (value: unknown) => value is T): T | null {
+export function readJson<T>(
+  key: string,
+  isValid: (value: unknown) => value is T,
+): T | null {
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;

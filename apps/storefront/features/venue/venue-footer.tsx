@@ -7,10 +7,7 @@ interface VenueFooterProps {
 export function VenueFooter({ venue }: VenueFooterProps) {
   return (
     <footer className="menu-footer">
-      <span
-        aria-hidden="true"
-        className="brand-mark brand-mark--small"
-      >
+      <span aria-hidden="true" className="brand-mark brand-mark--small">
         {venue.displayName}
       </span>
       <p>Prepared fresh in {venue.locationName.replace(", Goa", "")}</p>

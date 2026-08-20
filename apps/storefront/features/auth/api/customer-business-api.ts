@@ -12,7 +12,10 @@ import { callUntypedRpc } from "../../../lib/supabase/untyped-rpc";
  * Owned by the auth feature rather than any one consumer: both addresses and
  * the cart need it, and neither should import from the other.
  */
-export async function resolveCustomerBusinessId(businessId: string, customerId: string): Promise<string> {
+export async function resolveCustomerBusinessId(
+  businessId: string,
+  customerId: string,
+): Promise<string> {
   const client = getSupabaseClient();
   const existing = await client
     .schema("core")
@@ -25,11 +28,16 @@ export async function resolveCustomerBusinessId(businessId: string, customerId: 
   if (existing.error) throw existing.error;
   if (existing.data) return (existing.data as { id: string }).id;
 
-  const created = await callUntypedRpc(client.schema("core"), "record_customer_business_visit", {
-    p_business_id: businessId,
-    p_customer_id: customerId,
-  });
+  const created = await callUntypedRpc(
+    client.schema("core"),
+    "record_customer_business_visit",
+    {
+      p_business_id: businessId,
+      p_customer_id: customerId,
+    },
+  );
   if (created.error) throw created.error;
-  if (typeof created.data !== "string") throw new Error("Could not link your account to this restaurant.");
+  if (typeof created.data !== "string")
+    throw new Error("Could not link your account to this restaurant.");
   return created.data;
 }

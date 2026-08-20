@@ -396,11 +396,11 @@ Use narrow providers only where the state is genuinely shared.
 
 Approved shared ownership:
 
-| State | Intended owner | Reason |
-|---|---|---|
-| active business | `outlet-context` | app-wide operator scope |
-| active location/outlet | `outlet-context` | app-wide operator scope |
-| accepting-orders | `ordering-status` | synchronized across multiple surfaces |
+| State                  | Intended owner    | Reason                                |
+| ---------------------- | ----------------- | ------------------------------------- |
+| active business        | `outlet-context`  | app-wide operator scope               |
+| active location/outlet | `outlet-context`  | app-wide operator scope               |
+| accepting-orders       | `ordering-status` | synchronized across multiple surfaces |
 
 ### Feature state
 
@@ -515,9 +515,9 @@ Outlet-specific data must include business/location scope in the key.
 Conceptually:
 
 ```ts
-["orders", businessId, locationId, filters]
-["menu", businessId, locationId]
-["business-settings", businessId, locationId]
+["orders", businessId, locationId, filters][("menu", businessId, locationId)][
+  ("business-settings", businessId, locationId)
+];
 ```
 
 The exact key factory design should be introduced when real queries exist, not prebuilt speculatively.

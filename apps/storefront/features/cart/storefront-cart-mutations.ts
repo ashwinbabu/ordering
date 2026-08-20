@@ -1,12 +1,36 @@
-import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { removeCartItem, setCartCoupon, setCartItem, type CartOptionSelectionInput } from "./api/storefront-cart-api";
+import {
+  useMutation,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import {
+  removeCartItem,
+  setCartCoupon,
+  setCartItem,
+  type CartOptionSelectionInput,
+} from "./api/storefront-cart-api";
 import { clearCartPointer } from "./cart-pointer-storage";
-import { findLineByContent, resolveCartLineId } from "../../lib/storefront/cart-line-identity";
-import { resolveCartIdentity, storefrontCartQueryKey } from "./storefront-cart-query";
-import { storefrontContext, type StorefrontContext } from "../../lib/storefront/storefront-context";
+import {
+  findLineByContent,
+  resolveCartLineId,
+} from "../../lib/storefront/cart-line-identity";
+import {
+  resolveCartIdentity,
+  storefrontCartQueryKey,
+} from "./storefront-cart-query";
+import {
+  storefrontContext,
+  type StorefrontContext,
+} from "../../lib/storefront/storefront-context";
 
 /** Postgres error codes the cart RPCs raise for business-rule rejections (not transient failures -- never worth retrying). */
-const nonRetryableCartErrorCodes = new Set(["22023", "42501", "55000", "23505", "40001"]);
+const nonRetryableCartErrorCodes = new Set([
+  "22023",
+  "42501",
+  "55000",
+  "23505",
+  "40001",
+]);
 
 /**
  * Shared by every mutation in this file so TanStack Query runs at most one
@@ -59,10 +83,18 @@ function isRecoverableCartIdentityError(error: unknown): boolean {
  * round trip, and invalidating/refetching the wrong (pre-transition) cache
  * slot would recover into a cart that isn't the current one any more.
  */
-async function refetchCartIdentity(error: unknown, queryClient: QueryClient, getCustomerId: () => string | null, context: StorefrontContext) {
+async function refetchCartIdentity(
+  error: unknown,
+  queryClient: QueryClient,
+  getCustomerId: () => string | null,
+  context: StorefrontContext,
+) {
   const code = (error as { code?: unknown } | null)?.code;
   if (code === "42501") clearCartPointer(context);
-  await queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(getCustomerId(), context), exact: true });
+  await queryClient.invalidateQueries({
+    queryKey: storefrontCartQueryKey(getCustomerId(), context),
+    exact: true,
+  });
 }
 
 /**
@@ -96,26 +128,64 @@ async function withCartIdentityRecovery<T>(
  * if there isn't one. Every one of those decisions is made from the same
  * single cart snapshot the request's cartId/credential come from.
  */
-export function useSetLineByContentMutation(getCustomerId: () => string | null, context: StorefrontContext = storefrontContext) {
+export function useSetLineByContentMutation(
+  getCustomerId: () => string | null,
+  context: StorefrontContext = storefrontContext,
+) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { productId: string; selections: CartOptionSelectionInput[]; quantity: number; customerNote?: string }) =>
-      withCartIdentityRecovery(async () => {
-        const { cart, cartId, anonymousSessionId } = resolveCartIdentity(queryClient, getCustomerId(), context);
+    mutationFn: (args: {
+      productId: string;
+      selections: CartOptionSelectionInput[];
+      quantity: number;
+      customerNote?: string;
+    }) =>
+      withCartIdentityRecovery(
+        async () => {
+          const { cart, cartId, anonymousSessionId } = resolveCartIdentity(
+            queryClient,
+            getCustomerId(),
+            context,
+          );
 
-        if (args.quantity <= 0) {
-          const existing = findLineByContent(cart, args.productId, args.selections);
-          if (!existing) return cart;
-          return removeCartItem({ cartId, anonymousSessionId, cartItemId: existing.id });
-        }
+          if (args.quantity <= 0) {
+            const existing = findLineByContent(
+              cart,
+              args.productId,
+              args.selections,
+            );
+            if (!existing) return cart;
+            return removeCartItem({
+              cartId,
+              anonymousSessionId,
+              cartItemId: existing.id,
+            });
+          }
 
-        const cartItemId = resolveCartLineId(cart, args.productId, args.selections);
-        return setCartItem({
-          cartId, anonymousSessionId, cartItemId,
-          productId: args.productId, quantity: args.quantity, customerNote: args.customerNote, selections: args.selections,
-        });
-      }, queryClient, getCustomerId, context),
-    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+          const cartItemId = resolveCartLineId(
+            cart,
+            args.productId,
+            args.selections,
+          );
+          return setCartItem({
+            cartId,
+            anonymousSessionId,
+            cartItemId,
+            productId: args.productId,
+            quantity: args.quantity,
+            customerNote: args.customerNote,
+            selections: args.selections,
+          });
+        },
+        queryClient,
+        getCustomerId,
+        context,
+      ),
+    onSuccess: (cart) =>
+      queryClient.setQueryData(
+        storefrontCartQueryKey(getCustomerId(), context),
+        cart,
+      ),
     scope: cartMutationScope,
     retry: false,
   });
@@ -137,8 +207,12 @@ function resolveExistingLine(
   productId?: string,
   selections?: CartOptionSelectionInput[],
 ) {
-  return cart.items.find((candidate) => candidate.id === lineId)
-    ?? (productId ? findLineByContent(cart, productId, selections ?? []) : undefined);
+  return (
+    cart.items.find((candidate) => candidate.id === lineId) ??
+    (productId
+      ? findLineByContent(cart, productId, selections ?? [])
+      : undefined)
+  );
 }
 
 /**
@@ -150,25 +224,64 @@ function resolveExistingLine(
  * content-fallback match is targeted correctly even though it has a
  * different id than the one the caller asked for.
  */
-export function useUpdateExistingLineMutation(getCustomerId: () => string | null, context: StorefrontContext = storefrontContext) {
+export function useUpdateExistingLineMutation(
+  getCustomerId: () => string | null,
+  context: StorefrontContext = storefrontContext,
+) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { lineId: string; productId: string; selections: CartOptionSelectionInput[] } & ({ quantity: number } | { delta: number })) =>
-      withCartIdentityRecovery(async () => {
-        const { cart, cartId, anonymousSessionId } = resolveCartIdentity(queryClient, getCustomerId(), context);
-        const item = resolveExistingLine(cart, args.lineId, args.productId, args.selections);
-        if (!item) return cart;
+    mutationFn: (
+      args: {
+        lineId: string;
+        productId: string;
+        selections: CartOptionSelectionInput[];
+      } & ({ quantity: number } | { delta: number }),
+    ) =>
+      withCartIdentityRecovery(
+        async () => {
+          const { cart, cartId, anonymousSessionId } = resolveCartIdentity(
+            queryClient,
+            getCustomerId(),
+            context,
+          );
+          const item = resolveExistingLine(
+            cart,
+            args.lineId,
+            args.productId,
+            args.selections,
+          );
+          if (!item) return cart;
 
-        const quantity = "delta" in args ? item.quantity + args.delta : args.quantity;
-        if (quantity <= 0) return removeCartItem({ cartId, anonymousSessionId, cartItemId: item.id });
+          const quantity =
+            "delta" in args ? item.quantity + args.delta : args.quantity;
+          if (quantity <= 0)
+            return removeCartItem({
+              cartId,
+              anonymousSessionId,
+              cartItemId: item.id,
+            });
 
-        return setCartItem({
-          cartId, anonymousSessionId, cartItemId: item.id,
-          productId: item.productId, quantity, customerNote: item.customerNote ?? undefined,
-          selections: item.options.map((option) => ({ optionId: option.optionId })),
-        });
-      }, queryClient, getCustomerId, context),
-    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+          return setCartItem({
+            cartId,
+            anonymousSessionId,
+            cartItemId: item.id,
+            productId: item.productId,
+            quantity,
+            customerNote: item.customerNote ?? undefined,
+            selections: item.options.map((option) => ({
+              optionId: option.optionId,
+            })),
+          });
+        },
+        queryClient,
+        getCustomerId,
+        context,
+      ),
+    onSuccess: (cart) =>
+      queryClient.setQueryData(
+        storefrontCartQueryKey(getCustomerId(), context),
+        cart,
+      ),
     scope: cartMutationScope,
     retry: false,
   });
@@ -182,17 +295,46 @@ export function useUpdateExistingLineMutation(getCustomerId: () => string | null
  * need one -- an id already gone from the current cart means there is
  * nothing left to remove.
  */
-export function useRemoveExistingLineMutation(getCustomerId: () => string | null, context: StorefrontContext = storefrontContext) {
+export function useRemoveExistingLineMutation(
+  getCustomerId: () => string | null,
+  context: StorefrontContext = storefrontContext,
+) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (args: { lineId: string; productId?: string; selections?: CartOptionSelectionInput[] }) =>
-      withCartIdentityRecovery(async () => {
-        const { cart, cartId, anonymousSessionId } = resolveCartIdentity(queryClient, getCustomerId(), context);
-        const item = resolveExistingLine(cart, args.lineId, args.productId, args.selections);
-        if (!item) return cart;
-        return removeCartItem({ cartId, anonymousSessionId, cartItemId: item.id });
-      }, queryClient, getCustomerId, context),
-    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+    mutationFn: (args: {
+      lineId: string;
+      productId?: string;
+      selections?: CartOptionSelectionInput[];
+    }) =>
+      withCartIdentityRecovery(
+        async () => {
+          const { cart, cartId, anonymousSessionId } = resolveCartIdentity(
+            queryClient,
+            getCustomerId(),
+            context,
+          );
+          const item = resolveExistingLine(
+            cart,
+            args.lineId,
+            args.productId,
+            args.selections,
+          );
+          if (!item) return cart;
+          return removeCartItem({
+            cartId,
+            anonymousSessionId,
+            cartItemId: item.id,
+          });
+        },
+        queryClient,
+        getCustomerId,
+        context,
+      ),
+    onSuccess: (cart) =>
+      queryClient.setQueryData(
+        storefrontCartQueryKey(getCustomerId(), context),
+        cart,
+      ),
     scope: cartMutationScope,
     retry: false,
   });
@@ -222,82 +364,165 @@ export function useRemoveExistingLineMutation(getCustomerId: () => string | null
  * the target a second time.) The set is still ordered before the remove --
  * see the comment at the second call for why.
  */
-export function useSaveCartLineConfigurationMutation(getCustomerId: () => string | null, context: StorefrontContext = storefrontContext) {
+export function useSaveCartLineConfigurationMutation(
+  getCustomerId: () => string | null,
+  context: StorefrontContext = storefrontContext,
+) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (args: { sourceLineId?: string; productId: string; selections: CartOptionSelectionInput[]; customerNote?: string }) => {
-      const first = await withCartIdentityRecovery(async () => {
-        const { cart, cartId, anonymousSessionId } = resolveCartIdentity(queryClient, getCustomerId(), context);
-        const target = findLineByContent(cart, args.productId, args.selections);
+    mutationFn: async (args: {
+      sourceLineId?: string;
+      productId: string;
+      selections: CartOptionSelectionInput[];
+      customerNote?: string;
+    }) => {
+      const first = await withCartIdentityRecovery(
+        async () => {
+          const { cart, cartId, anonymousSessionId } = resolveCartIdentity(
+            queryClient,
+            getCustomerId(),
+            context,
+          );
+          const target = findLineByContent(
+            cart,
+            args.productId,
+            args.selections,
+          );
 
-        if (!args.sourceLineId) {
-          const quantity = (target?.quantity ?? 0) + 1;
-          const cartItemId = target?.id ?? window.crypto.randomUUID();
+          if (!args.sourceLineId) {
+            const quantity = (target?.quantity ?? 0) + 1;
+            const cartItemId = target?.id ?? window.crypto.randomUUID();
+            const result = await setCartItem({
+              cartId,
+              anonymousSessionId,
+              cartItemId,
+              productId: args.productId,
+              quantity,
+              customerNote: args.customerNote,
+              selections: args.selections,
+            });
+            return {
+              cart: result,
+              removeLineId: undefined as string | undefined,
+            };
+          }
+
+          const source = cart.items.find(
+            (item) => item.id === args.sourceLineId,
+          );
+          const sourceQuantity = source?.quantity ?? 1;
+
+          if (target && target.id === args.sourceLineId) {
+            const result = await setCartItem({
+              cartId,
+              anonymousSessionId,
+              cartItemId: args.sourceLineId,
+              productId: args.productId,
+              quantity: sourceQuantity,
+              customerNote: args.customerNote,
+              selections: args.selections,
+            });
+            return {
+              cart: result,
+              removeLineId: undefined as string | undefined,
+            };
+          }
+
+          // Set the merged target before removing the source, not after: if
+          // cart identity changes between the two calls (e.g. this same cart
+          // is converted by a concurrent checkout in another tab), both calls
+          // guard on the cart still being 'active' and raise 55000 -- a code
+          // recovery does not retry, since retrying a conversion-in-progress
+          // isn't recoverable by re-reading the cart. Set-first means that
+          // failure mode is a visible, harmless duplicate/inflated line (the
+          // source survives, unremoved) rather than remove-first's failure
+          // mode: the source silently gone and the merged replacement never
+          // created.
+          const targetId = target?.id ?? window.crypto.randomUUID();
+          const mergedQuantity = sourceQuantity + (target?.quantity ?? 0);
           const result = await setCartItem({
-            cartId, anonymousSessionId, cartItemId,
-            productId: args.productId, quantity, customerNote: args.customerNote, selections: args.selections,
+            cartId,
+            anonymousSessionId,
+            cartItemId: targetId,
+            productId: args.productId,
+            quantity: mergedQuantity,
+            customerNote: args.customerNote,
+            selections: args.selections,
           });
-          return { cart: result, removeLineId: undefined as string | undefined };
-        }
-
-        const source = cart.items.find((item) => item.id === args.sourceLineId);
-        const sourceQuantity = source?.quantity ?? 1;
-
-        if (target && target.id === args.sourceLineId) {
-          const result = await setCartItem({
-            cartId, anonymousSessionId, cartItemId: args.sourceLineId,
-            productId: args.productId, quantity: sourceQuantity, customerNote: args.customerNote, selections: args.selections,
-          });
-          return { cart: result, removeLineId: undefined as string | undefined };
-        }
-
-        // Set the merged target before removing the source, not after: if
-        // cart identity changes between the two calls (e.g. this same cart
-        // is converted by a concurrent checkout in another tab), both calls
-        // guard on the cart still being 'active' and raise 55000 -- a code
-        // recovery does not retry, since retrying a conversion-in-progress
-        // isn't recoverable by re-reading the cart. Set-first means that
-        // failure mode is a visible, harmless duplicate/inflated line (the
-        // source survives, unremoved) rather than remove-first's failure
-        // mode: the source silently gone and the merged replacement never
-        // created.
-        const targetId = target?.id ?? window.crypto.randomUUID();
-        const mergedQuantity = sourceQuantity + (target?.quantity ?? 0);
-        const result = await setCartItem({
-          cartId, anonymousSessionId, cartItemId: targetId,
-          productId: args.productId, quantity: mergedQuantity, customerNote: args.customerNote, selections: args.selections,
-        });
-        return { cart: result, removeLineId: args.sourceLineId as string | undefined };
-      }, queryClient, getCustomerId, context);
+          return {
+            cart: result,
+            removeLineId: args.sourceLineId as string | undefined,
+          };
+        },
+        queryClient,
+        getCustomerId,
+        context,
+      );
 
       // Reflect the first call's own effect immediately so the second call's
       // resolveCartIdentity() -- inside its own recovery scope below -- reads
       // a snapshot that actually includes it, not the pre-mutation cache.
-      queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), first.cart);
+      queryClient.setQueryData(
+        storefrontCartQueryKey(getCustomerId(), context),
+        first.cart,
+      );
       if (!first.removeLineId) return first.cart;
 
       const removeLineId = first.removeLineId;
-      return withCartIdentityRecovery(async () => {
-        const { cart, cartId, anonymousSessionId } = resolveCartIdentity(queryClient, getCustomerId(), context);
-        if (!cart.items.some((item) => item.id === removeLineId)) return cart;
-        return removeCartItem({ cartId, anonymousSessionId, cartItemId: removeLineId });
-      }, queryClient, getCustomerId, context);
+      return withCartIdentityRecovery(
+        async () => {
+          const { cart, cartId, anonymousSessionId } = resolveCartIdentity(
+            queryClient,
+            getCustomerId(),
+            context,
+          );
+          if (!cart.items.some((item) => item.id === removeLineId)) return cart;
+          return removeCartItem({
+            cartId,
+            anonymousSessionId,
+            cartItemId: removeLineId,
+          });
+        },
+        queryClient,
+        getCustomerId,
+        context,
+      );
     },
-    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+    onSuccess: (cart) =>
+      queryClient.setQueryData(
+        storefrontCartQueryKey(getCustomerId(), context),
+        cart,
+      ),
     scope: cartMutationScope,
     retry: false,
   });
 }
 
-export function useSetCartCouponMutation(getCustomerId: () => string | null, context: StorefrontContext = storefrontContext) {
+export function useSetCartCouponMutation(
+  getCustomerId: () => string | null,
+  context: StorefrontContext = storefrontContext,
+) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (args: { code: string | null }) =>
-      withCartIdentityRecovery(async () => {
-        const { cartId, anonymousSessionId } = resolveCartIdentity(queryClient, getCustomerId(), context);
-        return setCartCoupon({ cartId, anonymousSessionId, code: args.code });
-      }, queryClient, getCustomerId, context),
-    onSuccess: (cart) => queryClient.setQueryData(storefrontCartQueryKey(getCustomerId(), context), cart),
+      withCartIdentityRecovery(
+        async () => {
+          const { cartId, anonymousSessionId } = resolveCartIdentity(
+            queryClient,
+            getCustomerId(),
+            context,
+          );
+          return setCartCoupon({ cartId, anonymousSessionId, code: args.code });
+        },
+        queryClient,
+        getCustomerId,
+        context,
+      ),
+    onSuccess: (cart) =>
+      queryClient.setQueryData(
+        storefrontCartQueryKey(getCustomerId(), context),
+        cart,
+      ),
     scope: cartMutationScope,
     retry: false,
   });

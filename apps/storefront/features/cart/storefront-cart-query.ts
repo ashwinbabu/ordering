@@ -1,9 +1,20 @@
-import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { attachAnonymousCart, getCart, openAnonymousCart } from "./api/storefront-cart-api";
+import {
+  useQuery,
+  useQueryClient,
+  type QueryClient,
+} from "@tanstack/react-query";
+import {
+  attachAnonymousCart,
+  getCart,
+  openAnonymousCart,
+} from "./api/storefront-cart-api";
 import { readCartPointer, writeCartPointer } from "./cart-pointer-storage";
 import { resolveCustomerBusinessId } from "../auth/api/customer-business-api";
 import { getAnonymousSessionId } from "../../lib/storefront/anonymous-session";
-import { storefrontContext, type StorefrontContext } from "../../lib/storefront/storefront-context";
+import {
+  storefrontContext,
+  type StorefrontContext,
+} from "../../lib/storefront/storefront-context";
 import type { ServerCart } from "../../domain/cart";
 
 /**
@@ -11,8 +22,17 @@ import type { ServerCart } from "../../domain/cart";
  * in separate cache entries. Without it, signing in would briefly serve the
  * previous anonymous cart from cache under the customer's identity.
  */
-export function storefrontCartQueryKey(customerId: string | null, context: StorefrontContext = storefrontContext) {
-  return ["storefront", "cart", context.businessId, context.locationId, customerId ?? "anon"] as const;
+export function storefrontCartQueryKey(
+  customerId: string | null,
+  context: StorefrontContext = storefrontContext,
+) {
+  return [
+    "storefront",
+    "cart",
+    context.businessId,
+    context.locationId,
+    customerId ?? "anon",
+  ] as const;
 }
 
 /**
@@ -21,8 +41,14 @@ export function storefrontCartQueryKey(customerId: string | null, context: Store
  * line id) must use this instead of a `cart` value captured at render time,
  * which can be behind by the time the user actually clicks.
  */
-export function readCurrentCart(queryClient: QueryClient, customerId: string | null, context: StorefrontContext = storefrontContext): ServerCart | undefined {
-  return queryClient.getQueryData<ServerCart>(storefrontCartQueryKey(customerId, context));
+export function readCurrentCart(
+  queryClient: QueryClient,
+  customerId: string | null,
+  context: StorefrontContext = storefrontContext,
+): ServerCart | undefined {
+  return queryClient.getQueryData<ServerCart>(
+    storefrontCartQueryKey(customerId, context),
+  );
 }
 
 /**
@@ -34,10 +60,18 @@ export function readCurrentCart(queryClient: QueryClient, customerId: string | n
  * Throws rather than returning undefined so a caller can't accidentally
  * build a request around a half-resolved identity.
  */
-export function resolveCartIdentity(queryClient: QueryClient, customerId: string | null, context: StorefrontContext = storefrontContext) {
+export function resolveCartIdentity(
+  queryClient: QueryClient,
+  customerId: string | null,
+  context: StorefrontContext = storefrontContext,
+) {
   const cart = readCurrentCart(queryClient, customerId, context);
   if (!cart) throw new Error("The cart has not loaded yet.");
-  return { cart, cartId: cart.id, anonymousSessionId: cart.isAuthenticated ? null : getAnonymousSessionId() };
+  return {
+    cart,
+    cartId: cart.id,
+    anonymousSessionId: cart.isAuthenticated ? null : getAnonymousSessionId(),
+  };
 }
 
 /**
@@ -47,8 +81,14 @@ export function resolveCartIdentity(queryClient: QueryClient, customerId: string
  * covers every authenticated case, so there is no separate "open" path -- and
  * ordering.open_customer_cart is never needed.
  */
-async function ensureCustomerCart(context: StorefrontContext, customerId: string): Promise<ServerCart> {
-  const customerBusinessId = await resolveCustomerBusinessId(context.businessId, customerId);
+async function ensureCustomerCart(
+  context: StorefrontContext,
+  customerId: string,
+): Promise<ServerCart> {
+  const customerBusinessId = await resolveCustomerBusinessId(
+    context.businessId,
+    customerId,
+  );
   const cart = await attachAnonymousCart({
     businessId: context.businessId,
     locationId: context.locationId,
@@ -60,7 +100,9 @@ async function ensureCustomerCart(context: StorefrontContext, customerId: string
   return cart;
 }
 
-async function ensureAnonymousCart(context: StorefrontContext): Promise<ServerCart> {
+async function ensureAnonymousCart(
+  context: StorefrontContext,
+): Promise<ServerCart> {
   const anonymousSessionId = getAnonymousSessionId();
   const pointerCartId = readCartPointer(context);
 
@@ -109,10 +151,16 @@ export function ensureCurrentCustomerCartReady(
   });
 }
 
-export function useStorefrontCartQuery(customerId: string | null, context: StorefrontContext = storefrontContext) {
+export function useStorefrontCartQuery(
+  customerId: string | null,
+  context: StorefrontContext = storefrontContext,
+) {
   return useQuery({
     queryKey: storefrontCartQueryKey(customerId, context),
-    queryFn: () => customerId ? ensureCustomerCart(context, customerId) : ensureAnonymousCart(context),
+    queryFn: () =>
+      customerId
+        ? ensureCustomerCart(context, customerId)
+        : ensureAnonymousCart(context),
     staleTime: 15_000,
     // Cart mutations are non-retryable business decisions (unavailable
     // product, closed restaurant); the initial open/get is the one operation
@@ -121,7 +169,14 @@ export function useStorefrontCartQuery(customerId: string | null, context: Store
   });
 }
 
-export function useReconcileCartOnFocus(customerId: string | null, context: StorefrontContext = storefrontContext) {
+export function useReconcileCartOnFocus(
+  customerId: string | null,
+  context: StorefrontContext = storefrontContext,
+) {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: storefrontCartQueryKey(customerId, context), exact: true });
+  return () =>
+    queryClient.invalidateQueries({
+      queryKey: storefrontCartQueryKey(customerId, context),
+      exact: true,
+    });
 }

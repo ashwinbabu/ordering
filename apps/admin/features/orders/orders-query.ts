@@ -3,7 +3,10 @@ import {
   getOrdersForLocation,
   transitionOrderAtLocation,
 } from "@/features/orders/api/orders-api";
-import { ordersDateRangeQueryWindow, type OrdersDateRange } from "@/features/orders/order-model";
+import {
+  ordersDateRangeQueryWindow,
+  type OrdersDateRange,
+} from "@/features/orders/order-model";
 
 export function ordersQueryKey(
   businessId: string | null,

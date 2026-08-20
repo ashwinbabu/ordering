@@ -76,11 +76,17 @@ export interface Msg91ExchangeResult {
  * same accessToken (see the OTP verification investigation - Case A/B in
  * the replay-semantics trace).
  */
-export async function requestMsg91Exchange(accessToken: string): Promise<Msg91ExchangeResult> {
+export async function requestMsg91Exchange(
+  accessToken: string,
+): Promise<Msg91ExchangeResult> {
   const client = getSupabaseClient();
-  const { data, error } = await client.functions.invoke<EdgeFunctionSuccessBody>("customer-auth-msg91", {
-    body: { accessToken },
-  });
+  const { data, error } =
+    await client.functions.invoke<EdgeFunctionSuccessBody>(
+      "customer-auth-msg91",
+      {
+        body: { accessToken },
+      },
+    );
 
   if (error) {
     const context = (error as { context?: Response }).context;
@@ -100,7 +106,10 @@ export async function requestMsg91Exchange(accessToken: string): Promise<Msg91Ex
   }
 
   if (!data?.access_token || !data.refresh_token) {
-    throw new CustomerAuthError("server_error", "Something went wrong. Please try again.");
+    throw new CustomerAuthError(
+      "server_error",
+      "Something went wrong. Please try again.",
+    );
   }
 
   return {
@@ -118,13 +127,19 @@ export async function requestMsg91Exchange(accessToken: string): Promise<Msg91Ex
  * attempt failed (e.g. a transient local/network error) - it never risks a
  * 703/replayed_token the way re-running the exchange would.
  */
-export async function installSupabaseSession(exchanged: Msg91ExchangeResult): Promise<VerifiedCustomer> {
+export async function installSupabaseSession(
+  exchanged: Msg91ExchangeResult,
+): Promise<VerifiedCustomer> {
   const client = getSupabaseClient();
   const { error: sessionError } = await client.auth.setSession({
     access_token: exchanged.accessToken,
     refresh_token: exchanged.refreshToken,
   });
-  if (sessionError) throw new CustomerAuthError("server_error", "Could not complete sign-in. Please try again.");
+  if (sessionError)
+    throw new CustomerAuthError(
+      "server_error",
+      "Could not complete sign-in. Please try again.",
+    );
 
   return { customerId: exchanged.customerId, phoneE164: exchanged.phoneE164 };
 }
