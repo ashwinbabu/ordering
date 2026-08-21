@@ -1,6 +1,7 @@
 import { useNavigate, useOutletContext } from "react-router";
 import { AccountScreen } from "../../features/account/account-screen";
 import { useCustomerSession } from "../../features/auth/customer-session";
+import { normalizePhoneInput } from "../../domain/phone";
 import type { StorefrontLayoutContext } from "../storefront-layout";
 
 /** `/account` -- gated by RequireCustomer, so `customer` is always present here. */
@@ -22,7 +23,7 @@ export function AccountRoute() {
         openAuth({
           context: "account",
           initialStep: "phone",
-          phone: { countryCode: customer.countryCode, phone: customer.phone },
+          phone: normalizePhoneInput(customer.phone, customer.countryIso2),
           onSuccess: () => {},
         })
       }

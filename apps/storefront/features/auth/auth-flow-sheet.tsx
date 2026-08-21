@@ -1,13 +1,13 @@
 import { ArrowLeft, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
+  defaultCountryIso2,
   defaultCountryCode,
-  formatPhoneForInput,
   isValidPhoneNumber,
   maskPhoneNumber,
-  normalizePhoneInput,
   type PhoneNumber,
 } from "../../domain/phone";
+import { InternationalPhoneField } from "./international-phone-field";
 import { OtpInput } from "./otp-input";
 import { OtpResendTimer } from "./otp-resend-timer";
 import { OtpVerifyError, useOtpVerification } from "./use-otp-verification";
@@ -80,7 +80,13 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   const isDirectOtp = request.initialStep === "otp";
   const [step, setStep] = useState<AuthStep>(isDirectOtp ? "otp" : "phone");
   const [phone, setPhone] = useState<PhoneNumber>(
-    () => request.phone ?? { countryCode: defaultCountryCode, phone: "" },
+    () =>
+      request.phone ?? {
+        countryIso2: defaultCountryIso2,
+        countryCode: defaultCountryCode,
+        phone: "",
+        e164: null,
+      },
   );
   const [phoneError, setPhoneError] = useState<string>();
   const [requestState, setRequestState] = useState<AuthRequestState>(
@@ -195,7 +201,7 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
   async function submitPhone(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!isValidPhoneNumber(phone)) {
-      setPhoneError("Enter a valid 10-digit mobile number");
+      setPhoneError("Enter a valid phone number");
       return;
     }
 
@@ -399,34 +405,16 @@ export function AuthFlowSheet({ request }: { request: AuthFlowRequest }) {
               <h2 id={dialogTitleId}>{copy.phoneTitle}</h2>
               <p id={dialogDescriptionId}>{copy.phoneDescription}</p>
             </div>
-            <label className="form-field" htmlFor="auth-phone">
-              <span>Phone number</span>
-              <div
-                className="phone-input"
-                data-error={phoneError ? "true" : undefined}
-              >
-                <span>{phone.countryCode}</span>
-                <input
-                  aria-describedby={phoneError ? "auth-phone-error" : undefined}
-                  aria-invalid={Boolean(phoneError)}
-                  autoComplete="tel"
-                  id="auth-phone"
-                  inputMode="numeric"
-                  onChange={(event) => {
-                    setPhone((current) => ({
-                      ...current,
-                      phone: normalizePhoneInput(
-                        event.target.value,
-                        current.countryCode,
-                      ),
-                    }));
-                    setPhoneError(undefined);
-                  }}
-                  placeholder="98765 43210"
-                  value={formatPhoneForInput(phone.phone)}
-                />
-              </div>
-            </label>
+            <InternationalPhoneField
+              error={phoneError}
+              id="auth-phone"
+              label="Phone number"
+              onChange={(nextPhone) => {
+                setPhone(nextPhone);
+                setPhoneError(undefined);
+              }}
+              value={phone}
+            />
             {phoneError ? (
               <p className="auth-error" id="auth-phone-error" role="alert">
                 {phoneError}

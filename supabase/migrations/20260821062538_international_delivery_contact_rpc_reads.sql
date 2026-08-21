@@ -1,0 +1,11 @@
+-- Repository mirror of the migration already applied to ordering dev.
+-- The live read RPCs expose delivery_contact and the delivery-address
+-- recipient_phone_e164/contact preference fields used by the storefront.
+-- Their deployed definitions are intentionally preserved in Supabase; this
+-- migration marker documents the live contract without recreating unrelated
+-- historical order-query logic.
+
+-- ordering.checkout_cart_v2 is the stable checkout entrypoint. It snapshots
+-- delivery contact data once and returns ordering.get_order(p_order_id).
+-- ordering.get_order exposes snake_case delivery_contact.
+-- ordering.list_customer_orders exposes camelCase deliveryContact.

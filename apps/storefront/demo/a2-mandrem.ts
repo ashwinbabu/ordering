@@ -195,6 +195,7 @@ export const a2MandremStorefront: StorefrontDemo = {
 
 export const a2MandremCustomer: CustomerProfile = {
   name: "Ashwin Babu",
+  countryIso2: "IN",
   countryCode: "+91",
   phone: "9025117533",
   email: "ashwin@example.com",

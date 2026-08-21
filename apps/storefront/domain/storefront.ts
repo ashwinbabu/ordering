@@ -129,6 +129,7 @@ export interface CartLineOptionSelection {
 
 export interface CustomerDetails {
   name: string;
+  countryIso2: string;
   countryCode: string;
   phone: string;
 }
@@ -159,6 +160,7 @@ export interface DeliveryAddress {
 
 export interface CustomerProfile {
   name: string;
+  countryIso2: string;
   countryCode: string;
   phone: string;
   email?: string;

@@ -76,6 +76,7 @@ function profileFromRow(row: CustomerRow): CustomerProfile {
   const phone = splitE164(row.phone_e164);
   return {
     name: row.display_name ?? "",
+    countryIso2: phone.countryIso2,
     countryCode: phone.countryCode,
     phone: phone.phone,
     email: row.email ?? undefined,
@@ -151,6 +152,12 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    // A session transition invalidates the previous customer lookup. Keep
+    // gated routes in their loading state until the new session's customer
+    // row has been resolved; otherwise RequireCustomer can reopen the OTP
+    // sheet during the small window between session installation and profile
+    // hydration.
+    setCustomerLoaded(false);
     setCustomerBusinessReady(false);
     setCustomerLoadError(false);
 
@@ -237,6 +244,7 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   function completeDemoSignIn(phone: PhoneNumber) {
     setDemoProfile({
       name: "",
+      countryIso2: phone.countryIso2,
       countryCode: phone.countryCode,
       phone: phone.phone,
       isPhoneVerified: true,

@@ -1,95 +1,191 @@
+import {
+  getCountryCallingCode,
+  getCountries,
+  parsePhoneNumberFromString,
+  type CountryCode,
+} from "libphonenumber-js";
+
 export interface PhoneNumber {
+  /** Country selected by the customer, retained for deterministic editing/prefill. */
+  countryIso2: CountryCode;
+  /** Calling code derived from countryIso2 or a parsed international value. */
   countryCode: string;
+  /** National-number portion displayed and edited by the customer. */
   phone: string;
+  /** Canonical E.164 value, or null while the input is incomplete/invalid. */
+  e164: string | null;
+}
+
+export interface CountryDialCode {
+  iso2: CountryCode;
+  name: string;
+  dialCode: string;
+}
+
+const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+function isCountryCode(value: string): value is CountryCode {
+  return getCountries().includes(value as CountryCode);
+}
+
+function countryName(iso2: CountryCode) {
+  return regionNames.of(iso2) ?? iso2;
+}
+
+export function countryFlag(iso2: string) {
+  return iso2
+    .toUpperCase()
+    .replace(/./g, (letter) =>
+      String.fromCodePoint(letter.charCodeAt(0) + 127397),
+    );
 }
 
 /**
- * One row per country we can validate a phone number for. Only India has
- * smsOtpEnabled today - MSG91 is wired for SMS only in this phase. The table
- * exists so a future country (or MSG91's email channel for non-Indian
- * customers) is a data addition here, not a rewrite of the validation logic.
+ * This list contains every country understood by the parser. The phone
+ * selector presents a curated Goa-relevant subset first and offers the rest
+ * behind "Other countries".
  */
-export interface CountryDialCode {
-  iso2: string;
-  name: string;
-  dialCode: string;
-  digitLength: number;
-  smsOtpEnabled: boolean;
+export const supportedCountries: CountryDialCode[] = getCountries()
+  .map((iso2) => ({
+    iso2,
+    name: countryName(iso2),
+    dialCode: `+${getCountryCallingCode(iso2)}`,
+  }))
+  .sort((left, right) => left.name.localeCompare(right.name));
+
+export const defaultCountryIso2: CountryCode = "IN";
+export const defaultCountryCode = `+${getCountryCallingCode(defaultCountryIso2)}`;
+
+export function findCountryByIso2(iso2: string) {
+  return supportedCountries.find((country) => country.iso2 === iso2);
 }
 
-export const supportedCountries: CountryDialCode[] = [
-  {
-    iso2: "IN",
-    name: "India",
-    dialCode: "+91",
-    digitLength: 10,
-    smsOtpEnabled: true,
-  },
-];
-
-export const defaultCountryCode = supportedCountries[0].dialCode;
-
-export function findCountryByDialCode(
-  dialCode: string,
-): CountryDialCode | undefined {
+export function findCountryByDialCode(dialCode: string) {
   return supportedCountries.find((country) => country.dialCode === dialCode);
 }
 
+function emptyPhone(countryIso2: CountryCode): PhoneNumber {
+  const country =
+    findCountryByIso2(countryIso2) ?? findCountryByIso2(defaultCountryIso2)!;
+  return {
+    countryIso2: country.iso2,
+    countryCode: country.dialCode,
+    phone: "",
+    e164: null,
+  };
+}
+
+/**
+ * Normalize either a national-number edit or a pasted international value.
+ * The selected country is used by libphonenumber-js to interpret national
+ * prefixes; no calling code is prepended by string concatenation.
+ */
 export function normalizePhoneInput(
   value: string,
-  countryCode: string = defaultCountryCode,
-) {
-  const digitLength = findCountryByDialCode(countryCode)?.digitLength ?? 10;
-  return value.replace(/\D/g, "").slice(0, digitLength);
+  countryIso2: string = defaultCountryIso2,
+): PhoneNumber {
+  const selectedCountry =
+    findCountryByIso2(countryIso2) ?? findCountryByIso2(defaultCountryIso2)!;
+  const trimmed = value.trim();
+
+  if (!trimmed) return emptyPhone(selectedCountry.iso2);
+
+  const isInternationalInput = trimmed.startsWith("+");
+  const parsed = isInternationalInput
+    ? parsePhoneNumberFromString(trimmed)
+    : parsePhoneNumberFromString(
+        trimmed.replace(/\D/g, ""),
+        selectedCountry.iso2,
+      );
+
+  if (parsed) {
+    const parsedCountry = parsed.country;
+    const parsedIso2 =
+      isInternationalInput && parsedCountry && isCountryCode(parsedCountry)
+        ? parsedCountry
+        : selectedCountry.iso2;
+    return {
+      countryIso2: parsedIso2,
+      countryCode: `+${parsed.countryCallingCode}`,
+      phone: parsed.nationalNumber,
+      e164: parsed.number,
+    };
+  }
+
+  return {
+    countryIso2: selectedCountry.iso2,
+    countryCode: selectedCountry.dialCode,
+    phone: trimmed.replace(/\D/g, ""),
+    e164: null,
+  };
 }
 
 export function isValidPhoneNumber(phone: PhoneNumber) {
-  const country = findCountryByDialCode(phone.countryCode);
-  if (!country) return false;
-  return new RegExp(`^\\d{${country.digitLength}}$`).test(phone.phone);
+  if (!isCountryCode(phone.countryIso2)) return false;
+  const parsed = parsePhoneNumberFromString(phone.phone, phone.countryIso2);
+  return Boolean(
+    parsed?.isValid() &&
+      (parsed.country === phone.countryIso2 || !parsed.country),
+  );
 }
 
-export function formatPhoneForInput(phone: string) {
-  const digits = phone.replace(/\D/g, "");
-  return digits.length > 5
-    ? `${digits.slice(0, 5)} ${digits.slice(5)}`
-    : digits;
+export function toE164(phone: PhoneNumber) {
+  if (!isValidPhoneNumber(phone)) return null;
+  const parsed = parsePhoneNumberFromString(phone.phone, phone.countryIso2);
+  return parsed?.number ?? phone.e164;
 }
 
-export function maskPhoneNumber({ countryCode, phone }: PhoneNumber) {
-  const digits = phone.replace(/\D/g, "");
+export function formatPhoneForInput(
+  phone: string,
+  countryIso2: CountryCode = defaultCountryIso2,
+) {
+  const parsed = parsePhoneNumberFromString(phone, countryIso2);
+  if (!parsed) return phone.replace(/\D/g, "");
 
-  if (digits.length < 5) {
-    return `${countryCode} ${digits}`;
+  const international = parsed.formatInternational();
+  return international
+    .slice(`+${parsed.countryCallingCode}`.length)
+    .trim();
+}
+
+export function maskPhoneNumber(phone: PhoneNumber) {
+  const e164 =
+    toE164(phone) ?? phone.e164 ?? `${phone.countryCode}${phone.phone}`;
+  return e164.length < 7
+    ? e164
+    : `${e164.slice(0, Math.min(4, e164.length - 3))}•••${e164.slice(-3)}`;
+}
+
+/** Split a canonical E.164 value without reconstructing it from a default country. */
+export function splitE164(e164: string, countryIso2?: CountryCode): PhoneNumber {
+  const parsed = parsePhoneNumberFromString(e164);
+  const parsedIso2 = parsed?.country;
+  const iso2 =
+    countryIso2 ??
+    (parsedIso2 && isCountryCode(parsedIso2) ? parsedIso2 : defaultCountryIso2);
+  const country =
+    findCountryByIso2(iso2) ?? findCountryByIso2(defaultCountryIso2)!;
+
+  if (!parsed) {
+    return {
+      countryIso2: country.iso2,
+      countryCode: country.dialCode,
+      phone: "",
+      e164,
+    };
   }
 
-  return `${countryCode} ${digits.slice(0, 2)}••• ••${digits.slice(-3)}`;
-}
-
-/** E.164, e.g. "+919025117533" - the format core.customers.phone_e164 requires. */
-export function toE164(phone: PhoneNumber) {
-  return `${phone.countryCode}${phone.phone}`;
-}
-
-/** MSG91 widget identifier: country code without "+", e.g. "919025117533". */
-export function toMsg91Identifier(phone: PhoneNumber) {
-  return `${phone.countryCode.replace("+", "")}${phone.phone}`;
-}
-
-/** Inverse of toE164() - splits a stored E.164 value back into countryCode/phone using the country table. Falls back to the default country if no dial code matches (only one is configured today, so this only matters once more are added). */
-export function splitE164(e164: string): PhoneNumber {
-  const match = supportedCountries.find(
-    (country) =>
-      e164.startsWith(country.dialCode) &&
-      e164.length === country.dialCode.length + country.digitLength,
-  );
-  if (match)
-    return {
-      countryCode: match.dialCode,
-      phone: e164.slice(match.dialCode.length),
-    };
   return {
-    countryCode: defaultCountryCode,
-    phone: e164.replace(defaultCountryCode, ""),
+    countryIso2:
+      parsedIso2 && isCountryCode(parsedIso2) ? parsedIso2 : country.iso2,
+    countryCode: `+${parsed.countryCallingCode}`,
+    phone: parsed.nationalNumber,
+    e164: parsed.number,
   };
+}
+
+/** MSG91 widget identifier: canonical E.164 without the leading plus sign. */
+export function toMsg91Identifier(phone: PhoneNumber) {
+  const e164 = toE164(phone) ?? phone.e164;
+  return (e164 ?? `${phone.countryCode}${phone.phone}`).replace(/^\+/, "");
 }

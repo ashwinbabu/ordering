@@ -19,7 +19,11 @@ import { SelectedAddressCard } from "../addresses/selected-address-card";
 import type { AuthFlowRequest } from "../auth/auth-flow-sheet";
 import { useCustomerSession } from "../auth/customer-session";
 import { MenuImage } from "../menu/menu-image";
-import { defaultCountryCode, type PhoneNumber } from "../../domain/phone";
+import {
+  normalizePhoneInput,
+  splitE164,
+  type PhoneNumber,
+} from "../../domain/phone";
 import {
   formatRupees,
   type CheckoutRequest,
@@ -355,16 +359,14 @@ export function CartScreen({
     // Pickup has no address to draw from - fall back to their account
     // contact number, or straight to the phone step if we don't have one.
     const contactPhone: PhoneNumber | undefined =
-      fulfilment === "delivery" && selectedAddress
-        ? {
-            countryCode: defaultCountryCode,
-            phone: selectedAddress.recipientPhone,
-          }
+      fulfilment === "delivery" &&
+      selectedAddress?.recipientPhone.startsWith("+")
+        ? splitE164(selectedAddress.recipientPhone)
         : customerDetails.phone
-          ? {
-              countryCode: customerDetails.countryCode,
-              phone: customerDetails.phone,
-            }
+          ? normalizePhoneInput(
+              customerDetails.phone,
+              customerDetails.countryIso2,
+            )
           : undefined;
     onRequestAuthentication(
       contactPhone
