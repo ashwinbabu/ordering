@@ -1,8 +1,10 @@
-import { sendEmailDelivery, type ChannelSendResult, type EmailDeliveryContext } from "./email/email-channel.ts";
+import { sendEmailDelivery } from "./email/email-channel.ts";
+import { sendTelegramDelivery } from "./telegram/telegram-channel.ts";
+import type { ChannelSendResult, DeliveryContext } from "./types.ts";
 import type { DispatcherConfig } from "../config.ts";
 
 export type ChannelHandler = (
-  delivery: EmailDeliveryContext,
+  delivery: DeliveryContext,
   config: DispatcherConfig,
 ) => Promise<ChannelSendResult>;
 
@@ -11,6 +13,7 @@ export type ChannelHandler = (
 // doesn't change.
 export const CHANNEL_REGISTRY: Record<string, ChannelHandler> = {
   email: sendEmailDelivery,
+  telegram: sendTelegramDelivery,
 };
 
 export function getChannelHandler(channel: string): ChannelHandler {
@@ -21,4 +24,4 @@ export function getChannelHandler(channel: string): ChannelHandler {
   return handler;
 }
 
-export type { ChannelSendResult } from "./email/email-channel.ts";
+export type { ChannelSendResult } from "./types.ts";

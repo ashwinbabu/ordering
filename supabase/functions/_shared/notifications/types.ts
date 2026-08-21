@@ -54,16 +54,28 @@ export type RecipientSelector =
   | { type: "customer" }
   | { type: "business_user"; userId: string }
   | { type: "location_admins" }
-  | { type: "email"; address: string };
+  | { type: "email"; address: string }
+  | { type: "staff_group" }
+  // Designed now, not implemented: resolveRecipients throws for this selector
+  // (same precedent as business_user/location_admins below) until a policy
+  // rule actually uses it. Kept here so the fan-out shape (0..N recipients)
+  // and the policy rule table are ready for it.
+  | { type: "business_owners" };
 
 export interface PolicyRule {
   event: DomainEventType;
   recipient: RecipientSelector;
-  channel: "email";
+  channel: "email" | "telegram";
   template: string;
 }
 
-export type RecipientType = "customer" | "business_user" | "location_admins" | "email";
+export type RecipientType =
+  | "customer"
+  | "business_user"
+  | "location_admins"
+  | "email"
+  | "staff_group"
+  | "business_owner";
 
 /** What gets handed to notifications_plan_event for one recipient/channel. */
 export interface DeliverySpec {
@@ -78,4 +90,16 @@ export interface DeliverySpec {
   skipReason: string | null;
 }
 
-export type DeliveryOutcome = "sent" | "retry" | "permanent_failure";
+export type DeliveryOutcome = "sent" | "retry" | "permanent_failure" | "skipped";
+
+/** The narrow, typed slice of notifications_get_order_context that recipient
+ * resolution is allowed to see -- deliberately NOT the same as the loose
+ * template-data blob. Extending this (e.g. for business_owners later) means
+ * adding a field here and to the order-context RPC, never coupling recipient
+ * resolution to a specific channel's template payload shape. */
+export interface PlanningContext {
+  customer: { id: string; email: string | null; displayName: string | null } | null;
+  telegram: {
+    staffGroup: { chatId: string; chatTitle: string | null } | null;
+  };
+}

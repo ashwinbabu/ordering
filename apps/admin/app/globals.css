@@ -3195,6 +3195,47 @@ textarea[aria-invalid="true"] {
   margin-left: 5px;
   color: var(--text);
 }
+.telegram-pairing-box {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--quiet);
+  font-size: 12px;
+}
+.telegram-pairing-box ol {
+  margin: 0;
+  padding-left: 18px;
+}
+.telegram-pairing-box li + li {
+  margin-top: 10px;
+}
+.telegram-pairing-box > small {
+  display: block;
+  margin-top: 10px;
+  color: var(--text-2);
+}
+.telegram-token-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+.telegram-token-row code {
+  padding: 6px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: white;
+  font-size: 12px;
+}
+.telegram-error-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+  color: var(--red);
+  font-size: 12px;
+}
 .settings-unsaved-bar {
   position: sticky;
   bottom: 18px;

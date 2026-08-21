@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 export type NotificationsEmailMode = "off" | "log" | "redirect" | "live";
+export type NotificationsTelegramMode = "off" | "log" | "live";
 export type NotificationsEnvironment = "development" | "production";
 
 export interface DispatcherConfig {
@@ -14,6 +15,8 @@ export interface DispatcherConfig {
   devDefaultStorefrontUrl: string | null;
   resendApiKey: string | null;
   dispatcherAuthSecret: string | null;
+  telegramBotToken: string | null;
+  notificationsTelegramMode: NotificationsTelegramMode;
 }
 
 /** Reads notifications.settings (+ decrypted Vault secrets) via the
@@ -37,5 +40,7 @@ export async function loadDispatcherConfig(adminClient: SupabaseClient): Promise
     devDefaultStorefrontUrl: (raw.devDefaultStorefrontUrl as string | null) ?? null,
     resendApiKey: (raw.resendApiKey as string | null) ?? null,
     dispatcherAuthSecret: (raw.dispatcherAuthSecret as string | null) ?? null,
+    telegramBotToken: (raw.telegramBotToken as string | null) ?? null,
+    notificationsTelegramMode: (raw.notificationsTelegramMode as NotificationsTelegramMode) ?? "off",
   };
 }

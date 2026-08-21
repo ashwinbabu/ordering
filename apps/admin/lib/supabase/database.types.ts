@@ -12,6 +12,85 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.15";
   };
+  public: {
+    Tables: {
+      [_ in never]: never;
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      notifications_claim_deliveries: {
+        Args: { p_lease_seconds?: number; p_limit?: number };
+        Returns: unknown[];
+      };
+      notifications_claim_events: {
+        Args: { p_lease_seconds?: number; p_limit?: number };
+        Returns: unknown[];
+      };
+      notifications_claim_telegram_webhook_update: {
+        Args: { p_update_id: number };
+        Returns: boolean;
+      };
+      notifications_consume_telegram_pairing: {
+        Args: {
+          p_telegram_chat_id: string;
+          p_telegram_chat_title?: string;
+          p_telegram_chat_type: string;
+          p_telegram_user_id?: string;
+          p_token_hash: string;
+        };
+        Returns: Json;
+      };
+      notifications_create_telegram_pairing_token: {
+        Args: {
+          p_business_id: string;
+          p_destination_type: string;
+          p_location_id?: string;
+        };
+        Returns: Json;
+      };
+      notifications_get_dispatcher_config: { Args: never; Returns: Json };
+      notifications_get_order_context: {
+        Args: { p_order_id: string };
+        Returns: Json;
+      };
+      notifications_get_telegram_connection_status: {
+        Args: { p_business_id: string; p_location_id?: string };
+        Returns: Json;
+      };
+      notifications_get_telegram_webhook_config: {
+        Args: never;
+        Returns: Json;
+      };
+      notifications_mark_event_failed: {
+        Args: { p_error: string; p_event_id: string; p_max_attempts?: number };
+        Returns: undefined;
+      };
+      notifications_plan_event: {
+        Args: { p_deliveries: Json; p_event_id: string };
+        Returns: undefined;
+      };
+      notifications_record_delivery_result: {
+        Args: {
+          p_delivery_id: string;
+          p_error?: string;
+          p_max_attempts?: number;
+          p_outcome: string;
+          p_provider?: string;
+          p_provider_message_id?: string;
+          p_skip_reason?: string;
+        };
+        Returns: undefined;
+      };
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
+    };
+  };
   core: {
     Tables: {
       business_locations: {

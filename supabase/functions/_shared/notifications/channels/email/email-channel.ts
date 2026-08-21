@@ -1,20 +1,9 @@
 import { renderEmailTemplate } from "./render.ts";
 import { sendViaResend } from "./resend-provider.ts";
 import type { DispatcherConfig } from "../../config.ts";
+import type { ChannelSendResult, DeliveryContext } from "../types.ts";
 
-export interface EmailDeliveryContext {
-  deliveryId: string;
-  recipientAddress: string;
-  templateKey: string;
-  payload: unknown;
-}
-
-export interface ChannelSendResult {
-  outcome: "sent" | "retry" | "permanent_failure";
-  error?: string;
-  provider: string | null;
-  providerMessageId?: string;
-}
+export type { ChannelSendResult } from "../types.ts";
 
 function maskEmail(address: string): string {
   const [local, domain] = address.split("@");
@@ -27,7 +16,7 @@ function maskEmail(address: string): string {
  * lives -- the dispatcher loop calling this doesn't know or care which mode
  * is active. */
 export async function sendEmailDelivery(
-  delivery: EmailDeliveryContext,
+  delivery: DeliveryContext,
   config: DispatcherConfig,
 ): Promise<ChannelSendResult> {
   const mode = config.notificationsEmailMode;

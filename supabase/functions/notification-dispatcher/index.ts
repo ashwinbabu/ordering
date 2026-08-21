@@ -3,17 +3,19 @@ import { createAdminClient, getServerConfig } from "../_shared/payments/supabase
 import { jsonResponse } from "../_shared/payments/http.ts";
 import { loadDispatcherConfig } from "../_shared/notifications/config.ts";
 import { policyRulesForEvent } from "../_shared/notifications/policy/notification-policy.ts";
-import { resolveRecipient } from "../_shared/notifications/recipients/resolve-recipients.ts";
+import { resolveRecipients } from "../_shared/notifications/recipients/resolve-recipients.ts";
 import { getChannelHandler } from "../_shared/notifications/channels/registry.ts";
 import {
   buildOrderCancelledEmailData,
   buildOrderPlacedEmailData,
 } from "../_shared/notifications/templates/email/template-data.ts";
+import { buildStaffNewOrderTelegramData } from "../_shared/notifications/templates/telegram/template-data.ts";
 import type {
   DeliverySpec,
   NotificationDeliveryRow,
   NotificationEventRow,
   OrderActorType,
+  PlanningContext,
 } from "../_shared/notifications/types.ts";
 
 const EVENTS_BATCH_LIMIT = 20;
@@ -53,24 +55,31 @@ async function planClaimedEvent(
   }
 
   const opts = { devDefaultStorefrontUrl, environment };
-  const customer = context.customer
-    ? { id: context.customer.id, email: context.customer.email, displayName: context.customer.displayName }
-    : null;
+  const planningContext: PlanningContext = {
+    customer: context.customer
+      ? { id: context.customer.id, email: context.customer.email, displayName: context.customer.displayName }
+      : null,
+    telegram: context.telegram ?? { staffGroup: null },
+  };
 
-  const deliveries: DeliverySpec[] = rules.map((rule) => {
-    const resolved = resolveRecipient(rule.recipient, { customer });
-
+  // rule -> 0..N recipients -> 0..N independent deliveries. Today every rule
+  // resolves to exactly one recipient (or zero, if skipped); flatMap is what
+  // lets a future business_owners rule fan out to one delivery per owner
+  // without changing this shape again.
+  const deliveries: DeliverySpec[] = rules.flatMap((rule) => {
     let payload: Record<string, unknown>;
     if (rule.template === "customer_order_placed") {
       payload = buildOrderPlacedEmailData(context, opts) as unknown as Record<string, unknown>;
     } else if (rule.template === "customer_order_cancelled") {
       const actorType = (event.payload.actorType ?? "system") as OrderActorType;
       payload = buildOrderCancelledEmailData(context, actorType, opts) as unknown as Record<string, unknown>;
+    } else if (rule.template === "staff_new_order") {
+      payload = buildStaffNewOrderTelegramData(context) as unknown as Record<string, unknown>;
     } else {
       throw new Error(`no template-data builder registered for template "${rule.template}"`);
     }
 
-    return {
+    return resolveRecipients(rule.recipient, planningContext).map((resolved) => ({
       channel: rule.channel,
       templateKey: rule.template,
       recipientType: resolved.recipientType,
@@ -80,7 +89,7 @@ async function planClaimedEvent(
       payload,
       status: resolved.address ? "pending" : "skipped",
       skipReason: resolved.skipReason,
-    };
+    }));
   });
 
   const { error: planError } = await adminClient.rpc("notifications_plan_event", {
@@ -147,6 +156,7 @@ async function runDeliverySendingPhase(
   let sent = 0;
   let retried = 0;
   let dead = 0;
+  let skipped = 0;
 
   for (const delivery of deliveries ?? []) {
     try {
@@ -161,18 +171,19 @@ async function runDeliverySendingPhase(
         config,
       );
 
-      const outcome = result.outcome === "sent" ? "sent" : result.outcome === "retry" ? "retry" : "permanent_failure";
-      if (outcome === "sent") sent++;
-      else if (outcome === "retry") retried++;
+      if (result.outcome === "sent") sent++;
+      else if (result.outcome === "retry") retried++;
+      else if (result.outcome === "skipped") skipped++;
       else dead++;
 
       const { error: recordError } = await adminClient.rpc("notifications_record_delivery_result", {
         p_delivery_id: delivery.id,
-        p_outcome: outcome,
+        p_outcome: result.outcome,
         p_provider: result.provider,
         p_provider_message_id: result.providerMessageId ?? null,
         p_error: result.error ?? null,
         p_max_attempts: DELIVERY_MAX_ATTEMPTS,
+        p_skip_reason: result.skipReason ?? null,
       });
       if (recordError) {
         console.error(JSON.stringify({ msg: "failed to record delivery result", deliveryId: delivery.id, error: recordError.message }));
@@ -193,7 +204,7 @@ async function runDeliverySendingPhase(
     }
   }
 
-  return { claimed: deliveries?.length ?? 0, sent, retried, dead };
+  return { claimed: deliveries?.length ?? 0, sent, retried, dead, skipped };
 }
 
 Deno.serve(async (req: Request) => {

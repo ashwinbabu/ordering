@@ -18,6 +18,12 @@ export const NOTIFICATION_POLICY: readonly PolicyRule[] = [
     channel: "email",
     template: "customer_order_cancelled",
   },
+  {
+    event: "order.placed",
+    recipient: { type: "staff_group" },
+    channel: "telegram",
+    template: "staff_new_order",
+  },
 ];
 
 export function policyRulesForEvent(eventType: string): PolicyRule[] {
