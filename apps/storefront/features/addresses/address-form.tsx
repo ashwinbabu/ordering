@@ -1,12 +1,21 @@
 import { Check, ChevronDown, MapPin, X } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type { AddressLabel, DeliveryAddress } from "../../domain/storefront";
+import {
+  defaultCountryIso2,
+  isValidPhoneNumber,
+  normalizePhoneInput,
+  splitE164,
+  toE164,
+  type PhoneNumber,
+} from "../../domain/phone";
+import { InternationalPhoneField } from "../auth/international-phone-field";
 import { areaCoordinates } from "./area-coordinates";
 
 export type AddressDraft = Omit<DeliveryAddress, "id">;
 
 interface AddressFormProps {
-  defaultRecipientPhone?: string;
+  defaultRecipientPhone?: PhoneNumber;
   initialValue?: DeliveryAddress;
   mode: "create" | "edit";
   onCancel: () => void;
@@ -18,7 +27,10 @@ const addressLabels: AddressLabel[] = ["Home", "Hotel", "Work", "Other"];
 const emptyDraft: AddressDraft = {
   label: "Home",
   recipientName: "",
+  recipientPhoneE164: "",
+  recipientPhoneCountryIso2: defaultCountryIso2,
   recipientPhone: "",
+  preferredContactMethod: "whatsapp",
   line1: "",
   line2: "",
   locality: "Mandrem",
@@ -33,17 +45,26 @@ const emptyDraft: AddressDraft = {
 
 function toDraft(
   address?: DeliveryAddress,
-  defaultRecipientPhone?: string,
+  defaultRecipientPhone?: PhoneNumber,
 ): AddressDraft {
   if (!address)
     return defaultRecipientPhone
-      ? { ...emptyDraft, recipientPhone: defaultRecipientPhone }
+      ? {
+          ...emptyDraft,
+          recipientPhone: defaultRecipientPhone.phone,
+          recipientPhoneE164: toE164(defaultRecipientPhone) ?? "",
+          recipientPhoneCountryIso2: defaultRecipientPhone.countryIso2,
+        }
       : emptyDraft;
   return {
     label: address.label,
     customLabel: address.customLabel,
     recipientName: address.recipientName,
+    recipientPhoneE164: address.recipientPhoneE164,
+    recipientPhoneCountryIso2: address.recipientPhoneCountryIso2,
     recipientPhone: address.recipientPhone,
+    preferredContactMethod: address.preferredContactMethod,
+    telegramUsername: address.telegramUsername,
     line1: address.line1,
     line2: address.line2,
     locality: address.locality,
@@ -88,8 +109,18 @@ export function AddressForm({
     const nextErrors: Record<string, string> = {};
     if (!draft.recipientName.trim())
       nextErrors.recipientName = "Enter the recipient's name";
-    if (!/^\d{10}$/.test(draft.recipientPhone.replace(/\D/g, "")))
-      nextErrors.recipientPhone = "Enter a valid 10-digit mobile number";
+    if (
+      !draft.recipientPhoneE164 ||
+      !isValidPhoneNumber(
+        normalizePhoneInput(
+          draft.recipientPhone,
+          draft.recipientPhoneCountryIso2,
+        ),
+      )
+    )
+      nextErrors.recipientPhone = "Enter a valid mobile number";
+    if (draft.preferredContactMethod === "telegram" && !draft.telegramUsername?.trim())
+      nextErrors.telegramUsername = "Enter a Telegram username";
     if (!draft.line1.trim()) nextErrors.line1 = "Enter your delivery address";
     if (!draft.locality.trim()) nextErrors.locality = "Choose an area";
     if (Object.keys(nextErrors).length) {
@@ -103,7 +134,10 @@ export function AddressForm({
       await onSave({
         ...draft,
         recipientName: draft.recipientName.trim(),
-        recipientPhone: draft.recipientPhone.replace(/\D/g, ""),
+        recipientPhone: draft.recipientPhone,
+        recipientPhoneE164: draft.recipientPhoneE164,
+        recipientPhoneCountryIso2: draft.recipientPhoneCountryIso2,
+        telegramUsername: draft.telegramUsername?.replace(/^@/, "").trim() || undefined,
       });
     } catch (e) {
       console.log(e);
@@ -150,17 +184,28 @@ export function AddressForm({
                 placeholder="Your name"
               />
             </Field>
-            <Field label="Mobile" error={errors.recipientPhone}>
-              <input
-                value={draft.recipientPhone}
-                onChange={(event) =>
-                  setField("recipientPhone", event.target.value)
-                }
-                inputMode="numeric"
-                autoComplete="tel"
-                placeholder="+91 98765 43210"
-              />
-            </Field>
+            <InternationalPhoneField
+              error={errors.recipientPhone}
+              id="address-phone"
+              onChange={(phone) =>
+                setDraft((current) => ({
+                  ...current,
+                  recipientPhone: phone.phone,
+                  recipientPhoneE164: `${phone.countryCode}${phone.phone}`,
+                  recipientPhoneCountryIso2: phone.countryIso2,
+                }))
+              }
+              value={splitE164(
+                draft.recipientPhoneE164 ||
+                  toE164(
+                    normalizePhoneInput(
+                      draft.recipientPhone,
+                      draft.recipientPhoneCountryIso2,
+                    ),
+                  ) || "",
+                draft.recipientPhoneCountryIso2,
+              )}
+            />
           </div>
           <Field
             label="Hotel, villa, hostel or street address"
@@ -236,6 +281,34 @@ export function AddressForm({
             />
           </Field>
         </div>
+
+        <fieldset className="address-labels">
+          <legend>Best way to reach you</legend>
+          <div>
+            {(["whatsapp", "phone", "telegram"] as const).map((method) => (
+              <label key={method}>
+                <input
+                  type="radio"
+                  name="preferred-contact-method"
+                  checked={draft.preferredContactMethod === method}
+                  onChange={() => setField("preferredContactMethod", method)}
+                />
+                <span>{method === "whatsapp" ? "WhatsApp" : method === "phone" ? "Phone call" : "Telegram"}</span>
+              </label>
+            ))}
+          </div>
+          <p>Messaging is usually easiest for delivery updates and avoids international call charges.</p>
+        </fieldset>
+        {draft.preferredContactMethod === "telegram" ? (
+          <Field label="Telegram username" error={errors.telegramUsername}>
+            <input
+              value={draft.telegramUsername ? `@${draft.telegramUsername.replace(/^@/, "")}` : ""}
+              onChange={(event) => setField("telegramUsername", event.target.value.replace(/^@/, ""))}
+              placeholder="@username"
+              autoComplete="off"
+            />
+          </Field>
+        ) : null}
 
         <fieldset className="address-labels">
           <legend>Save as</legend>

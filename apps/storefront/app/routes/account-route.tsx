@@ -22,7 +22,11 @@ export function AccountRoute() {
         openAuth({
           context: "account",
           initialStep: "phone",
-          phone: { countryCode: customer.countryCode, phone: customer.phone },
+          phone: {
+            countryIso2: customer.countryIso2,
+            countryCode: customer.countryCode,
+            phone: customer.phone,
+          },
           onSuccess: () => {},
         })
       }

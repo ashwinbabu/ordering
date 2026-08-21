@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import type { CustomerProfile, Venue } from "../../domain/storefront";
+import { formatPhoneForInput } from "../../domain/phone";
 import { CustomerPageHeader } from "../venue/customer-page-header";
 
 interface AccountScreenProps {
@@ -86,7 +87,7 @@ export function AccountScreen({
             <p className="section-kicker">Personal details</p>
             <h2 id="personal-details-title">{customer.name}</h2>
             <p className="account-identity__phone">
-              {customer.countryCode} {formatPhone(customer.phone)}
+              {customer.countryCode} {formatPhone(customer.phone, customer.countryIso2)}
               {customer.isPhoneVerified ? (
                 <Check aria-label="Verified phone number" size={16} />
               ) : null}
@@ -205,7 +206,7 @@ export function AccountScreen({
                 <div className="verified-phone">
                   <span>Phone</span>
                   <strong>
-                    {customer.countryCode} {formatPhone(customer.phone)}{" "}
+                    {customer.countryCode} {formatPhone(customer.phone, customer.countryIso2)}{" "}
                     <Check aria-label="Verified phone number" size={15} />
                   </strong>
                   <small>
@@ -245,6 +246,6 @@ export function AccountScreen({
   );
 }
 
-function formatPhone(phone: string) {
-  return phone.replace(/(\d{5})(\d{5})/, "$1 $2");
+function formatPhone(phone: string, countryIso2: string) {
+  return formatPhoneForInput(phone, countryIso2);
 }

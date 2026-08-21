@@ -74,6 +74,11 @@ export function AddressSelectorSheet({
                     <em>
                       {address.locality}, {address.city}
                     </em>
+                    <em>
+                      {address.preferredContactMethod === "telegram"
+                        ? `Telegram · @${address.telegramUsername ?? ""}`
+                        : `${address.preferredContactMethod === "whatsapp" ? "WhatsApp" : "Phone call"} · ${address.recipientPhoneE164}`}
+                    </em>
                   </span>
                 </button>
               );

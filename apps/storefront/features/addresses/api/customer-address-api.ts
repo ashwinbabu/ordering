@@ -18,6 +18,10 @@ interface CustomerAddressRow {
   label: string | null;
   recipient_name: string | null;
   recipient_phone: string | null;
+  recipient_phone_e164: string | null;
+  recipient_phone_country_iso2: string | null;
+  preferred_contact_method: "phone" | "whatsapp" | "telegram" | null;
+  telegram_username: string | null;
   address_line_1: string | null;
   address_line_2: string | null;
   landmark: string | null;
@@ -55,7 +59,11 @@ function addressFromRow(row: CustomerAddressRow): DeliveryAddress {
     label: matchedLabel ?? "Other",
     customLabel: matchedLabel || !storedLabel ? undefined : storedLabel,
     recipientName: row.recipient_name ?? "",
+    recipientPhoneE164: row.recipient_phone_e164 ?? row.recipient_phone ?? "",
+    recipientPhoneCountryIso2: row.recipient_phone_country_iso2 ?? "IN",
     recipientPhone: row.recipient_phone ?? "",
+    preferredContactMethod: row.preferred_contact_method ?? "phone",
+    telegramUsername: row.telegram_username ?? undefined,
     line1: row.address_line_1 ?? "",
     line2: row.address_line_2 ?? "",
     locality: row.locality ?? "",
@@ -84,7 +92,7 @@ export async function listCustomerAddresses(
     .schema("core")
     .from("customer_business_addresses")
     .select(
-      "id, label, recipient_name, recipient_phone, address_line_1, address_line_2, landmark, locality, city, state, postal_code, latitude, longitude, delivery_instructions, is_default",
+      "id, label, recipient_name, recipient_phone, recipient_phone_e164, recipient_phone_country_iso2, preferred_contact_method, telegram_username, address_line_1, address_line_2, landmark, locality, city, state, postal_code, latitude, longitude, delivery_instructions, is_default",
     )
     .eq("business_id", businessId)
     .eq("customer_id", customerId)
@@ -92,7 +100,7 @@ export async function listCustomerAddresses(
     .order("created_at", { ascending: true });
 
   if (result.error) throw result.error;
-  return (result.data as CustomerAddressRow[]).map(addressFromRow);
+  return (result.data as unknown as CustomerAddressRow[]).map(addressFromRow);
 }
 
 export async function createCustomerAddress(
@@ -101,12 +109,15 @@ export async function createCustomerAddress(
 ): Promise<string> {
   const result = await callUntypedRpc(
     getSupabaseClient().schema("core"),
-    "create_customer_business_address",
+    "create_customer_business_address_v2",
     {
       p_customer_business_id: customerBusinessId,
       p_label: labelForStorage(draft),
       p_recipient_name: draft.recipientName,
-      p_recipient_phone: draft.recipientPhone,
+      p_recipient_phone_e164: draft.recipientPhoneE164,
+      p_recipient_phone_country_iso2: draft.recipientPhoneCountryIso2,
+      p_preferred_contact_method: draft.preferredContactMethod,
+      p_telegram_username: draft.telegramUsername ?? null,
       p_address_line_1: draft.line1,
       p_locality: draft.locality,
       p_city: draft.city,
@@ -130,12 +141,15 @@ export async function updateCustomerAddress(
 ): Promise<void> {
   const result = await callUntypedRpc(
     getSupabaseClient().schema("core"),
-    "update_customer_business_address",
+    "update_customer_business_address_v2",
     {
       p_address_id: addressId,
       p_label: labelForStorage(draft),
       p_recipient_name: draft.recipientName,
-      p_recipient_phone: draft.recipientPhone,
+      p_recipient_phone_e164: draft.recipientPhoneE164,
+      p_recipient_phone_country_iso2: draft.recipientPhoneCountryIso2,
+      p_preferred_contact_method: draft.preferredContactMethod,
+      p_telegram_username: draft.telegramUsername ?? null,
       p_address_line_1: draft.line1,
       p_locality: draft.locality,
       p_city: draft.city,

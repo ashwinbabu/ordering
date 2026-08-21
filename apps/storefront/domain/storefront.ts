@@ -129,6 +129,7 @@ export interface CartLineOptionSelection {
 
 export interface CustomerDetails {
   name: string;
+  countryIso2: string;
   countryCode: string;
   phone: string;
 }
@@ -140,7 +141,11 @@ export interface DeliveryAddress {
   label: AddressLabel;
   customLabel?: string;
   recipientName: string;
+  recipientPhoneE164: string;
+  recipientPhoneCountryIso2: string;
   recipientPhone: string;
+  preferredContactMethod: "phone" | "whatsapp" | "telegram";
+  telegramUsername?: string;
   line1: string;
   line2: string;
   locality: string;
@@ -157,8 +162,15 @@ export interface DeliveryAddress {
   longitude?: number;
 }
 
+export interface DeliveryContact {
+  method: "phone" | "whatsapp" | "telegram";
+  phone: string;
+  telegramUsername?: string;
+}
+
 export interface CustomerProfile {
   name: string;
+  countryIso2: string;
   countryCode: string;
   phone: string;
   email?: string;
@@ -235,6 +247,7 @@ export interface StorefrontOrder {
   total: number;
   couponCode?: string;
   deliveryAddress?: DeliveryAddress;
+  deliveryContact?: DeliveryContact;
   orderNote?: string;
   estimatedFulfilment?: string;
   completedAt?: string;

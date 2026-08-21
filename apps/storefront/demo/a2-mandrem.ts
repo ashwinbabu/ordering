@@ -195,6 +195,7 @@ export const a2MandremStorefront: StorefrontDemo = {
 
 export const a2MandremCustomer: CustomerProfile = {
   name: "Ashwin Babu",
+  countryIso2: "IN",
   countryCode: "+91",
   phone: "9025117533",
   email: "ashwin@example.com",
@@ -212,7 +213,10 @@ export const a2MandremAddresses: DeliveryAddress[] = [
     id: "250195b5-e677-45ae-b474-eef0333bb613",
     label: "Home",
     recipientName: "Rahul Nair",
+    recipientPhoneE164: "+919000000001",
+    recipientPhoneCountryIso2: "IN",
     recipientPhone: "9000000001",
+    preferredContactMethod: "phone",
     line1: "House 42, Beach Road",
     line2: "Near Main Junction",
     locality: "Arambol",

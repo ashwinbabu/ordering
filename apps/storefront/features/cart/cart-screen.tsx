@@ -19,7 +19,7 @@ import { SelectedAddressCard } from "../addresses/selected-address-card";
 import type { AuthFlowRequest } from "../auth/auth-flow-sheet";
 import { useCustomerSession } from "../auth/customer-session";
 import { MenuImage } from "../menu/menu-image";
-import { defaultCountryCode, type PhoneNumber } from "../../domain/phone";
+import { defaultCountryCode, splitE164, type PhoneNumber } from "../../domain/phone";
 import {
   formatRupees,
   type CheckoutRequest,
@@ -349,7 +349,7 @@ export function CartScreen({
       void proceedToCheckout();
       return;
     }
-    // The address form's recipientPhone is the number the customer just typed
+    // The address form's E.164 recipient phone is the number the customer just typed
     // for this delivery, so that's who gets texted (needsAddress above
     // guarantees selectedAddress is set once fulfilment is "delivery").
     // Pickup has no address to draw from - fall back to their account
@@ -357,11 +357,13 @@ export function CartScreen({
     const contactPhone: PhoneNumber | undefined =
       fulfilment === "delivery" && selectedAddress
         ? {
-            countryCode: defaultCountryCode,
+            countryIso2: selectedAddress.recipientPhoneCountryIso2,
+            countryCode: splitE164(selectedAddress.recipientPhoneE164, selectedAddress.recipientPhoneCountryIso2).countryCode,
             phone: selectedAddress.recipientPhone,
           }
         : customerDetails.phone
           ? {
+              countryIso2: customerDetails.countryIso2,
               countryCode: customerDetails.countryCode,
               phone: customerDetails.phone,
             }
@@ -371,6 +373,7 @@ export function CartScreen({
         ? {
             context: "checkout",
             initialStep: "otp",
+            locationPhone: settings?.locationPhone,
             onSuccess: (phone, customerId) =>
               void proceedToCheckout(phone, customerId),
             phone: contactPhone,
@@ -965,9 +968,20 @@ export function CartScreen({
             <AddressForm
               key={editingAddress?.id ?? "new-address"}
               defaultRecipientPhone={
-                customerDetails.phone ||
-                savedAddresses.find((address) => address.recipientPhone)
-                  ?.recipientPhone
+                customerDetails.phone
+                  ? {
+                      countryIso2: customerDetails.countryIso2,
+                      countryCode: customerDetails.countryCode,
+                      phone: customerDetails.phone,
+                    }
+                  : savedAddresses.find((address) => address.recipientPhoneE164)
+                    ? splitE164(
+                        savedAddresses.find((address) => address.recipientPhoneE164)!
+                          .recipientPhoneE164,
+                        savedAddresses.find((address) => address.recipientPhoneE164)!
+                          .recipientPhoneCountryIso2,
+                      )
+                    : undefined
               }
               initialValue={editingAddress}
               mode={editingAddress ? "edit" : "create"}

@@ -204,6 +204,18 @@ export function OrderTrackingScreen({
             </div>
           </div>
         ) : null}
+        {isDelivery && order.trackingOrder.deliveryContact ? (
+          <div className="delivery-destination">
+            <div>
+              <strong>Delivery contact</strong>
+              <p>
+                {order.trackingOrder.deliveryContact.method === "telegram"
+                  ? `Telegram · @${order.trackingOrder.deliveryContact.telegramUsername ?? ""}`
+                  : `${order.trackingOrder.deliveryContact.method === "whatsapp" ? "WhatsApp" : "Phone call"} · ${order.trackingOrder.deliveryContact.phone}`}
+              </p>
+            </div>
+          </div>
+        ) : null}
 
         <OrderStatusTimeline
           status={order.trackingOrder.status}

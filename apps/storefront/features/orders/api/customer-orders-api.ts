@@ -10,11 +10,13 @@ import {
 } from "../../../lib/supabase/json-parsing";
 import type {
   DeliveryAddress,
+  DeliveryContact,
   OrderLineItem,
   OrderPaymentStatus,
   OrderStatus,
   StorefrontOrder,
 } from "../../../domain/storefront";
+import { splitE164 } from "../../../domain/phone";
 
 // ordering.list_customer_orders returns the raw database vocabulary. The
 // mapping to the storefront's own enums lives here so the database stays the
@@ -61,7 +63,16 @@ function parseDeliveryAddress(value: unknown): DeliveryAddress | undefined {
     label: "Other",
     customLabel: text("label") || undefined,
     recipientName: text("recipient_name"),
-    recipientPhone: text("recipient_phone"),
+    recipientPhoneE164: text("recipient_phone_e164") || text("recipient_phone"),
+    recipientPhoneCountryIso2:
+      text("recipient_phone_country_iso2") ||
+      splitE164(text("recipient_phone_e164") || text("recipient_phone")).countryIso2,
+    recipientPhone: text("recipient_phone_e164") || text("recipient_phone"),
+    preferredContactMethod:
+      text("preferred_contact_method") === "whatsapp" || text("preferred_contact_method") === "telegram"
+        ? (text("preferred_contact_method") as "whatsapp" | "telegram")
+        : "phone",
+    telegramUsername: text("telegram_username") || undefined,
     line1: text("address_line_1"),
     line2: text("address_line_2"),
     locality: text("locality"),
@@ -71,6 +82,19 @@ function parseDeliveryAddress(value: unknown): DeliveryAddress | undefined {
     landmark: text("landmark"),
     instructions: text("delivery_instructions"),
     isDefault: false,
+  };
+}
+
+function parseDeliveryContact(value: unknown): DeliveryContact | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const contact = value as Record<string, unknown>;
+  const method = contact.method;
+  if (method !== "phone" && method !== "whatsapp" && method !== "telegram") return undefined;
+  return {
+    method,
+    phone: typeof contact.phone === "string" ? contact.phone : "",
+    telegramUsername:
+      typeof contact.telegramUsername === "string" ? contact.telegramUsername : undefined,
   };
 }
 
@@ -137,6 +161,7 @@ function parseOrder(value: unknown, businessKey: string): StorefrontOrder {
     couponCode:
       readNullableString(order.couponCode, "An order coupon code") ?? undefined,
     deliveryAddress: parseDeliveryAddress(order.deliveryAddress),
+    deliveryContact: parseDeliveryContact(order.deliveryContact),
     orderNote:
       readNullableString(order.customerNote, "An order note") ?? undefined,
     estimatedFulfilment: estimatedMinutes

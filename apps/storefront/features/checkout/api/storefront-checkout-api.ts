@@ -15,12 +15,14 @@ import {
 } from "../../orders/api/customer-orders-api";
 import type {
   DeliveryAddress,
+  DeliveryContact,
   FulfilmentType,
   OrderLineItem,
   PaymentPendingOrder,
   PaymentStatus,
   StorefrontOrder,
 } from "../../../domain/storefront";
+import { splitE164 } from "../../../domain/phone";
 
 /**
  * ordering.checkout_cart requires p_trusted_delivery_minutes >= the cart's
@@ -69,7 +71,14 @@ function parseDeliveryAddressSnapshot(
     label: "Other",
     customLabel: text("label") || undefined,
     recipientName: text("recipient_name"),
-    recipientPhone: text("recipient_phone"),
+    recipientPhoneE164: text("recipient_phone_e164") || text("recipient_phone"),
+    recipientPhoneCountryIso2: text("recipient_phone_country_iso2") || splitE164(text("recipient_phone_e164") || text("recipient_phone")).countryIso2,
+    recipientPhone: text("recipient_phone_e164") || text("recipient_phone"),
+    preferredContactMethod:
+      text("preferred_contact_method") === "whatsapp" || text("preferred_contact_method") === "telegram"
+        ? (text("preferred_contact_method") as "whatsapp" | "telegram")
+        : "phone",
+    telegramUsername: text("telegram_username") || undefined,
     line1: text("address_line_1"),
     line2: text("address_line_2"),
     locality: text("locality"),
@@ -79,6 +88,20 @@ function parseDeliveryAddressSnapshot(
     landmark: text("landmark"),
     instructions: text("delivery_instructions"),
     isDefault: false,
+  };
+}
+
+function parseDeliveryContact(value: unknown): DeliveryContact | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const contact = value as Record<string, unknown>;
+  const method = contact.method;
+  if (method !== "phone" && method !== "whatsapp" && method !== "telegram") return undefined;
+  const phone = typeof contact.phone === "string" ? contact.phone : "";
+  return {
+    method,
+    phone,
+    telegramUsername:
+      typeof contact.telegram_username === "string" ? contact.telegram_username : undefined,
   };
 }
 
@@ -199,6 +222,7 @@ function parseOrder(value: unknown): ServerOrder {
       readNullableString(order.coupon_code, "The order coupon code") ??
       undefined,
     deliveryAddress: parseDeliveryAddressSnapshot(order.delivery_address),
+    deliveryContact: parseDeliveryContact(order.delivery_contact),
     orderNote:
       readNullableString(order.customer_note, "The order note") ?? undefined,
     estimatedFulfilment: estimatedMinutes
@@ -293,7 +317,7 @@ export async function checkoutCart(args: {
   // restaurant. "online" keeps the payment_pending -> placed flow.
   paymentMethod: "cash" | "online";
 }): Promise<ServerOrder> {
-  const result = await callUntypedRpc(checkoutRpc(), "checkout_cart", {
+  const result = await callUntypedRpc(checkoutRpc(), "checkout_cart_v2", {
     p_order_id: args.orderId,
     p_cart_id: args.cartId,
     p_fulfillment_type: args.fulfilment,

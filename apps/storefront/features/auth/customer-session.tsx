@@ -76,6 +76,7 @@ function profileFromRow(row: CustomerRow): CustomerProfile {
   const phone = splitE164(row.phone_e164);
   return {
     name: row.display_name ?? "",
+    countryIso2: phone.countryIso2,
     countryCode: phone.countryCode,
     phone: phone.phone,
     email: row.email ?? undefined,
@@ -237,6 +238,7 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   function completeDemoSignIn(phone: PhoneNumber) {
     setDemoProfile({
       name: "",
+      countryIso2: phone.countryIso2,
       countryCode: phone.countryCode,
       phone: phone.phone,
       isPhoneVerified: true,

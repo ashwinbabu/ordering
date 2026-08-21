@@ -66,6 +66,7 @@ export interface StorefrontPaymentMethods {
 export interface StorefrontSettings {
   schemaVersion: 2;
   currency: string;
+  locationPhone: string | null;
   orderingEnabled: boolean;
   orderingMode: "delivery" | "pickup" | "both";
   acceptOrdersWhenClosed: boolean;

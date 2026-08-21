@@ -149,6 +149,8 @@ export async function getStorefrontSettings(
   return {
     schemaVersion: 2,
     currency: readString(settings.currency, "The storefront currency"),
+    locationPhone:
+      typeof settings.locationPhone === "string" ? settings.locationPhone : null,
     orderingEnabled: readBoolean(
       settings.orderingEnabled,
       "The storefront ordering-enabled flag",

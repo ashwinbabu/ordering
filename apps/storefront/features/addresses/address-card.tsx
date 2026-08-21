@@ -27,6 +27,11 @@ export function AddressCard({ address, onDelete, onEdit }: AddressCardProps) {
         <p>
           {address.locality}, {address.city}
         </p>
+        <small>
+          {address.preferredContactMethod === "telegram"
+            ? `Telegram · @${address.telegramUsername ?? ""}`
+            : `${address.preferredContactMethod === "whatsapp" ? "WhatsApp" : "Phone call"} · ${address.recipientPhoneE164}`}
+        </small>
         {address.landmark ? <small>{address.landmark}</small> : null}
       </div>
       <div className="saved-address-card__actions">

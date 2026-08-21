@@ -154,6 +154,13 @@ export function OrderDetailsScreen({
             {order.deliveryAddress.instructions ? (
               <small>{order.deliveryAddress.instructions}</small>
             ) : null}
+            {order.deliveryContact ? (
+              <small>
+                Delivery contact: {order.deliveryContact.method === "telegram"
+                  ? `Telegram · @${order.deliveryContact.telegramUsername ?? ""}`
+                  : `${order.deliveryContact.method === "whatsapp" ? "WhatsApp" : "Phone call"} · ${order.deliveryContact.phone}`}
+              </small>
+            ) : null}
           </section>
         ) : (
           <section className="order-detail-section fulfilment-details">

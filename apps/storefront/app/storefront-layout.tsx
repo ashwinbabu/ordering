@@ -234,12 +234,13 @@ export function StorefrontLayout() {
   );
   const cartTotal = cart?.estimatedFoodSubtotal ?? 0;
   const customerDetails: CustomerDetails = customer
-    ? {
+      ? {
         name: customer.name,
+        countryIso2: customer.countryIso2,
         countryCode: customer.countryCode,
         phone: customer.phone,
       }
-    : { name: "", countryCode: defaultCountryCode, phone: "" };
+    : { name: "", countryIso2: "IN", countryCode: defaultCountryCode, phone: "" };
   const orders = ordersResource.data ?? [];
   const currentOrders = orders.filter((order) =>
     currentOrderStatuses.has(order.status),

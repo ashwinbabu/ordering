@@ -17,6 +17,7 @@ import {
   type ServerOrder,
 } from "./api/storefront-checkout-api";
 import { openRazorpayCheckout } from "./razorpay-checkout";
+import { toE164 } from "../../domain/phone";
 import { clearCartPointer } from "../cart/cart-pointer-storage";
 import {
   resolveCartIdentity,
@@ -430,7 +431,11 @@ export function useCheckoutFlow(
               : "Payment",
           customerName: request?.customer.name,
           customerPhone: request
-            ? `${request.customer.countryCode}${request.customer.phone}`
+            ? (toE164({
+                countryIso2: request.customer.countryIso2,
+                countryCode: request.customer.countryCode,
+                phone: request.customer.phone,
+              }) ?? undefined)
             : undefined,
         });
 
