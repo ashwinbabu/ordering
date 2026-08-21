@@ -50,7 +50,15 @@ export type Database = {
         };
         Returns: Json;
       };
+      notifications_get_business_preferences: {
+        Args: { p_business_id: string };
+        Returns: Json;
+      };
       notifications_get_dispatcher_config: { Args: never; Returns: Json };
+      notifications_get_location_context: {
+        Args: { p_location_id: string; p_summary_date?: string };
+        Returns: Json;
+      };
       notifications_get_order_context: {
         Args: { p_order_id: string };
         Returns: Json;
@@ -82,6 +90,13 @@ export type Database = {
           p_skip_reason?: string;
         };
         Returns: undefined;
+      };
+      notifications_set_business_preferences: {
+        Args: {
+          p_business_id: string;
+          p_notify_owner_on_cancellation: boolean;
+        };
+        Returns: Json;
       };
     };
     Enums: {

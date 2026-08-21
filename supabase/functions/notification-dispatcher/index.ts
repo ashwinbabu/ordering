@@ -9,7 +9,13 @@ import {
   buildOrderCancelledEmailData,
   buildOrderPlacedEmailData,
 } from "../_shared/notifications/templates/email/template-data.ts";
-import { buildStaffNewOrderTelegramData } from "../_shared/notifications/templates/telegram/template-data.ts";
+import {
+  buildDailySalesSummaryTelegramData,
+  buildOrderCancelledTelegramData,
+  buildOrderWaitingTelegramData,
+  buildStaffNewOrderTelegramData,
+  buildStoreStatusTelegramData,
+} from "../_shared/notifications/templates/telegram/template-data.ts";
 import type {
   DeliverySpec,
   NotificationDeliveryRow,
@@ -37,21 +43,38 @@ function timingSafeEqual(a: string, b: string): boolean {
 // deno-lint-ignore no-explicit-any
 type OrderContext = any;
 
+const WAITING_MINUTES_BY_EVENT: Record<string, number> = {
+  "order.waiting_3m": 3,
+  "order.waiting_8m": 8,
+};
+
 async function planClaimedEvent(
   adminClient: ReturnType<typeof createAdminClient>,
   event: NotificationEventRow,
   devDefaultStorefrontUrl: string | null,
   environment: "development" | "production",
 ): Promise<void> {
-  const rules = policyRulesForEvent(event.event_type);
-
-  const { data: context, error: contextError } = await adminClient.rpc(
-    "notifications_get_order_context",
-    { p_order_id: event.payload.orderId },
-  ) as { data: OrderContext; error: { message: string } | null };
-
-  if (contextError) {
-    throw new Error(`failed to load order context: ${contextError.message}`);
+  // entity_type decides which context RPC to fetch: order-scoped events
+  // (placed/cancelled/waiting_*) share notifications_get_order_context;
+  // location-scoped events (store.*, sales.daily_summary) have no single
+  // order to hang off, so they use notifications_get_location_context
+  // instead. Both return the same "telegram" shape, so everything downstream
+  // of building the PlanningContext is identical either way.
+  let context: OrderContext;
+  if (event.entity_type === "order") {
+    const { data, error } = await adminClient.rpc(
+      "notifications_get_order_context",
+      { p_order_id: event.payload.orderId },
+    ) as { data: OrderContext; error: { message: string } | null };
+    if (error) throw new Error(`failed to load order context: ${error.message}`);
+    context = data;
+  } else {
+    const { data, error } = await adminClient.rpc(
+      "notifications_get_location_context",
+      { p_location_id: event.entity_id, p_summary_date: event.payload.summaryDate ?? null },
+    ) as { data: OrderContext; error: { message: string } | null };
+    if (error) throw new Error(`failed to load location context: ${error.message}`);
+    context = data;
   }
 
   const opts = { devDefaultStorefrontUrl, environment };
@@ -59,13 +82,16 @@ async function planClaimedEvent(
     customer: context.customer
       ? { id: context.customer.id, email: context.customer.email, displayName: context.customer.displayName }
       : null,
-    telegram: context.telegram ?? { staffGroup: null },
+    telegram: context.telegram ?? { staffGroup: null, businessOwners: [] },
+    preferences: context.preferences ?? { notifyOwnerOnCancellation: false },
   };
 
-  // rule -> 0..N recipients -> 0..N independent deliveries. Today every rule
-  // resolves to exactly one recipient (or zero, if skipped); flatMap is what
-  // lets a future business_owners rule fan out to one delivery per owner
-  // without changing this shape again.
+  const rules = policyRulesForEvent(event.event_type, {
+    notifyOwnerOnCancellation: planningContext.preferences.notifyOwnerOnCancellation,
+  });
+
+  // rule -> 0..N recipients -> 0..N independent deliveries. business_owners
+  // rules fan out to one delivery per connected owner.
   const deliveries: DeliverySpec[] = rules.flatMap((rule) => {
     let payload: Record<string, unknown>;
     if (rule.template === "customer_order_placed") {
@@ -75,6 +101,17 @@ async function planClaimedEvent(
       payload = buildOrderCancelledEmailData(context, actorType, opts) as unknown as Record<string, unknown>;
     } else if (rule.template === "staff_new_order") {
       payload = buildStaffNewOrderTelegramData(context) as unknown as Record<string, unknown>;
+    } else if (rule.template === "order_cancelled_alert") {
+      const actorType = (event.payload.actorType ?? "system") as OrderActorType;
+      payload = buildOrderCancelledTelegramData(context, actorType) as unknown as Record<string, unknown>;
+    } else if (rule.template === "order_waiting_alert") {
+      const waitingMinutes = WAITING_MINUTES_BY_EVENT[event.event_type] ?? 0;
+      payload = buildOrderWaitingTelegramData(context, waitingMinutes) as unknown as Record<string, unknown>;
+    } else if (rule.template === "store_status_alert") {
+      const isAccepting = event.event_type === "store.resumed";
+      payload = buildStoreStatusTelegramData(context, isAccepting) as unknown as Record<string, unknown>;
+    } else if (rule.template === "daily_sales_summary") {
+      payload = buildDailySalesSummaryTelegramData(context) as unknown as Record<string, unknown>;
     } else {
       throw new Error(`no template-data builder registered for template "${rule.template}"`);
     }

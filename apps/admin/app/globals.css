@@ -3228,6 +3228,12 @@ textarea[aria-invalid="true"] {
   background: white;
   font-size: 12px;
 }
+.telegram-matrix-note {
+  margin-top: 14px;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
 .telegram-error-text {
   display: flex;
   align-items: center;

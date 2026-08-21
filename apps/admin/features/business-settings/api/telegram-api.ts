@@ -45,3 +45,50 @@ export async function createStaffGroupPairingToken(
   if (error) throw error;
   return data as unknown as TelegramPairingToken;
 }
+
+export interface BusinessNotificationPreferences {
+  notifyOwnerOnCancellation: boolean;
+}
+
+export async function getBusinessNotificationPreferences(
+  businessId: string,
+): Promise<BusinessNotificationPreferences> {
+  const { data, error } = await supabase.rpc(
+    "notifications_get_business_preferences",
+    { p_business_id: businessId },
+  );
+  if (error) throw error;
+  return data as unknown as BusinessNotificationPreferences;
+}
+
+export async function setBusinessNotificationPreferences(
+  businessId: string,
+  notifyOwnerOnCancellation: boolean,
+): Promise<BusinessNotificationPreferences> {
+  const { data, error } = await supabase.rpc(
+    "notifications_set_business_preferences",
+    {
+      p_business_id: businessId,
+      p_notify_owner_on_cancellation: notifyOwnerOnCancellation,
+    },
+  );
+  if (error) throw error;
+  return data as unknown as BusinessNotificationPreferences;
+}
+
+/** No location_id: the RPC resolves the caller's own business_users row for
+ * this business server-side, so this can never mint a link for someone
+ * else's Telegram account. */
+export async function createOwnerPairingToken(
+  businessId: string,
+): Promise<TelegramPairingToken> {
+  const { data, error } = await supabase.rpc(
+    "notifications_create_telegram_pairing_token",
+    {
+      p_destination_type: "business_user",
+      p_business_id: businessId,
+    },
+  );
+  if (error) throw error;
+  return data as unknown as TelegramPairingToken;
+}

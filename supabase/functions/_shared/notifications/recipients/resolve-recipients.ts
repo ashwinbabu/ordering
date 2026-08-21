@@ -66,9 +66,25 @@ export function resolveRecipients(
         skipReason: null,
       }];
     }
+    case "business_owners": {
+      const owners = context.telegram.businessOwners;
+      if (owners.length === 0) {
+        return [{
+          recipientType: "business_owner",
+          recipientId: null,
+          address: null,
+          skipReason: "telegram_no_owners_connected",
+        }];
+      }
+      return owners.map((owner) => ({
+        recipientType: "business_owner",
+        recipientId: null,
+        address: owner.chatId,
+        skipReason: null,
+      }));
+    }
     case "business_user":
     case "location_admins":
-    case "business_owners":
       // Not implemented in v1. Fail loudly rather than silently no-op --
       // a policy rule referencing these would otherwise plan zero
       // deliveries with no observable error.

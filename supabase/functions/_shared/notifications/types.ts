@@ -3,11 +3,20 @@
 // type, recipient selector, policy rule, delivery spec) are what future
 // events/recipients/channels plug into without changing this file's shape.
 
-export type DomainEventType = "order.placed" | "order.cancelled";
+export type DomainEventType =
+  | "order.placed"
+  | "order.cancelled"
+  | "order.waiting_3m"
+  | "order.waiting_8m"
+  | "store.paused"
+  | "store.resumed"
+  | "sales.daily_summary";
 
 export type OrderActorType = "customer" | "admin" | "telegram" | "system";
 
-/** Mirrors the jsonb payload written by private.capture_notification_event_from_order_event. */
+/** Mirrors the jsonb payload written by private.capture_notification_event_from_order_event.
+ * Only order-entity events use this shape; location-entity events (store.*,
+ * sales.daily_summary) carry a much smaller payload (see NotificationEventRow.payload). */
 export interface OrderDomainEventPayload {
   schemaVersion: 1;
   orderId: string;
@@ -17,18 +26,20 @@ export interface OrderDomainEventPayload {
   toStatus: string;
 }
 
-/** One row from notifications.events, as returned by notifications_claim_events. */
+/** One row from notifications.events, as returned by notifications_claim_events.
+ * payload is intentionally loose: its shape depends on entity_type (order vs
+ * location), and the dispatcher is the only place that needs to know that. */
 export interface NotificationEventRow {
   id: string;
   event_type: DomainEventType;
-  entity_type: "order";
+  entity_type: "order" | "location";
   entity_id: string;
   business_id: string;
   location_id: string | null;
   source_event_id: string | null;
   dedupe_key: string;
   occurred_at: string;
-  payload: OrderDomainEventPayload;
+  payload: Record<string, unknown>;
   status: string;
   attempt_count: number;
 }
@@ -101,5 +112,9 @@ export interface PlanningContext {
   customer: { id: string; email: string | null; displayName: string | null } | null;
   telegram: {
     staffGroup: { chatId: string; chatTitle: string | null } | null;
+    businessOwners: { chatId: string }[];
+  };
+  preferences: {
+    notifyOwnerOnCancellation: boolean;
   };
 }

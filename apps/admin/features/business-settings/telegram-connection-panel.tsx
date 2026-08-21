@@ -1,9 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { CircleAlert, Copy } from "lucide-react";
+import { CircleAlert, Copy, ExternalLink } from "lucide-react";
+import { Toggle } from "@/components/ui/toggle";
 import {
+  useBusinessNotificationPreferencesQuery,
+  useCreateOwnerPairingTokenMutation,
   useCreateStaffGroupPairingTokenMutation,
+  useSetBusinessNotificationPreferencesMutation,
   useTelegramConnectionQuery,
 } from "@/features/business-settings/telegram-query";
 
@@ -21,11 +25,25 @@ export function TelegramConnectionPanel({
     businessId,
     locationId,
   );
+  const createOwnerTokenMutation = useCreateOwnerPairingTokenMutation(
+    businessId,
+    locationId,
+  );
+  const preferencesQuery = useBusinessNotificationPreferencesQuery(
+    businessId,
+    true,
+  );
+  const setPreferencesMutation =
+    useSetBusinessNotificationPreferencesMutation(businessId);
   const [pairing, setPairing] = useState<{
     token: string;
     expiresAt: string;
   } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [ownerPairing, setOwnerPairing] = useState<{
+    token: string;
+    expiresAt: string;
+  } | null>(null);
 
   async function handleConnect() {
     setCopied(false);
@@ -33,9 +51,19 @@ export function TelegramConnectionPanel({
     setPairing(result);
   }
 
+  async function handleConnectOwner() {
+    const result = await createOwnerTokenMutation.mutateAsync();
+    setOwnerPairing(result);
+  }
+
   const status = statusQuery.data;
   const connected = status?.staffGroup.connected ?? false;
+  const myConnected = status?.myConnection.connected ?? false;
   const command = pairing ? `/connect ${pairing.token}` : "";
+  const deepLink =
+    ownerPairing && status?.botUsername
+      ? `https://t.me/${status.botUsername}?start=${ownerPairing.token}`
+      : null;
 
   return (
     <section id="settings-notifications" className="settings-section">
@@ -109,6 +137,89 @@ export function TelegramConnectionPanel({
                 : "Couldn't generate a code."}
             </p>
           )}
+
+          <div className="operational-setting" style={{ marginTop: 12 }}>
+            <span>
+              <strong>Your Telegram</strong>
+              <small>
+                {myConnected
+                  ? "Connected · you'll get order alerts sent to this account too"
+                  : "Not connected"}
+              </small>
+            </span>
+            <button
+              className="secondary-button compact-button"
+              disabled={createOwnerTokenMutation.isPending}
+              onClick={() => {
+                void handleConnectOwner();
+              }}
+            >
+              {myConnected ? "Reconnect my Telegram" : "Connect my Telegram"}
+            </button>
+          </div>
+
+          {ownerPairing && (
+            <div className="telegram-pairing-box">
+              {deepLink ? (
+                <>
+                  <a
+                    className="secondary-button compact-button"
+                    href={deepLink}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink size={13} />
+                    Open Telegram
+                  </a>
+                  <small>This opens a private chat with the bot and connects automatically.</small>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Open a private chat with the bot and send:
+                  </p>
+                  <div className="telegram-token-row">
+                    <code>/start {ownerPairing.token}</code>
+                  </div>
+                </>
+              )}
+              <small>This code expires in 15 minutes.</small>
+            </div>
+          )}
+
+          {createOwnerTokenMutation.error && (
+            <p className="telegram-error-text">
+              <CircleAlert size={14} />
+              {createOwnerTokenMutation.error instanceof Error
+                ? createOwnerTokenMutation.error.message
+                : "Couldn't generate a code."}
+            </p>
+          )}
+
+          <div className="settings-toggle-line">
+            <Toggle
+              checked={preferencesQuery.data?.notifyOwnerOnCancellation ?? false}
+              disabled={preferencesQuery.isPending || setPreferencesMutation.isPending}
+              onChange={() => {
+                void setPreferencesMutation.mutateAsync(
+                  !(preferencesQuery.data?.notifyOwnerOnCancellation ?? false),
+                );
+              }}
+              label="Also alert owner on cancellations"
+            />
+            <span>
+              <strong>Also alert owner on cancellations</strong>
+              <small>Staff group always gets cancellation alerts; this adds your Telegram too.</small>
+            </span>
+          </div>
+
+          <div className="telegram-matrix-note">
+            <small>
+              Staff group: new orders, cancellations, orders waiting 3+/8+ min, store paused/resumed.
+              Owner: orders waiting 8+ min, store paused/resumed, daily sales summary (11 PM local time)
+              {preferencesQuery.data?.notifyOwnerOnCancellation ? ", cancellations" : ""}.
+            </small>
+          </div>
         </>
       )}
     </section>
