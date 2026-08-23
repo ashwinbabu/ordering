@@ -15,4 +15,3 @@ export function getPaymentAdapter(provider: string): PaymentProviderAdapter {
   }
   return adapter;
 }
-

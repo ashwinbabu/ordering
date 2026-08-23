@@ -292,4 +292,3 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: message }, 500, origin, allowedOrigins);
   }
 });
-

@@ -46,4 +46,3 @@ export function createUserClient(
     global: { headers: { Authorization: authorizationHeader } },
   });
 }
-

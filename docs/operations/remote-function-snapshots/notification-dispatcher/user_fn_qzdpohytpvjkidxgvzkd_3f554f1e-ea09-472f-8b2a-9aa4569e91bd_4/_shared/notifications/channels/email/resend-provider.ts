@@ -54,4 +54,3 @@ export async function sendViaResend(params: ResendSendParams): Promise<ResendSen
   }
   return { outcome: "permanent_failure", error: `Resend ${status}: ${truncatedBody}` };
 }
-

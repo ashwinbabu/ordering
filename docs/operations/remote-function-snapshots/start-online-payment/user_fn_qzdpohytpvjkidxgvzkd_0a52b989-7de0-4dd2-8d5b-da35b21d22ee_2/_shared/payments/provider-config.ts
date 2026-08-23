@@ -45,4 +45,3 @@ export function webhookContextFromResolution(result: Record<string, unknown>): W
     webhookSecret: typeof result.webhookSecret === "string" ? result.webhookSecret : "",
   };
 }
-

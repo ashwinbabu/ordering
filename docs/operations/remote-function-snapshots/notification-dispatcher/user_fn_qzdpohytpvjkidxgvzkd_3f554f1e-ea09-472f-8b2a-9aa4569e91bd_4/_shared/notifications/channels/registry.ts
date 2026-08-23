@@ -22,4 +22,3 @@ export function getChannelHandler(channel: string): ChannelHandler {
 }
 
 export type { ChannelSendResult } from "./types.ts";
-

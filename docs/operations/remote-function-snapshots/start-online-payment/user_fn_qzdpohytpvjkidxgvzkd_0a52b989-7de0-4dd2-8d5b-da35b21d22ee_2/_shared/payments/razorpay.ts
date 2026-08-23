@@ -121,4 +121,3 @@ export async function fetchRazorpayOrder(
 ): Promise<Record<string, unknown>> {
   return razorpayRequest(credentials, `/orders/${encodeURIComponent(providerOrderId)}`);
 }
-

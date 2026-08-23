@@ -26,4 +26,3 @@ export function timingSafeEqual(a: string, b: string): boolean {
   }
   return mismatch === 0;
 }
-

@@ -179,4 +179,3 @@ Deno.serve(async (request) => {
     allowedOrigins,
   );
 });
-

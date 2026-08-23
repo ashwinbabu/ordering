@@ -14,4 +14,3 @@ export function isPositiveAmount(amountText: string | null | undefined): boolean
   if (!amountText) return false;
   return /[1-9]/.test(amountText);
 }
-

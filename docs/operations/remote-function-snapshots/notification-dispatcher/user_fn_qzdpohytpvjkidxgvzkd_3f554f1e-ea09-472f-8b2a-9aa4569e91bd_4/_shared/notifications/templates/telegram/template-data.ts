@@ -128,4 +128,3 @@ export function buildDailySalesSummaryTelegramData(context: any): DailySalesSumm
     onlineRevenueFormatted: formatMoney(sales.onlineRevenue, currency),
   };
 }
-

@@ -188,4 +188,3 @@ export function buildOrderCancelledEmailData(
     refundMessage: buildRefundMessage(context),
   };
 }
-

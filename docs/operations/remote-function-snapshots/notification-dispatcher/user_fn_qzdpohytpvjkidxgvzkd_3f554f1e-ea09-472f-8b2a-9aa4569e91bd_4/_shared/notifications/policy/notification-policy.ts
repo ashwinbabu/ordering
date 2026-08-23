@@ -98,4 +98,3 @@ export function policyRulesForEvent(eventType: string, context: PolicyContext): 
     return true;
   });
 }
-

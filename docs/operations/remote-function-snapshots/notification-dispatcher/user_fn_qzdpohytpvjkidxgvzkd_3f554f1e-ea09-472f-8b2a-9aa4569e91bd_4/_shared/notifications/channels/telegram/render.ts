@@ -109,4 +109,3 @@ export function renderTelegramTemplate(templateKey: string, payload: unknown): R
       throw new Error(`unknown telegram template key: ${templateKey}`);
   }
 }
-

@@ -265,4 +265,3 @@ using (
       and location.is_active
   )
 );
-

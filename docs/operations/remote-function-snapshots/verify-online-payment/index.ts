@@ -196,4 +196,3 @@ Deno.serve(async (request) => {
 
   return jsonResponse({ order: recordResult.data }, 200, origin, allowedOrigins);
 });
-

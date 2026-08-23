@@ -40,4 +40,3 @@ export async function loadDispatcherConfig(adminClient: SupabaseClient): Promise
     notificationsTelegramMode: (raw.notificationsTelegramMode as NotificationsTelegramMode) ?? "off",
   };
 }
-

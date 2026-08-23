@@ -157,4 +157,3 @@ export function CustomerOrderPlacedEmail(data: OrderPlacedEmailData) {
     </EmailLayout>
   );
 }
-

@@ -88,4 +88,3 @@ export async function sendEmailDelivery(
   }
   return { outcome: result.outcome, error: result.error, provider: "resend" };
 }
-

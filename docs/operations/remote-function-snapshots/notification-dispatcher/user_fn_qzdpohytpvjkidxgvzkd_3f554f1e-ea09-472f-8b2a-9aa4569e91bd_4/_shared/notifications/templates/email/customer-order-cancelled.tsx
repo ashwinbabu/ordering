@@ -87,4 +87,3 @@ export function CustomerOrderCancelledEmail(data: OrderCancelledEmailData) {
     </EmailLayout>
   );
 }
-

@@ -34,4 +34,3 @@ export function createUserClient(supabaseUrl: string, anonKey: string, authoriza
     global: { headers: { Authorization: authorizationHeader } },
   });
 }
-

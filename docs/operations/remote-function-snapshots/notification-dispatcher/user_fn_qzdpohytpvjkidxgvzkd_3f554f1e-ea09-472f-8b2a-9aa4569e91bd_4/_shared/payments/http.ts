@@ -61,4 +61,3 @@ export function statusForPgErrorCode(code: string | undefined): number {
       return 500;
   }
 }
-

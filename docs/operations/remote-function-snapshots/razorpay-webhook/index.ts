@@ -177,4 +177,3 @@ Deno.serve(async (request) => {
 
   return json({ ok: true }, 200);
 });
-

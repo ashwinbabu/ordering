@@ -39,4 +39,3 @@ export async function renderEmailTemplate(templateKey: string, payload: unknown)
       throw new Error(`unknown email template key: ${templateKey}`);
   }
 }
-

@@ -16,4 +16,3 @@ export function guardSendableEmail(rawEmail: string | null | undefined): EmailGu
   }
   return { sendable: true, address: trimmed };
 }
-
