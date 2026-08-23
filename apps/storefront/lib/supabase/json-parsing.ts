@@ -6,7 +6,10 @@ import type { Json } from "./database.types";
 // instead of a crash or silent bad value deeper in the UI.
 export type JsonRecord = { [key: string]: Json | undefined };
 
-export function readRecord(value: Json | undefined, context: string): JsonRecord {
+export function readRecord(
+  value: Json | undefined,
+  context: string,
+): JsonRecord {
   if (!value || Array.isArray(value) || typeof value !== "object") {
     throw new Error(`${context} is invalid.`);
   }
@@ -30,7 +33,10 @@ export function readString(value: Json | undefined, context: string): string {
   return value;
 }
 
-export function readNullableString(value: Json | undefined, context: string): string | null {
+export function readNullableString(
+  value: Json | undefined,
+  context: string,
+): string | null {
   if (value === null || value === undefined) return null;
   return readString(value, context);
 }
@@ -44,7 +50,10 @@ export function readNumber(value: Json | undefined, context: string): number {
   return parsed;
 }
 
-export function readNullableNumber(value: Json | undefined, context: string): number | null {
+export function readNullableNumber(
+  value: Json | undefined,
+  context: string,
+): number | null {
   if (value === null || value === undefined) return null;
   return readNumber(value, context);
 }

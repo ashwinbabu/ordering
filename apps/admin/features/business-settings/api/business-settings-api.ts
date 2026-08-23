@@ -332,7 +332,9 @@ export async function uploadBusinessLogo(
     .single();
   throwIfError(fetchError);
 
-  const { data: publicUrlData } = supabase.storage.from(LOGO_BUCKET).getPublicUrl(path);
+  const { data: publicUrlData } = supabase.storage
+    .from(LOGO_BUCKET)
+    .getPublicUrl(path);
   const logoUrl = publicUrlData.publicUrl;
 
   const { error: updateError } = await supabase

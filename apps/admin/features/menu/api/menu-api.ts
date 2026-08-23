@@ -72,7 +72,12 @@ type OptionGroupRow = Pick<
 >;
 type OptionRow = Pick<
   OrderingTables["options"]["Row"],
-  "id" | "option_group_id" | "name" | "price_delta" | "is_available" | "sort_order"
+  | "id"
+  | "option_group_id"
+  | "name"
+  | "price_delta"
+  | "is_available"
+  | "sort_order"
 >;
 
 interface MenuAggregate {
@@ -224,7 +229,10 @@ function parseRows<T>(
   parseRow: (row: JsonObject) => T,
 ): T[] {
   return parseJsonArray(value, `The menu response is missing ${key}.`).map(
-    (item) => parseRow(parseJsonObject(item, `The menu response has an invalid ${key} row.`)),
+    (item) =>
+      parseRow(
+        parseJsonObject(item, `The menu response has an invalid ${key} row.`),
+      ),
   );
 }
 
@@ -339,7 +347,9 @@ export async function getMenu(scope: MenuScope): Promise<MenuData> {
   throwIfError(menuResponse.error);
   throwIfError(featuredResponse.error);
   const data = menuResponse.data;
-  const featuredProductIds = new Set(parseFeaturedProductIds(featuredResponse.data));
+  const featuredProductIds = new Set(
+    parseFeaturedProductIds(featuredResponse.data),
+  );
   const {
     categories: categoryItems,
     products: productItems,

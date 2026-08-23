@@ -16,6 +16,7 @@ import {
 } from "@/features/business-settings/business-settings-query";
 import type { BusinessSettingsData } from "@/features/business-settings/api/business-settings-api";
 import { LogoUploader } from "@/features/business-settings/logo-uploader";
+import { TelegramConnectionPanel } from "@/features/business-settings/telegram-connection-panel";
 import type { BusinessRole } from "@/features/outlet-context/outlet-context-model";
 
 interface BusinessSettingsProps {
@@ -29,13 +30,16 @@ interface BusinessSettingsProps {
   onSaved: (section: string) => void;
 }
 
-const sections: Array<[SettingsSection | "commercials", string]> = [
+const sections: Array<
+  [SettingsSection | "commercials" | "notifications", string]
+> = [
   ["general", "General"],
   ["ordering", "Ordering"],
   ["hours", "Opening Hours"],
   ["tax", "Tax"],
   ["delivery", "Delivery"],
   ["commercials", "Commercials"],
+  ["notifications", "Notifications"],
 ];
 
 function composeSaveDraft(
@@ -352,7 +356,9 @@ function BusinessSettingsEditor({
                 }))
               }
               onSaved={() => {
-                void queryClient.invalidateQueries({ queryKey: ["outlet-context"] });
+                void queryClient.invalidateQueries({
+                  queryKey: ["outlet-context"],
+                });
                 onSaved("Logo");
               }}
             />
@@ -1048,6 +1054,11 @@ function BusinessSettingsEditor({
               </span>
             </div>
           </section>
+
+          <TelegramConnectionPanel
+            businessId={businessId}
+            locationId={locationId}
+          />
         </main>
       </div>
       {hasDirtySections && (

@@ -45,21 +45,30 @@ export function checkoutEligibilityMessage(reason: CheckoutBlockReason) {
 // Single derived source of truth for whether the customer may proceed to
 // checkout, so the cart screen does not scatter this logic across multiple
 // conditionals (task: centralize checkout eligibility).
-export function evaluateCheckoutEligibility(input: CheckoutEligibilityInput): CheckoutEligibility {
+export function evaluateCheckoutEligibility(
+  input: CheckoutEligibilityInput,
+): CheckoutEligibility {
   if (input.isOffline) return { canCheckout: false, reason: "offline" };
-  if (input.lines.length === 0) return { canCheckout: false, reason: "cart-empty" };
-  if (input.lines.some((line) => !line.isAvailable)) return { canCheckout: false, reason: "item-unavailable" };
+  if (input.lines.length === 0)
+    return { canCheckout: false, reason: "cart-empty" };
+  if (input.lines.some((line) => !line.isAvailable))
+    return { canCheckout: false, reason: "item-unavailable" };
 
   const settings = input.settings;
   if (settings) {
-    if (!settings.orderingEnabled) return { canCheckout: false, reason: "restaurant-paused" };
-    if (!settings.isOpenNow && !settings.acceptOrdersWhenClosed) return { canCheckout: false, reason: "restaurant-closed" };
-    if (input.netFoodSubtotal < settings.minimumOrderValue) return { canCheckout: false, reason: "below-minimum" };
+    if (!settings.orderingEnabled)
+      return { canCheckout: false, reason: "restaurant-paused" };
+    if (!settings.isOpenNow && !settings.acceptOrdersWhenClosed)
+      return { canCheckout: false, reason: "restaurant-closed" };
+    if (input.netFoodSubtotal < settings.minimumOrderValue)
+      return { canCheckout: false, reason: "below-minimum" };
   }
 
   if (input.fulfilment === "delivery") {
-    if (!input.hasAddress) return { canCheckout: false, reason: "address-required" };
-    if (input.deliveryServiceable === false) return { canCheckout: false, reason: "delivery-unserviceable" };
+    if (!input.hasAddress)
+      return { canCheckout: false, reason: "address-required" };
+    if (input.deliveryServiceable === false)
+      return { canCheckout: false, reason: "delivery-unserviceable" };
   }
 
   return { canCheckout: true };

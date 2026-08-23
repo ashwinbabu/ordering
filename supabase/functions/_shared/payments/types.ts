@@ -58,8 +58,17 @@ export interface FetchedPayment {
 }
 
 export interface PaymentProviderAdapter {
-  createOrder(credentials: ProviderCredentials, params: CreateOrderParams): Promise<CreateOrderResult>;
-  fetchPayment(credentials: ProviderCredentials, providerPaymentId: string): Promise<FetchedPayment>;
-  verifyCheckoutSignature(credentials: ProviderCredentials, params: CheckoutSignatureParams): Promise<boolean>;
+  createOrder(
+    credentials: ProviderCredentials,
+    params: CreateOrderParams,
+  ): Promise<CreateOrderResult>;
+  fetchPayment(
+    credentials: ProviderCredentials,
+    providerPaymentId: string,
+  ): Promise<FetchedPayment>;
+  verifyCheckoutSignature(
+    credentials: ProviderCredentials,
+    params: CheckoutSignatureParams,
+  ): Promise<boolean>;
   verifyWebhookSignature(params: WebhookSignatureParams): Promise<boolean>;
 }

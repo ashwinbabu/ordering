@@ -1,6 +1,13 @@
 import type { Json } from "../../../lib/supabase/database.types";
 import { getSupabaseClient } from "../../../lib/supabase/client";
-import { readArray, readBoolean, readNullableString, readNumber, readRecord, readString } from "../../../lib/supabase/json-parsing";
+import {
+  readArray,
+  readBoolean,
+  readNullableString,
+  readNumber,
+  readRecord,
+  readString,
+} from "../../../lib/supabase/json-parsing";
 import type {
   FeaturedProduct,
   StorefrontMenu,
@@ -20,28 +27,54 @@ function parseOption(value: Json): StorefrontMenuOption {
   return {
     id: readString(option.id, "A storefront menu option ID"),
     name: readString(option.name, "A storefront menu option name"),
-    priceDelta: readNumber(option.priceDelta, "A storefront menu option price delta"),
-    available: readBoolean(option.available, "A storefront menu option availability"),
-    sortOrder: readNumber(option.sortOrder, "A storefront menu option sort order"),
+    priceDelta: readNumber(
+      option.priceDelta,
+      "A storefront menu option price delta",
+    ),
+    available: readBoolean(
+      option.available,
+      "A storefront menu option availability",
+    ),
+    sortOrder: readNumber(
+      option.sortOrder,
+      "A storefront menu option sort order",
+    ),
   };
 }
 
 function parseOptionGroup(value: Json): StorefrontMenuOptionGroup {
   const group = readRecord(value, "A storefront menu option group");
-  const selectionType = readString(group.selectionType, "A storefront menu option group selection type");
+  const selectionType = readString(
+    group.selectionType,
+    "A storefront menu option group selection type",
+  );
 
   if (selectionType !== "single" && selectionType !== "multiple") {
-    throw new Error("A storefront menu option group selection type is invalid.");
+    throw new Error(
+      "A storefront menu option group selection type is invalid.",
+    );
   }
 
   return {
     id: readString(group.id, "A storefront menu option group ID"),
     name: readString(group.name, "A storefront menu option group name"),
     selectionType,
-    minSelections: readNumber(group.minSelections, "A storefront menu option group minimum"),
-    maxSelections: readNumber(group.maxSelections, "A storefront menu option group maximum"),
-    sortOrder: readNumber(group.sortOrder, "A storefront menu option group sort order"),
-    options: readArray(group.options, "A storefront menu option group options").map(parseOption),
+    minSelections: readNumber(
+      group.minSelections,
+      "A storefront menu option group minimum",
+    ),
+    maxSelections: readNumber(
+      group.maxSelections,
+      "A storefront menu option group maximum",
+    ),
+    sortOrder: readNumber(
+      group.sortOrder,
+      "A storefront menu option group sort order",
+    ),
+    options: readArray(
+      group.options,
+      "A storefront menu option group options",
+    ).map(parseOption),
   };
 }
 
@@ -50,13 +83,31 @@ function parseProduct(value: Json): StorefrontMenuProduct {
   return {
     id: readString(product.id, "A storefront menu product ID"),
     name: readString(product.name, "A storefront menu product name"),
-    description: readNullableString(product.description, "A storefront menu product description"),
-    basePrice: readNumber(product.basePrice, "A storefront menu product base price"),
+    description: readNullableString(
+      product.description,
+      "A storefront menu product description",
+    ),
+    basePrice: readNumber(
+      product.basePrice,
+      "A storefront menu product base price",
+    ),
     image: readNullableString(product.image, "A storefront menu product image"),
-    dietaryType: readNullableString(product.dietaryType, "A storefront menu product dietary type"),
-    available: readBoolean(product.available, "A storefront menu product availability"),
-    sortOrder: readNumber(product.sortOrder, "A storefront menu product sort order"),
-    optionGroups: readArray(product.optionGroups, "A storefront menu product option groups").map(parseOptionGroup),
+    dietaryType: readNullableString(
+      product.dietaryType,
+      "A storefront menu product dietary type",
+    ),
+    available: readBoolean(
+      product.available,
+      "A storefront menu product availability",
+    ),
+    sortOrder: readNumber(
+      product.sortOrder,
+      "A storefront menu product sort order",
+    ),
+    optionGroups: readArray(
+      product.optionGroups,
+      "A storefront menu product option groups",
+    ).map(parseOptionGroup),
   };
 }
 
@@ -65,9 +116,18 @@ function parseCategory(value: Json): StorefrontMenuCategory {
   return {
     id: readString(category.id, "A storefront menu category ID"),
     name: readString(category.name, "A storefront menu category name"),
-    description: readNullableString(category.description, "A storefront menu category description"),
-    sortOrder: readNumber(category.sortOrder, "A storefront menu category sort order"),
-    products: readArray(category.products, "A storefront menu category products").map(parseProduct),
+    description: readNullableString(
+      category.description,
+      "A storefront menu category description",
+    ),
+    sortOrder: readNumber(
+      category.sortOrder,
+      "A storefront menu category sort order",
+    ),
+    products: readArray(
+      category.products,
+      "A storefront menu category products",
+    ).map(parseProduct),
   };
 }
 
@@ -82,7 +142,10 @@ function parseFeaturedProductRows(value: unknown): FeaturedProduct[] {
     }
 
     const featuredProduct = row as Partial<FeaturedProductRow>;
-    if (typeof featuredProduct.product_id !== "string" || typeof featuredProduct.sort_order !== "number") {
+    if (
+      typeof featuredProduct.product_id !== "string" ||
+      typeof featuredProduct.sort_order !== "number"
+    ) {
       throw new Error(`Featured product row ${index + 1} is invalid.`);
     }
 
@@ -98,7 +161,9 @@ function parseStorefrontMenu(value: Json): StorefrontMenu {
   const business = readRecord(menu.business, "The storefront menu business");
   const location = readRecord(menu.location, "The storefront menu location");
 
-  if (readNumber(menu.schemaVersion, "The storefront menu schema version") !== 1) {
+  if (
+    readNumber(menu.schemaVersion, "The storefront menu schema version") !== 1
+  ) {
     throw new Error("The storefront menu schema version is unsupported.");
   }
 
@@ -106,7 +171,8 @@ function parseStorefrontMenu(value: Json): StorefrontMenu {
     schemaVersion: 1,
     // Read leniently so the client stays deployable ahead of the migration that
     // adds this field. Absent means accepting orders, matching the Admin default.
-    orderingEnabled: typeof menu.orderingEnabled === "boolean" ? menu.orderingEnabled : true,
+    orderingEnabled:
+      typeof menu.orderingEnabled === "boolean" ? menu.orderingEnabled : true,
     business: {
       id: readString(business.id, "The storefront menu business ID"),
       name: readString(business.name, "The storefront menu business name"),
@@ -120,7 +186,10 @@ function parseStorefrontMenu(value: Json): StorefrontMenu {
       id: readString(location.id, "The storefront menu location ID"),
       name: readString(location.name, "The storefront menu location name"),
     },
-    categories: readArray(menu.categories, "The storefront menu categories").map(parseCategory),
+    categories: readArray(
+      menu.categories,
+      "The storefront menu categories",
+    ).map(parseCategory),
     featuredProducts: [],
   };
 }
@@ -129,7 +198,9 @@ function parseStorefrontMenu(value: Json): StorefrontMenu {
  * Reads the public, location-scoped Storefront catalog boundary. A null result
  * means the requested location is missing or not publicly orderable.
  */
-export async function getStorefrontMenu(locationId: string): Promise<StorefrontMenu | null> {
+export async function getStorefrontMenu(
+  locationId: string,
+): Promise<StorefrontMenu | null> {
   const client = getSupabaseClient().schema("ordering");
   const now = new Date().toISOString();
   const [menuResult, featuredProductsResult] = await Promise.all([

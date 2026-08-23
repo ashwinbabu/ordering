@@ -6,7 +6,8 @@ const widgetScriptUrl = "https://verify.msg91.com/otp-provider.js";
 
 const widgetId = import.meta.env.VITE_MSG91_WIDGET_ID as string | undefined;
 const tokenAuth = import.meta.env.VITE_MSG91_TOKEN_AUTH as string | undefined;
-const demoModeRequested = String(import.meta.env.VITE_MSG91_DEMO_MODE ?? "").toLowerCase() === "true";
+const demoModeRequested =
+  String(import.meta.env.VITE_MSG91_DEMO_MODE ?? "").toLowerCase() === "true";
 
 /**
  * "live" sends real SMS through MSG91. "demo" is the offline fallback with
@@ -50,9 +51,23 @@ interface Msg91Configuration {
 declare global {
   interface Window {
     initSendOTP?: (configuration: Msg91Configuration) => void;
-    sendOtp?: (identifier: string, onSuccess?: (data: unknown) => void, onFailure?: (error: unknown) => void) => void;
-    verifyOtp?: (otp: string | number, onSuccess?: (data: unknown) => void, onFailure?: (error: unknown) => void, reqId?: string) => void;
-    retryOtp?: (channel: string | null, onSuccess?: (data: unknown) => void, onFailure?: (error: unknown) => void, reqId?: string) => void;
+    sendOtp?: (
+      identifier: string,
+      onSuccess?: (data: unknown) => void,
+      onFailure?: (error: unknown) => void,
+    ) => void;
+    verifyOtp?: (
+      otp: string | number,
+      onSuccess?: (data: unknown) => void,
+      onFailure?: (error: unknown) => void,
+      reqId?: string,
+    ) => void;
+    retryOtp?: (
+      channel: string | null,
+      onSuccess?: (data: unknown) => void,
+      onFailure?: (error: unknown) => void,
+      reqId?: string,
+    ) => void;
     getWidgetData?: () => unknown;
     isCaptchaVerified?: () => boolean;
   }
@@ -81,21 +96,25 @@ export const defaultMsg91WidgetConfig: Msg91WidgetConfig = {
  * defaults rather than propagating a bad shape into the UI.
  */
 export function getMsg91WidgetConfig(): Msg91WidgetConfig {
-  if (typeof window.getWidgetData !== "function") return defaultMsg91WidgetConfig;
+  if (typeof window.getWidgetData !== "function")
+    return defaultMsg91WidgetConfig;
 
   try {
     const data = window.getWidgetData() as Record<string, unknown> | undefined;
     if (!data) return defaultMsg91WidgetConfig;
 
-    const otpLength = typeof data.otpLength === "number" && data.otpLength > 0
-      ? data.otpLength
-      : defaultMsg91WidgetConfig.otpLength;
-    const resendDelaySeconds = typeof data.retryTime === "number" && data.retryTime > 0
-      ? data.retryTime
-      : defaultMsg91WidgetConfig.resendDelaySeconds;
-    const maxResendAttempts = typeof data.retryCount === "number" && data.retryCount >= 0
-      ? data.retryCount
-      : defaultMsg91WidgetConfig.maxResendAttempts;
+    const otpLength =
+      typeof data.otpLength === "number" && data.otpLength > 0
+        ? data.otpLength
+        : defaultMsg91WidgetConfig.otpLength;
+    const resendDelaySeconds =
+      typeof data.retryTime === "number" && data.retryTime > 0
+        ? data.retryTime
+        : defaultMsg91WidgetConfig.resendDelaySeconds;
+    const maxResendAttempts =
+      typeof data.retryCount === "number" && data.retryCount >= 0
+        ? data.retryCount
+        : defaultMsg91WidgetConfig.maxResendAttempts;
 
     return { otpLength, resendDelaySeconds, maxResendAttempts };
   } catch {
@@ -109,19 +128,33 @@ export function getMsg91WidgetConfig(): Msg91WidgetConfig {
 // hangs forever with no way for the UI to recover. This bounds every call.
 const requestTimeoutMs = 20000;
 
-function withTimeout<T>(promise: Promise<T>, timeoutMessage: string): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMessage: string,
+): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timer = window.setTimeout(() => reject(new Error(timeoutMessage)), requestTimeoutMs);
+    const timer = window.setTimeout(
+      () => reject(new Error(timeoutMessage)),
+      requestTimeoutMs,
+    );
     promise.then(
-      (value) => { window.clearTimeout(timer); resolve(value); },
-      (error) => { window.clearTimeout(timer); reject(error); },
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
     );
   });
 }
 
 export class Msg91NotConfiguredError extends Error {
   constructor() {
-    super("MSG91 widget is not configured (VITE_MSG91_WIDGET_ID / VITE_MSG91_TOKEN_AUTH missing).");
+    super(
+      "MSG91 widget is not configured (VITE_MSG91_WIDGET_ID / VITE_MSG91_TOKEN_AUTH missing).",
+    );
     this.name = "Msg91NotConfiguredError";
   }
 }
@@ -161,7 +194,11 @@ function waitForWidgetReady(timeoutMs = 8000, intervalMs = 100): Promise<void> {
         return;
       }
       if (Date.now() >= deadline) {
-        reject(new Error("The verification widget did not finish loading. Please try again."));
+        reject(
+          new Error(
+            "The verification widget did not finish loading. Please try again.",
+          ),
+        );
         return;
       }
       window.setTimeout(check, intervalMs);
@@ -176,7 +213,10 @@ function waitForWidgetReady(timeoutMs = 8000, intervalMs = 100): Promise<void> {
  * one may have been unmounted, and the widget renders captcha into it
  * synchronously as part of this call.
  */
-export async function initializeMsg91Widget(options: { captchaRenderId: string; identifier?: string }): Promise<void> {
+export async function initializeMsg91Widget(options: {
+  captchaRenderId: string;
+  identifier?: string;
+}): Promise<void> {
   if (!widgetId || !tokenAuth) throw new Msg91NotConfiguredError();
 
   await loadWidgetScriptOnce();
@@ -205,7 +245,10 @@ const sendDedupeWindowMs = 2000;
 
 export function sendMsg91Otp(identifier: string): Promise<void> {
   const now = Date.now();
-  if (lastSendIdentifier === identifier && now - lastSendAt < sendDedupeWindowMs) {
+  if (
+    lastSendIdentifier === identifier &&
+    now - lastSendAt < sendDedupeWindowMs
+  ) {
     return Promise.resolve();
   }
   lastSendIdentifier = identifier;
@@ -213,7 +256,11 @@ export function sendMsg91Otp(identifier: string): Promise<void> {
 
   return withTimeout(
     new Promise((resolve, reject) => {
-      window.sendOtp!(identifier, () => resolve(), (error) => reject(error));
+      window.sendOtp!(
+        identifier,
+        () => resolve(),
+        (error) => reject(error),
+      );
     }),
     "Could not send the code. Please try again.",
   );
@@ -267,7 +314,11 @@ const smsRetryChannel = "11";
 export function retryMsg91Otp(): Promise<void> {
   return withTimeout(
     new Promise((resolve, reject) => {
-      window.retryOtp!(smsRetryChannel, () => resolve(), (error) => reject(error));
+      window.retryOtp!(
+        smsRetryChannel,
+        () => resolve(),
+        (error) => reject(error),
+      );
     }),
     "Could not resend the code. Please try again.",
   );

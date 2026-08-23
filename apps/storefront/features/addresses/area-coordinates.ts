@@ -4,7 +4,10 @@
 // village" resolution used to call the real ordering.get_delivery_quote
 // distance-zone boundary -- an honest, schema-backed estimate rather than a
 // fabricated flat delivery fee.
-export const areaCoordinates: Record<string, { latitude: number; longitude: number }> = {
+export const areaCoordinates: Record<
+  string,
+  { latitude: number; longitude: number }
+> = {
   Arambol: { latitude: 15.6889, longitude: 73.704 },
   Mandrem: { latitude: 15.658, longitude: 73.713 },
   Ashwem: { latitude: 15.643, longitude: 73.718 },

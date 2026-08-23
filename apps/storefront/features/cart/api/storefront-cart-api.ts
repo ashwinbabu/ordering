@@ -1,7 +1,21 @@
 import { getSupabaseClient } from "../../../lib/supabase/client";
-import { readArray, readBoolean, readNullableNumber, readNullableString, readNumber, readRecord, readString } from "../../../lib/supabase/json-parsing";
+import {
+  readArray,
+  readBoolean,
+  readNullableNumber,
+  readNullableString,
+  readNumber,
+  readRecord,
+  readString,
+} from "../../../lib/supabase/json-parsing";
 import { callUntypedRpc } from "../../../lib/supabase/untyped-rpc";
-import type { CouponValidation, DeliveryQuote, ServerCart, ServerCartItem, ServerCartItemOption } from "../../../domain/cart";
+import type {
+  CouponValidation,
+  DeliveryQuote,
+  ServerCart,
+  ServerCartItem,
+  ServerCartItemOption,
+} from "../../../domain/cart";
 
 /** The RPC only needs the option id; display fields belong to the caller's own domain types. */
 export interface CartOptionSelectionInput {
@@ -13,7 +27,10 @@ function parseCartItemOption(value: unknown): ServerCartItemOption {
   return {
     optionId: readString(option.option_id, "A cart item option ID"),
     name: readString(option.name, "A cart item option name"),
-    priceDelta: readNumber(option.price_delta, "A cart item option price delta"),
+    priceDelta: readNumber(
+      option.price_delta,
+      "A cart item option price delta",
+    ),
     quantity: readNumber(option.quantity, "A cart item option quantity"),
   };
 }
@@ -27,31 +44,49 @@ function parseCartItem(value: unknown): ServerCartItem {
     quantity: readNumber(item.quantity, "A cart item quantity"),
     customerNote: readNullableString(item.customer_note, "A cart item note"),
     baseUnitPrice: readNumber(item.base_unit_price, "A cart item base price"),
-    modifierUnitTotal: readNumber(item.modifier_unit_total, "A cart item modifier total"),
-    estimatedLineTotal: readNumber(item.estimated_line_total, "A cart item line total"),
-    options: readArray(item.options as never, "A cart item's options").map(parseCartItemOption),
+    modifierUnitTotal: readNumber(
+      item.modifier_unit_total,
+      "A cart item modifier total",
+    ),
+    estimatedLineTotal: readNumber(
+      item.estimated_line_total,
+      "A cart item line total",
+    ),
+    options: readArray(item.options as never, "A cart item's options").map(
+      parseCartItemOption,
+    ),
   };
 }
 
 function parseServerCart(value: unknown): ServerCart {
   const cart = readRecord(value as never, "The cart response");
   const couponValue = cart.coupon;
-  const coupon = couponValue === null || couponValue === undefined
-    ? null
-    : (() => {
-      const record = readRecord(couponValue as never, "A cart coupon");
-      return { id: readString(record.id, "A cart coupon ID"), code: readString(record.code, "A cart coupon code") };
-    })();
+  const coupon =
+    couponValue === null || couponValue === undefined
+      ? null
+      : (() => {
+          const record = readRecord(couponValue as never, "A cart coupon");
+          return {
+            id: readString(record.id, "A cart coupon ID"),
+            code: readString(record.code, "A cart coupon code"),
+          };
+        })();
 
   return {
     id: readString(cart.id, "The cart ID"),
     businessId: readString(cart.business_id, "The cart business ID"),
     locationId: readString(cart.location_id, "The cart location ID"),
     status: readString(cart.status, "The cart status"),
-    isAuthenticated: readBoolean(cart.is_authenticated, "The cart authentication flag"),
+    isAuthenticated: readBoolean(
+      cart.is_authenticated,
+      "The cart authentication flag",
+    ),
     updatedAt: readString(cart.updated_at, "The cart updated timestamp"),
     expiresAt: readString(cart.expires_at, "The cart expiry timestamp"),
-    estimatedFoodSubtotal: readNumber(cart.estimated_food_subtotal, "The cart subtotal"),
+    estimatedFoodSubtotal: readNumber(
+      cart.estimated_food_subtotal,
+      "The cart subtotal",
+    ),
     coupon,
     items: readArray(cart.items as never, "The cart items").map(parseCartItem),
   };
@@ -112,7 +147,10 @@ export async function attachAnonymousCart(args: {
  * customer: private.can_access_cart authorises those through auth.uid()
  * instead, and a claimed cart no longer has a session id to match.
  */
-export async function getCart(args: { cartId: string; anonymousSessionId: string | null }): Promise<ServerCart> {
+export async function getCart(args: {
+  cartId: string;
+  anonymousSessionId: string | null;
+}): Promise<ServerCart> {
   const result = await callUntypedRpc(cartRpc(), "get_cart", {
     p_cart_id: args.cartId,
     p_anonymous_session_id: args.anonymousSessionId,
@@ -137,7 +175,10 @@ export async function setCartItem(args: {
     p_product_id: args.productId,
     p_quantity: args.quantity,
     p_customer_note: args.customerNote ?? null,
-    p_options: args.selections.map((selection) => ({ option_id: selection.optionId, quantity: 1 })),
+    p_options: args.selections.map((selection) => ({
+      option_id: selection.optionId,
+      quantity: 1,
+    })),
   });
   if (result.error) throw result.error;
   return parseServerCart(result.data);
@@ -185,17 +226,28 @@ export async function validateCoupon(args: {
   });
   if (result.error) throw result.error;
 
-  const validation = readRecord(result.data as never, "The coupon validation response");
+  const validation = readRecord(
+    result.data as never,
+    "The coupon validation response",
+  );
   const valid = readBoolean(validation.valid, "The coupon validation result");
   if (!valid) {
-    return { valid: false, reason: readNullableString(validation.reason, "The coupon validation reason") ?? undefined };
+    return {
+      valid: false,
+      reason:
+        readNullableString(validation.reason, "The coupon validation reason") ??
+        undefined,
+    };
   }
 
   return {
     valid: true,
     couponId: readString(validation.coupon_id, "The coupon ID"),
     code: readString(validation.code, "The coupon code"),
-    discountAmount: readNumber(validation.discount_amount, "The coupon discount amount"),
+    discountAmount: readNumber(
+      validation.discount_amount,
+      "The coupon discount amount",
+    ),
   };
 }
 
@@ -216,10 +268,22 @@ export async function getDeliveryQuote(args: {
 
   const quote = readRecord(result.data as never, "The delivery quote response");
   return {
-    serviceable: readBoolean(quote.serviceable, "The delivery quote serviceable flag"),
+    serviceable: readBoolean(
+      quote.serviceable,
+      "The delivery quote serviceable flag",
+    ),
     distanceKm: readNumber(quote.distance_km, "The delivery quote distance"),
-    minimumOrderValue: readNullableNumber(quote.minimum_order_value, "The delivery quote minimum order value"),
-    normalDeliveryFee: readNullableNumber(quote.normal_delivery_fee, "The delivery quote normal fee"),
-    deliveryFee: readNullableNumber(quote.delivery_fee, "The delivery quote fee"),
+    minimumOrderValue: readNullableNumber(
+      quote.minimum_order_value,
+      "The delivery quote minimum order value",
+    ),
+    normalDeliveryFee: readNullableNumber(
+      quote.normal_delivery_fee,
+      "The delivery quote normal fee",
+    ),
+    deliveryFee: readNullableNumber(
+      quote.delivery_fee,
+      "The delivery quote fee",
+    ),
   };
 }

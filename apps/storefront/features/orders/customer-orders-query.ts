@@ -1,9 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { listCustomerOrders } from "./api/customer-orders-api";
-import { storefrontContext, type StorefrontContext } from "../../lib/storefront/storefront-context";
+import {
+  storefrontContext,
+  type StorefrontContext,
+} from "../../lib/storefront/storefront-context";
 
-export function customerOrdersQueryKey(customerId: string | null, context: StorefrontContext = storefrontContext) {
-  return ["storefront", "customer-orders", context.businessId, context.locationId, customerId] as const;
+export function customerOrdersQueryKey(
+  customerId: string | null,
+  context: StorefrontContext = storefrontContext,
+) {
+  return [
+    "storefront",
+    "customer-orders",
+    context.businessId,
+    context.locationId,
+    customerId,
+  ] as const;
 }
 
 /**
@@ -23,10 +35,15 @@ export function customerOrdersQueryKey(customerId: string | null, context: Store
  * catches the app back up in that case, independent of whether the socket
  * reconnects.
  */
-export function useCustomerOrdersQuery(customerId: string | null, businessKey: string, context: StorefrontContext = storefrontContext) {
+export function useCustomerOrdersQuery(
+  customerId: string | null,
+  businessKey: string,
+  context: StorefrontContext = storefrontContext,
+) {
   return useQuery({
     queryKey: customerOrdersQueryKey(customerId, context),
-    queryFn: () => listCustomerOrders(context.businessId, context.locationId, businessKey),
+    queryFn: () =>
+      listCustomerOrders(context.businessId, context.locationId, businessKey),
     enabled: Boolean(customerId),
     // Status changes while an order is in flight; short enough to pick those
     // up when the customer opens the screen, long enough not to refetch on

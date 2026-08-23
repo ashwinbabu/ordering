@@ -24,6 +24,7 @@ import {
   useOrdersQuery,
   useTransitionOrderMutation,
 } from "@/features/orders/orders-query";
+import { useNewOrderAlarm } from "@/features/orders/use-new-order-alarm";
 import {
   KotView,
   OrderDetails,
@@ -63,7 +64,8 @@ interface LocalMenuState {
 
 function nextOrderBackendStatus(status: string | undefined) {
   if (status === "placed" || status === "needs_attention") return "accepted";
-  if (status === "accepted" || status === "ready_for_pickup") return "out_for_delivery";
+  if (status === "accepted" || status === "ready_for_pickup")
+    return "out_for_delivery";
   if (status === "out_for_delivery") return "delivered";
   return null;
 }
@@ -79,7 +81,8 @@ export function AdminApp() {
     selectLocation,
     retry: retryOutletContext,
   } = useOutletContext();
-  const { orderingOpen, pauseOrdering, resumeOrdering, scheduleLabel } = useOrderingStatus();
+  const { orderingOpen, pauseOrdering, resumeOrdering, scheduleLabel } =
+    useOrderingStatus();
   const menuQuery = useMenuQuery(
     activeBusiness?.id ?? null,
     activeLocation?.id ?? null,
@@ -166,6 +169,7 @@ export function AdminApp() {
     ? selectedCategoryId
     : (categories[0]?.id ?? "");
   const orders = ordersQuery.data ?? [];
+  useNewOrderAlarm(orders, activeLocation?.id ?? null);
 
   const selectedOrder =
     orders.find((order) => order.recordId === selectedOrderId) || orders[0];
@@ -237,10 +241,7 @@ export function AdminApp() {
     );
   }
 
-  async function persistMenu(
-    categoriesToSave: Category[],
-    reloadMenu = true,
-  ) {
+  async function persistMenu(categoriesToSave: Category[], reloadMenu = true) {
     if (!activeBusiness || !activeLocation || !menuBaseline) {
       throw new Error(
         "The menu is still loading. Please try again in a moment.",
@@ -417,7 +418,13 @@ export function AdminApp() {
     )
       return;
     const reason = cancelReason === "Other" ? cancelOther.trim() : cancelReason;
-    if (!cancelOrder.recordId || !cancelOrder.backendStatus || !activeBusiness || !activeLocation) return;
+    if (
+      !cancelOrder.recordId ||
+      !cancelOrder.backendStatus ||
+      !activeBusiness ||
+      !activeLocation
+    )
+      return;
     setBusyOrderId(cancelOrder.id);
     try {
       await transitionOrderMutation.mutateAsync({
@@ -1245,7 +1252,8 @@ export function AdminApp() {
           <div className="modal-info-row">
             <Clock3 size={17} />
             <span>
-              <strong>Current schedule</strong>{scheduleLabel ?? "Loading…"}
+              <strong>Current schedule</strong>
+              {scheduleLabel ?? "Loading…"}
             </span>
           </div>
         </Modal>

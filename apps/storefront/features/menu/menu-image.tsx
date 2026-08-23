@@ -15,11 +15,22 @@ export function MenuImage({ alt, className, src }: MenuImageProps) {
 
   if (failed) {
     return (
-      <span className={`${className} food-image--fallback`} role="img" aria-label={alt}>
+      <span
+        className={`${className} food-image--fallback`}
+        role="img"
+        aria-label={alt}
+      >
         <span aria-hidden="true">✦</span>
       </span>
     );
   }
 
-  return <img className={`food-image ${className}`} src={src} alt={alt} onError={() => setFailed(true)} />;
+  return (
+    <img
+      className={`food-image ${className}`}
+      src={src}
+      alt={alt}
+      onError={() => setFailed(true)}
+    />
+  );
 }

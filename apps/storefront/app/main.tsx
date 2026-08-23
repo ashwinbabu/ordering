@@ -1,9 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { BrowserRouter } from "react-router";
 import { CustomerSessionProvider } from "../features/auth/customer-session";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { QueryProvider } from "../lib/query-client";
-import { StorefrontApp } from "./storefront-app";
+import { StorefrontRoutes } from "./storefront-routes";
 import { StorefrontBootstrap } from "./storefront-bootstrap";
 import "./globals.css";
 
@@ -12,16 +13,20 @@ import "./globals.css";
 // import.meta.env.DEV is stripped by Vite at build time, so this branch does
 // not exist in a production bundle.
 if (import.meta.env.DEV) {
-  (window as unknown as { supabase: ReturnType<typeof getSupabaseClient> }).supabase = getSupabaseClient();
+  (
+    window as unknown as { supabase: ReturnType<typeof getSupabaseClient> }
+  ).supabase = getSupabaseClient();
 }
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryProvider>
       <StorefrontBootstrap>
-        <CustomerSessionProvider>
-          <StorefrontApp />
-        </CustomerSessionProvider>
+        <BrowserRouter>
+          <CustomerSessionProvider>
+            <StorefrontRoutes />
+          </CustomerSessionProvider>
+        </BrowserRouter>
       </StorefrontBootstrap>
     </QueryProvider>
   </StrictMode>,

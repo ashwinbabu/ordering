@@ -10,5 +10,7 @@ export function dietaryInfoFor(badges?: string[]) {
 }
 
 export function productTagFor(badges?: string[]) {
-  return badges?.find((badge) => !(badge in dietaryBadges) && badge !== "Sold out");
+  return badges?.find(
+    (badge) => !(badge in dietaryBadges) && badge !== "Sold out",
+  );
 }

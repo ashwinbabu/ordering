@@ -1,4 +1,8 @@
-import { readJson, removeJson, writeJson } from "../../lib/storefront/safe-json-storage";
+import {
+  readJson,
+  removeJson,
+  writeJson,
+} from "../../lib/storefront/safe-json-storage";
 import type { StorefrontContext } from "../../lib/storefront/storefront-context";
 
 // What actually gets persisted to the browser is a pointer to the
@@ -11,7 +15,11 @@ interface CartPointer {
 }
 
 function isCartPointer(value: unknown): value is CartPointer {
-  return typeof value === "object" && value !== null && typeof (value as { cartId?: unknown }).cartId === "string";
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { cartId?: unknown }).cartId === "string"
+  );
 }
 
 function storageKey(context: StorefrontContext) {

@@ -1,4 +1,8 @@
-import { readJson, removeJson, writeJson } from "../../lib/storefront/safe-json-storage";
+import {
+  readJson,
+  removeJson,
+  writeJson,
+} from "../../lib/storefront/safe-json-storage";
 import type { StorefrontContext } from "../../lib/storefront/storefront-context";
 
 // What persists across a refresh, a browser restart, or a lost response is the
@@ -25,16 +29,29 @@ interface CheckoutAttempt {
 
 function isCheckoutAttempt(value: unknown): value is CheckoutAttempt {
   if (typeof value !== "object" || value === null) return false;
-  const candidate = value as { orderId?: unknown; createdAt?: unknown; paymentAttemptId?: unknown };
-  if (typeof candidate.orderId !== "string" || typeof candidate.createdAt !== "string") return false;
-  return candidate.paymentAttemptId === undefined || typeof candidate.paymentAttemptId === "string";
+  const candidate = value as {
+    orderId?: unknown;
+    createdAt?: unknown;
+    paymentAttemptId?: unknown;
+  };
+  if (
+    typeof candidate.orderId !== "string" ||
+    typeof candidate.createdAt !== "string"
+  )
+    return false;
+  return (
+    candidate.paymentAttemptId === undefined ||
+    typeof candidate.paymentAttemptId === "string"
+  );
 }
 
 function storageKey(context: StorefrontContext) {
   return `a2-storefront-checkout:${context.businessId}:${context.locationId}`;
 }
 
-export function readCheckoutAttempt(context: StorefrontContext): CheckoutAttempt | null {
+export function readCheckoutAttempt(
+  context: StorefrontContext,
+): CheckoutAttempt | null {
   return readJson(storageKey(context), isCheckoutAttempt);
 }
 
@@ -46,7 +63,10 @@ export function beginCheckoutAttempt(context: StorefrontContext): string {
   const existing = readCheckoutAttempt(context);
   if (existing) return existing.orderId;
 
-  const attempt: CheckoutAttempt = { orderId: window.crypto.randomUUID(), createdAt: new Date().toISOString() };
+  const attempt: CheckoutAttempt = {
+    orderId: window.crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+  };
   writeJson(storageKey(context), attempt);
   return attempt.orderId;
 }

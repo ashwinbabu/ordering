@@ -12,10 +12,18 @@ export function findLineByContent(
   productId: string,
   selections: { optionId: string }[],
 ): ServerCartItem | undefined {
-  const optionIds = selections.map((selection) => selection.optionId).sort().join(",");
+  const optionIds = selections
+    .map((selection) => selection.optionId)
+    .sort()
+    .join(",");
   return cart.items.find((item) => {
     if (item.productId !== productId) return false;
-    return item.options.map((option) => option.optionId).sort().join(",") === optionIds;
+    return (
+      item.options
+        .map((option) => option.optionId)
+        .sort()
+        .join(",") === optionIds
+    );
   });
 }
 
@@ -40,6 +48,13 @@ export function findLineByContent(
  * hash is a pure function of values that haven't actually changed. A random
  * id cannot collide with a stale row from a past cart lifecycle.
  */
-export function resolveCartLineId(cart: ServerCart, productId: string, selections: { optionId: string }[]): string {
-  return findLineByContent(cart, productId, selections)?.id ?? window.crypto.randomUUID();
+export function resolveCartLineId(
+  cart: ServerCart,
+  productId: string,
+  selections: { optionId: string }[],
+): string {
+  return (
+    findLineByContent(cart, productId, selections)?.id ??
+    window.crypto.randomUUID()
+  );
 }

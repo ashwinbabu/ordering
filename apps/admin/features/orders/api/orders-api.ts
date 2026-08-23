@@ -1,6 +1,10 @@
 import { supabase } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
-import type { Order, OrderStatus, TimelineItem } from "@/features/orders/order-model";
+import type {
+  Order,
+  OrderStatus,
+  TimelineItem,
+} from "@/features/orders/order-model";
 
 interface OrderScope {
   businessId: string;
@@ -27,26 +31,30 @@ function asArray(value: Json | undefined, message: string): Json[] {
 
 function stringValue(row: JsonObject, key: string): string {
   const value = row[key];
-  if (typeof value !== "string") throw new Error(`The order response has an invalid ${key} value.`);
+  if (typeof value !== "string")
+    throw new Error(`The order response has an invalid ${key} value.`);
   return value;
 }
 
 function nullableStringValue(row: JsonObject, key: string): string | null {
   const value = row[key];
   if (value === null || value === undefined) return null;
-  if (typeof value !== "string") throw new Error(`The order response has an invalid ${key} value.`);
+  if (typeof value !== "string")
+    throw new Error(`The order response has an invalid ${key} value.`);
   return value;
 }
 
 function numberValue(row: JsonObject, key: string): number {
   const value = row[key];
-  if (typeof value !== "number") throw new Error(`The order response has an invalid ${key} value.`);
+  if (typeof value !== "number")
+    throw new Error(`The order response has an invalid ${key} value.`);
   return value;
 }
 
 function backendStatusToDisplay(status: string): OrderStatus {
   if (status === "placed" || status === "needs_attention") return "New";
-  if (status === "accepted" || status === "ready_for_pickup") return "Preparing";
+  if (status === "accepted" || status === "ready_for_pickup")
+    return "Preparing";
   if (status === "out_for_delivery") return "Out for delivery";
   if (status === "delivered") return "Delivered";
   if (status === "cancelled") return "Cancelled";
@@ -78,17 +86,31 @@ function formatDateTime(value: string | null) {
 function formatAge(value: string | null, status: OrderStatus) {
   if (!value) return "Just now";
   if (status === "Delivered") return `Delivered ${formatTime(value)}`;
-  const minutes = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 60_000));
+  const minutes = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).getTime()) / 60_000),
+  );
   return minutes < 1 ? "Just now" : `${minutes} min`;
 }
 
 function addressText(value: Json | undefined) {
   if (typeof value === "string") return value;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return "Address unavailable";
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return "Address unavailable";
   const address = value as JsonObject;
-  const parts = ["address_line_1", "address_line_2", "locality", "city", "state", "postal_code"]
+  const parts = [
+    "address_line_1",
+    "address_line_2",
+    "locality",
+    "city",
+    "state",
+    "postal_code",
+  ]
     .map((key) => address[key])
-    .filter((part): part is string => typeof part === "string" && Boolean(part.trim()));
+    .filter(
+      (part): part is string =>
+        typeof part === "string" && Boolean(part.trim()),
+    );
   return parts.join(", ") || "Address unavailable";
 }
 
@@ -107,11 +129,13 @@ function timelineFor(row: JsonObject, status: OrderStatus): TimelineItem[] {
   for (const event of events) {
     const item = asObject(event, "The order response has an invalid event.");
     const label = labels.get(stringValue(item, "event_type"));
-    if (label) completed.set(label, formatTime(nullableStringValue(item, "created_at")));
+    if (label)
+      completed.set(label, formatTime(nullableStringValue(item, "created_at")));
   }
-  const stages = status === "Cancelled"
-    ? ["Order received", "Accepted", "Cancelled"]
-    : ["Order received", "Accepted", "Out for delivery", "Delivered"];
+  const stages =
+    status === "Cancelled"
+      ? ["Order received", "Accepted", "Cancelled"]
+      : ["Order received", "Accepted", "Out for delivery", "Delivered"];
   return stages.map((label) => ({
     label,
     time: completed.get(label) ?? "—",
@@ -124,21 +148,31 @@ function parseOrder(value: Json): Order {
   const backendStatus = stringValue(row, "status");
   const status = backendStatusToDisplay(backendStatus);
   const fullAddress = addressText(row.delivery_address);
-  const items = asArray(row.items, "The order response is missing items.").map((item) => {
-    const parsed = asObject(item, "The order response has an invalid item.");
-    return {
-      name: stringValue(parsed, "product_name"),
-      qty: numberValue(parsed, "quantity"),
-      variants: asArray(parsed.options, "The order response is missing item options.").map((option) => {
-        const value = asObject(option, "The order response has an invalid item option.");
-        const quantity = numberValue(value, "quantity");
-        const name = stringValue(value, "option_name");
-        return quantity > 1 ? `${quantity} × ${name}` : name;
-      }),
-      instructions: nullableStringValue(parsed, "customer_note") ?? undefined,
-    };
-  });
-  const placedAt = nullableStringValue(row, "placed_at") ?? nullableStringValue(row, "created_at");
+  const items = asArray(row.items, "The order response is missing items.").map(
+    (item) => {
+      const parsed = asObject(item, "The order response has an invalid item.");
+      return {
+        name: stringValue(parsed, "product_name"),
+        qty: numberValue(parsed, "quantity"),
+        variants: asArray(
+          parsed.options,
+          "The order response is missing item options.",
+        ).map((option) => {
+          const value = asObject(
+            option,
+            "The order response has an invalid item option.",
+          );
+          const quantity = numberValue(value, "quantity");
+          const name = stringValue(value, "option_name");
+          return quantity > 1 ? `${quantity} × ${name}` : name;
+        }),
+        instructions: nullableStringValue(parsed, "customer_note") ?? undefined,
+      };
+    },
+  );
+  const placedAt =
+    nullableStringValue(row, "placed_at") ??
+    nullableStringValue(row, "created_at");
   const note = nullableStringValue(row, "customer_note");
 
   return {
@@ -146,6 +180,7 @@ function parseOrder(value: Json): Order {
     backendStatus,
     id: stringValue(row, "order_number"),
     status,
+    placedAt,
     deliveredAt: nullableStringValue(row, "delivered_at"),
     cancelledAt: nullableStringValue(row, "cancelled_at"),
     customer: stringValue(row, "customer_name"),
@@ -178,31 +213,37 @@ export async function getOrdersForLocation(
   // server (see list_orders_for_location) -- an order that is still open
   // must never disappear from the queue just because it falls outside the
   // selected range.
-  const { data, error } = await supabase.schema("ordering").rpc("list_orders_for_location", {
-    p_business_id: scope.businessId,
-    p_location_id: scope.locationId,
-    p_limit: 100,
-    p_from: dateWindow?.from,
-    p_to: dateWindow?.to,
-  });
+  const { data, error } = await supabase
+    .schema("ordering")
+    .rpc("list_orders_for_location", {
+      p_business_id: scope.businessId,
+      p_location_id: scope.locationId,
+      p_limit: 100,
+      p_from: dateWindow?.from,
+      p_to: dateWindow?.to,
+    });
   throwIfError(error);
   if (!Array.isArray(data)) throw new Error("The order response is invalid.");
   return data.map(parseOrder);
 }
 
-export async function transitionOrderAtLocation(input: OrderScope & {
-  orderId: string;
-  expectedStatus: string;
-  newStatus: string;
-  cancelReason?: string | null;
-}) {
-  const { error } = await supabase.schema("ordering").rpc("transition_order_at_location", {
-    p_business_id: input.businessId,
-    p_location_id: input.locationId,
-    p_order_id: input.orderId,
-    p_expected_status: input.expectedStatus,
-    p_new_status: input.newStatus,
-    p_cancel_reason: input.cancelReason ?? undefined,
-  });
+export async function transitionOrderAtLocation(
+  input: OrderScope & {
+    orderId: string;
+    expectedStatus: string;
+    newStatus: string;
+    cancelReason?: string | null;
+  },
+) {
+  const { error } = await supabase
+    .schema("ordering")
+    .rpc("transition_order_at_location", {
+      p_business_id: input.businessId,
+      p_location_id: input.locationId,
+      p_order_id: input.orderId,
+      p_expected_status: input.expectedStatus,
+      p_new_status: input.newStatus,
+      p_cancel_reason: input.cancelReason ?? undefined,
+    });
   throwIfError(error);
 }

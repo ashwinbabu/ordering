@@ -28,7 +28,10 @@ function formatClockTime(hhmm: string) {
 }
 
 function scheduleLabelFor(
-  hours: { isClosed: boolean; opensAt: string | null; closesAt: string | null } | null | undefined,
+  hours:
+    | { isClosed: boolean; opensAt: string | null; closesAt: string | null }
+    | null
+    | undefined,
 ) {
   if (!hours || hours.isClosed || !hours.closesAt) return "Closed today";
   return `Open until ${formatClockTime(hours.closesAt)}`;
@@ -84,7 +87,9 @@ export function OrderingStatusProvider({ children }: { children: ReactNode }) {
         orderingOpen: statusQuery.data ?? true,
         loading: statusQuery.isPending || statusMutation.isPending,
         canManage,
-        scheduleLabel: scheduleQuery.data ? scheduleLabelFor(scheduleQuery.data) : null,
+        scheduleLabel: scheduleQuery.data
+          ? scheduleLabelFor(scheduleQuery.data)
+          : null,
         pauseOrdering: () => setStatus(false),
         resumeOrdering: () => setStatus(true),
       }}

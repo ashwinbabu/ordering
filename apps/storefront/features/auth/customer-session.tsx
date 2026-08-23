@@ -1,5 +1,14 @@
 import type { Session } from "@supabase/supabase-js";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { splitE164, type PhoneNumber } from "../../domain/phone";
 import type { CustomerProfile } from "../../domain/storefront";
 import { getSupabaseClient } from "../../lib/supabase/client";
@@ -32,6 +41,18 @@ interface CustomerSessionValue {
    */
   getCustomerId: () => string | null;
   isLoading: boolean;
+  /**
+   * True only when a Supabase session exists but the core.customers row
+   * lookup for it genuinely failed (the select itself errored) -- not when
+   * it simply found no row. Lets a caller like RequireCustomer distinguish
+   * "not signed in" (customer === null, no error: show the auth sheet) from
+   * "signed in, but we couldn't read their profile" (a real backend/data
+   * problem re-running OTP cannot fix), rather than treating both the same
+   * way `customer === null` alone would.
+   */
+  customerLoadError: boolean;
+  /** Re-runs the same core.customers lookup loadCustomer() performs, for a "Try again" action after customerLoadError. */
+  retryCustomerLoad: () => void;
   signOut: () => Promise<void>;
   /**
    * Merges a patch into the in-memory profile only. There is no RLS write
@@ -55,6 +76,7 @@ function profileFromRow(row: CustomerRow): CustomerProfile {
   const phone = splitE164(row.phone_e164);
   return {
     name: row.display_name ?? "",
+    countryIso2: phone.countryIso2,
     countryCode: phone.countryCode,
     phone: phone.phone,
     email: row.email ?? undefined,
@@ -68,8 +90,14 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [baseProfile, setBaseProfile] = useState<CustomerProfile | null>(null);
   const [demoProfile, setDemoProfile] = useState<CustomerProfile | null>(null);
-  const [localOverride, setLocalOverride] = useState<Partial<CustomerProfile>>({});
+  const [localOverride, setLocalOverride] = useState<Partial<CustomerProfile>>(
+    {},
+  );
   const [customerLoaded, setCustomerLoaded] = useState(true);
+  const [customerLoadError, setCustomerLoadError] = useState(false);
+  // Bumped by retryCustomerLoad() to re-run the effect below without
+  // depending on `session` having actually changed.
+  const [reloadToken, setReloadToken] = useState(0);
   // True only once core.customer_businesses is confirmed to exist for this
   // session -- the Realtime RLS policy for the customer-orders channel
   // requires that row, and it's created by a separate async step below, so
@@ -93,7 +121,11 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   // order-change notifications while on any screen, with exactly one
   // subscription for the whole session -- re-subscribing automatically if
   // they sign in/out (authUserId changes) via the hook's own cleanup.
-  useCustomerOrdersChannel(session?.user.id ?? null, customerId, customerBusinessReady);
+  useCustomerOrdersChannel(
+    session?.user.id ?? null,
+    customerId,
+    customerBusinessReady,
+  );
 
   useEffect(() => {
     let active = true;
@@ -105,7 +137,9 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
       setSessionLoaded(true);
     });
 
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, nextSession) => {
+    const {
+      data: { subscription },
+    } = client.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
       setSessionLoaded(true);
     });
@@ -118,7 +152,14 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    // A session transition invalidates the previous customer lookup. Keep
+    // gated routes in their loading state until the new session's customer
+    // row has been resolved; otherwise RequireCustomer can reopen the OTP
+    // sheet during the small window between session installation and profile
+    // hydration.
+    setCustomerLoaded(false);
     setCustomerBusinessReady(false);
+    setCustomerLoadError(false);
 
     async function loadCustomer() {
       const fetchCustomer = session
@@ -134,7 +175,16 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
       if (!active) return;
 
       if (error || !data) {
-        if (error) console.error("Could not load the signed-in customer profile.", error);
+        if (error) {
+          console.error(
+            "Could not load the signed-in customer profile.",
+            error,
+          );
+          // Only a genuine read failure, never a legitimate "no row yet" --
+          // that case (no error, just !data) stays on the ordinary
+          // sign-in path below via customer === null.
+          setCustomerLoadError(true);
+        }
         setCurrentCustomerId(null);
         setBaseProfile(null);
         setLocalOverride({});
@@ -159,7 +209,10 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
         await resolveCustomerBusinessId(storefrontContext.businessId, row.id);
         if (active) setCustomerBusinessReady(true);
       } catch (linkError) {
-        console.error("Could not link this customer to the current business.", linkError);
+        console.error(
+          "Could not link this customer to the current business.",
+          linkError,
+        );
       }
     }
 
@@ -168,7 +221,12 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     return () => {
       active = false;
     };
-  }, [session, setCurrentCustomerId]);
+  }, [session, setCurrentCustomerId, reloadToken]);
+
+  const retryCustomerLoad = useCallback(
+    () => setReloadToken((token) => token + 1),
+    [],
+  );
 
   async function signOut() {
     setDemoProfile(null);
@@ -184,7 +242,13 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
   }
 
   function completeDemoSignIn(phone: PhoneNumber) {
-    setDemoProfile({ name: "", countryCode: phone.countryCode, phone: phone.phone, isPhoneVerified: true });
+    setDemoProfile({
+      name: "",
+      countryIso2: phone.countryIso2,
+      countryCode: phone.countryCode,
+      phone: phone.phone,
+      isPhoneVerified: true,
+    });
     setLocalOverride({});
   }
 
@@ -198,16 +262,25 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     customerId,
     getCustomerId,
     isLoading: !sessionLoaded || !customerLoaded,
+    customerLoadError,
+    retryCustomerLoad,
     signOut,
     updateLocalProfile,
     completeDemoSignIn,
   };
 
-  return <CustomerSessionContext.Provider value={value}>{children}</CustomerSessionContext.Provider>;
+  return (
+    <CustomerSessionContext.Provider value={value}>
+      {children}
+    </CustomerSessionContext.Provider>
+  );
 }
 
 export function useCustomerSession() {
   const context = useContext(CustomerSessionContext);
-  if (!context) throw new Error("useCustomerSession must be used within CustomerSessionProvider.");
+  if (!context)
+    throw new Error(
+      "useCustomerSession must be used within CustomerSessionProvider.",
+    );
   return context;
 }

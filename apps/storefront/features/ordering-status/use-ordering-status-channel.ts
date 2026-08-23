@@ -13,7 +13,10 @@ import { getSupabaseClient } from "../../lib/supabase/client";
  * `private: true` — the two ends have to agree or no message arrives. The
  * payload carries only the location's accepting-orders boolean.
  */
-export function useOrderingStatusChannel(businessId: string, locationId: string) {
+export function useOrderingStatusChannel(
+  businessId: string,
+  locationId: string,
+) {
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -27,7 +30,9 @@ export function useOrderingStatusChannel(businessId: string, locationId: string)
         queryClient.setQueryData<StorefrontMenu>(
           storefrontMenuQueryKey(businessId, locationId),
           (menu) =>
-            menu ? { ...menu, orderingEnabled: payload.orderingEnabled as boolean } : menu,
+            menu
+              ? { ...menu, orderingEnabled: payload.orderingEnabled as boolean }
+              : menu,
         );
       })
       .subscribe();

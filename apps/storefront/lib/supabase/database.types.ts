@@ -30,6 +30,7 @@ export type Database = {
           phone: string | null
           postal_code: string | null
           state: string
+          storefront_domain: string | null
         }
         Insert: {
           address_line_1: string
@@ -46,6 +47,7 @@ export type Database = {
           phone?: string | null
           postal_code?: string | null
           state: string
+          storefront_domain?: string | null
         }
         Update: {
           address_line_1?: string
@@ -62,6 +64,7 @@ export type Database = {
           phone?: string | null
           postal_code?: string | null
           state?: string
+          storefront_domain?: string | null
         }
         Relationships: [
           {
@@ -151,6 +154,41 @@ export type Database = {
         }
         Relationships: []
       }
+      customer_auth_verifications: {
+        Row: {
+          channel: string
+          created_at: string
+          customer_id: string | null
+          id: string
+          identifier_e164: string
+          token_hash: string
+        }
+        Insert: {
+          channel?: string
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          identifier_e164: string
+          token_hash: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          customer_id?: string | null
+          id?: string
+          identifier_e164?: string
+          token_hash?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_auth_verifications_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_business_addresses: {
         Row: {
           address_line_1: string
@@ -169,9 +207,13 @@ export type Database = {
           locality: string
           longitude: number
           postal_code: string | null
+          preferred_contact_method: string | null
           recipient_name: string
           recipient_phone: string
+          recipient_phone_country_iso2: string | null
+          recipient_phone_e164: string | null
           state: string
+          telegram_username: string | null
           updated_at: string
         }
         Insert: {
@@ -191,9 +233,13 @@ export type Database = {
           locality: string
           longitude: number
           postal_code?: string | null
+          preferred_contact_method?: string | null
           recipient_name: string
           recipient_phone: string
+          recipient_phone_country_iso2?: string | null
+          recipient_phone_e164?: string | null
           state: string
+          telegram_username?: string | null
           updated_at?: string
         }
         Update: {
@@ -213,9 +259,13 @@ export type Database = {
           locality?: string
           longitude?: number
           postal_code?: string | null
+          preferred_contact_method?: string | null
           recipient_name?: string
           recipient_phone?: string
+          recipient_phone_country_iso2?: string | null
+          recipient_phone_e164?: string | null
           state?: string
+          telegram_username?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -296,8 +346,10 @@ export type Database = {
           email: string | null
           email_verified_at: string | null
           id: string
-          phone_e164: string
+          phone_e164: string | null
           phone_verified_at: string | null
+          preferred_contact_method: string | null
+          preferred_contact_phone_e164: string | null
           updated_at: string
         }
         Insert: {
@@ -307,8 +359,10 @@ export type Database = {
           email?: string | null
           email_verified_at?: string | null
           id?: string
-          phone_e164: string
+          phone_e164?: string | null
           phone_verified_at?: string | null
+          preferred_contact_method?: string | null
+          preferred_contact_phone_e164?: string | null
           updated_at?: string
         }
         Update: {
@@ -318,8 +372,10 @@ export type Database = {
           email?: string | null
           email_verified_at?: string | null
           id?: string
-          phone_e164?: string
+          phone_e164?: string | null
           phone_verified_at?: string | null
+          preferred_contact_method?: string | null
+          preferred_contact_phone_e164?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -376,6 +432,52 @@ export type Database = {
         }
         Returns: string
       }
+      create_customer_business_address_v2:
+        | {
+            Args: {
+              p_address_line_1: string
+              p_address_line_2?: string
+              p_city: string
+              p_customer_business_id: string
+              p_delivery_instructions?: string
+              p_is_default?: boolean
+              p_label: string
+              p_landmark?: string
+              p_latitude: number
+              p_locality: string
+              p_longitude: number
+              p_postal_code?: string
+              p_preferred_contact_method: string
+              p_recipient_name: string
+              p_recipient_phone_e164: string
+              p_state: string
+              p_telegram_username: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_address_line_1: string
+              p_address_line_2?: string
+              p_city: string
+              p_customer_business_id: string
+              p_delivery_instructions?: string
+              p_is_default?: boolean
+              p_label: string
+              p_landmark?: string
+              p_latitude: number
+              p_locality: string
+              p_longitude: number
+              p_postal_code?: string
+              p_preferred_contact_method: string
+              p_recipient_name: string
+              p_recipient_phone_country_iso2: string
+              p_recipient_phone_e164: string
+              p_state: string
+              p_telegram_username: string
+            }
+            Returns: string
+          }
       delete_customer_business_address: {
         Args: { p_address_id: string }
         Returns: undefined
@@ -412,6 +514,63 @@ export type Database = {
           p_state: string
         }
         Returns: string
+      }
+      update_customer_business_address_v2:
+        | {
+            Args: {
+              p_address_id: string
+              p_address_line_1: string
+              p_address_line_2?: string
+              p_city: string
+              p_delivery_instructions?: string
+              p_is_default: boolean
+              p_label: string
+              p_landmark?: string
+              p_latitude: number
+              p_locality: string
+              p_longitude: number
+              p_postal_code?: string
+              p_preferred_contact_method: string
+              p_recipient_name: string
+              p_recipient_phone_e164: string
+              p_state: string
+              p_telegram_username: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_address_id: string
+              p_address_line_1: string
+              p_address_line_2?: string
+              p_city: string
+              p_delivery_instructions?: string
+              p_is_default: boolean
+              p_label: string
+              p_landmark?: string
+              p_latitude: number
+              p_locality: string
+              p_longitude: number
+              p_postal_code?: string
+              p_preferred_contact_method: string
+              p_recipient_name: string
+              p_recipient_phone_country_iso2: string
+              p_recipient_phone_e164: string
+              p_state: string
+              p_telegram_username: string
+            }
+            Returns: string
+          }
+      update_customer_contact: {
+        Args: {
+          p_contact_phone_e164: string
+          p_preferred_contact_method: string
+        }
+        Returns: Json
+      }
+      update_customer_profile: {
+        Args: { p_display_name: string; p_email?: string }
+        Returns: Json
       }
     }
     Enums: {
@@ -881,6 +1040,98 @@ export type Database = {
         }
         Relationships: []
       }
+      location_featured_products: {
+        Row: {
+          created_at: string
+          ends_at: string | null
+          is_active: boolean
+          location_id: string
+          product_id: string
+          sort_order: number
+          starts_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          ends_at?: string | null
+          is_active?: boolean
+          location_id: string
+          product_id: string
+          sort_order?: number
+          starts_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          ends_at?: string | null
+          is_active?: boolean
+          location_id?: string
+          product_id?: string
+          sort_order?: number
+          starts_at?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "location_featured_products_product_location_fkey"
+            columns: ["product_id", "location_id"]
+            isOneToOne: true
+            referencedRelation: "product_locations"
+            referencedColumns: ["product_id", "location_id"]
+          },
+        ]
+      }
+      location_payment_providers: {
+        Row: {
+          auth_mode: string
+          configuration_status: string
+          created_at: string
+          credentials_expires_at: string | null
+          credentials_secret_id: string | null
+          environment: string
+          id: string
+          is_active: boolean
+          location_id: string
+          provider: string
+          provider_account_id: string | null
+          public_config: Json
+          updated_at: string
+          webhook_secret_id: string | null
+        }
+        Insert: {
+          auth_mode?: string
+          configuration_status?: string
+          created_at?: string
+          credentials_expires_at?: string | null
+          credentials_secret_id?: string | null
+          environment?: string
+          id?: string
+          is_active?: boolean
+          location_id: string
+          provider: string
+          provider_account_id?: string | null
+          public_config?: Json
+          updated_at?: string
+          webhook_secret_id?: string | null
+        }
+        Update: {
+          auth_mode?: string
+          configuration_status?: string
+          created_at?: string
+          credentials_expires_at?: string | null
+          credentials_secret_id?: string | null
+          environment?: string
+          id?: string
+          is_active?: boolean
+          location_id?: string
+          provider?: string
+          provider_account_id?: string | null
+          public_config?: Json
+          updated_at?: string
+          webhook_secret_id?: string | null
+        }
+        Relationships: []
+      }
       menu_categories: {
         Row: {
           business_id: string
@@ -1197,6 +1448,9 @@ export type Database = {
           customer_phone_snapshot: string
           delivered_at: string | null
           delivery_address_snapshot: Json | null
+          delivery_contact_method_snapshot: string | null
+          delivery_contact_phone_snapshot: string | null
+          delivery_contact_telegram_username_snapshot: string | null
           delivery_distance_km: number | null
           delivery_fee: number
           delivery_zone_id: string | null
@@ -1214,6 +1468,7 @@ export type Database = {
           normal_delivery_fee: number
           order_number: string
           out_for_delivery_at: string | null
+          payment_method: string
           payment_status: string
           placed_at: string | null
           restaurant_note: string | null
@@ -1242,6 +1497,9 @@ export type Database = {
           customer_phone_snapshot: string
           delivered_at?: string | null
           delivery_address_snapshot?: Json | null
+          delivery_contact_method_snapshot?: string | null
+          delivery_contact_phone_snapshot?: string | null
+          delivery_contact_telegram_username_snapshot?: string | null
           delivery_distance_km?: number | null
           delivery_fee: number
           delivery_zone_id?: string | null
@@ -1259,6 +1517,7 @@ export type Database = {
           normal_delivery_fee: number
           order_number: string
           out_for_delivery_at?: string | null
+          payment_method: string
           payment_status: string
           placed_at?: string | null
           restaurant_note?: string | null
@@ -1287,6 +1546,9 @@ export type Database = {
           customer_phone_snapshot?: string
           delivered_at?: string | null
           delivery_address_snapshot?: Json | null
+          delivery_contact_method_snapshot?: string | null
+          delivery_contact_phone_snapshot?: string | null
+          delivery_contact_telegram_username_snapshot?: string | null
           delivery_distance_km?: number | null
           delivery_fee?: number
           delivery_zone_id?: string | null
@@ -1304,6 +1566,7 @@ export type Database = {
           normal_delivery_fee?: number
           order_number?: string
           out_for_delivery_at?: string | null
+          payment_method?: string
           payment_status?: string
           placed_at?: string | null
           restaurant_note?: string | null
@@ -1580,11 +1843,14 @@ export type Database = {
         Row: {
           accept_orders_when_closed: boolean
           aggregator_benchmark_rate: number | null
+          cash_on_delivery_enabled: boolean
           created_at: string
           currency: string
+          default_payment_method: string
           default_prep_minutes: number
           location_id: string
           minimum_order_value: number
+          online_payments_enabled: boolean
           ordering_enabled: boolean
           ordering_mode: string
           skrowia_commission_rate: number
@@ -1595,11 +1861,14 @@ export type Database = {
         Insert: {
           accept_orders_when_closed?: boolean
           aggregator_benchmark_rate?: number | null
+          cash_on_delivery_enabled?: boolean
           created_at?: string
           currency: string
+          default_payment_method?: string
           default_prep_minutes: number
           location_id: string
           minimum_order_value?: number
+          online_payments_enabled?: boolean
           ordering_enabled?: boolean
           ordering_mode: string
           skrowia_commission_rate: number
@@ -1610,11 +1879,14 @@ export type Database = {
         Update: {
           accept_orders_when_closed?: boolean
           aggregator_benchmark_rate?: number | null
+          cash_on_delivery_enabled?: boolean
           created_at?: string
           currency?: string
+          default_payment_method?: string
           default_prep_minutes?: number
           location_id?: string
           minimum_order_value?: number
+          online_payments_enabled?: boolean
           ordering_enabled?: boolean
           ordering_mode?: string
           skrowia_commission_rate?: number
@@ -1711,6 +1983,19 @@ export type Database = {
           p_customer_note?: string
           p_fulfillment_type: string
           p_order_id: string
+          p_payment_method?: string
+          p_trusted_delivery_minutes?: number
+        }
+        Returns: Json
+      }
+      checkout_cart_v2: {
+        Args: {
+          p_cart_id: string
+          p_customer_business_address_id?: string
+          p_customer_note?: string
+          p_fulfillment_type: string
+          p_order_id: string
+          p_payment_method?: string
           p_trusted_delivery_minutes?: number
         }
         Returns: Json
@@ -1757,22 +2042,46 @@ export type Database = {
         }
         Returns: Json
       }
+      get_featured_product_ids: {
+        Args: { p_business_id: string; p_location_id: string }
+        Returns: Json
+      }
+      get_location_payment_configuration: {
+        Args: { p_business_id: string; p_location_id: string }
+        Returns: Json
+      }
       get_menu: {
         Args: { p_business_id: string; p_location_id: string }
         Returns: Json
       }
       get_order: { Args: { p_order_id: string }; Returns: Json }
       get_order_finance: { Args: { p_order_id: string }; Returns: Json }
+      get_payment_provider_for_order: {
+        Args: { p_order_id: string }
+        Returns: Json
+      }
+      get_payment_provider_webhook_config: {
+        Args: { p_provider_configuration_id: string }
+        Returns: Json
+      }
       get_public_menu: {
         Args: { p_business_slug: string; p_location_id: string }
         Returns: Json
       }
       get_storefront_menu: { Args: { p_location_id: string }; Returns: Json }
+      get_storefront_settings: {
+        Args: { p_location_id: string }
+        Returns: Json
+      }
       get_telegram_message_payload: {
         Args: { p_order_id: string }
         Returns: Json
       }
       ingest_analytics_events: { Args: { p_events: Json }; Returns: Json }
+      list_customer_orders: {
+        Args: { p_business_id: string; p_limit?: number; p_location_id: string }
+        Returns: Json
+      }
       list_orders: {
         Args: {
           p_before_created_at?: string
@@ -1788,9 +2097,11 @@ export type Database = {
           p_before_created_at?: string
           p_before_id?: string
           p_business_id: string
+          p_from?: string
           p_limit?: number
           p_location_id: string
           p_statuses?: string[]
+          p_to?: string
         }
         Returns: Json
       }
@@ -1883,6 +2194,10 @@ export type Database = {
         }
         Returns: Json
       }
+      resolve_storefront_context: {
+        Args: { p_hostname: string }
+        Returns: Json
+      }
       save_business_settings: {
         Args: {
           p_baseline: Json
@@ -1892,6 +2207,34 @@ export type Database = {
         }
         Returns: undefined
       }
+      save_featured_product_ids: {
+        Args: {
+          p_business_id: string
+          p_location_id: string
+          p_product_ids: string[]
+        }
+        Returns: undefined
+      }
+      save_location_payment_methods:
+        | {
+            Args: {
+              p_business_id: string
+              p_cash_on_delivery_enabled: boolean
+              p_location_id: string
+              p_online_payments_enabled: boolean
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_business_id: string
+              p_cash_on_delivery_enabled: boolean
+              p_default_payment_method: string
+              p_location_id: string
+              p_online_payments_enabled: boolean
+            }
+            Returns: Json
+          }
       save_menu_changes: {
         Args: {
           p_baseline: Json
@@ -1905,6 +2248,7 @@ export type Database = {
         Args: {
           p_baseline: Json
           p_business_id: string
+          p_featured_product_ids?: string[]
           p_location_id: string
           p_menu: Json
         }

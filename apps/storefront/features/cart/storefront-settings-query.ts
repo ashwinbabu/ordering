@@ -1,12 +1,24 @@
 import { useQuery } from "@tanstack/react-query";
 import { getStorefrontSettings } from "./api/storefront-settings-api";
-import { storefrontContext, type StorefrontContext } from "../../lib/storefront/storefront-context";
+import {
+  storefrontContext,
+  type StorefrontContext,
+} from "../../lib/storefront/storefront-context";
 
-export function storefrontSettingsQueryKey(context: StorefrontContext = storefrontContext) {
-  return ["storefront", "settings", context.businessId, context.locationId] as const;
+export function storefrontSettingsQueryKey(
+  context: StorefrontContext = storefrontContext,
+) {
+  return [
+    "storefront",
+    "settings",
+    context.businessId,
+    context.locationId,
+  ] as const;
 }
 
-export function useStorefrontSettingsQuery(context: StorefrontContext = storefrontContext) {
+export function useStorefrontSettingsQuery(
+  context: StorefrontContext = storefrontContext,
+) {
   return useQuery({
     queryKey: storefrontSettingsQueryKey(context),
     queryFn: () => getStorefrontSettings(context.locationId),

@@ -171,11 +171,11 @@ The floating category control must coexist cleanly with the sticky cart CTA.
 
 There are two separate add paths:
 
-| Action | Result |
-| --- | --- |
-| Tap the product surface outside the add control | Open product-detail bottom sheet |
-| Tap Add on a simple product | Add the base configuration immediately |
-| Tap Add on a configurable product | Open configuration sheet before adding |
+| Action                                          | Result                                 |
+| ----------------------------------------------- | -------------------------------------- |
+| Tap the product surface outside the add control | Open product-detail bottom sheet       |
+| Tap Add on a simple product                     | Add the base configuration immediately |
+| Tap Add on a configurable product               | Open configuration sheet before adding |
 
 ### Product-detail sheet
 

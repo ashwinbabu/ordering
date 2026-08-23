@@ -54,15 +54,39 @@ function codeFromStatus(status: number | undefined): CustomerAuthErrorCode {
 }
 
 /**
- * Sends an MSG91 access token to customer-auth-msg91, which verifies it
- * against MSG91 server-side and returns a Supabase session. Adopting that
- * session into this browser's client is what actually signs the customer in.
+ * The Supabase session tokens customer-auth-msg91 returns, once its
+ * single-use MSG91 access token has been redeemed server-side. Holding
+ * these separately from VerifiedCustomer lets a caller retry
+ * installSupabaseSession alone (setSession is a local, idempotent-enough
+ * operation) without ever calling the Edge Function - and therefore MSG91's
+ * one-shot token exchange - a second time.
  */
-export async function exchangeMsg91AccessToken(accessToken: string): Promise<VerifiedCustomer> {
+export interface Msg91ExchangeResult {
+  accessToken: string;
+  refreshToken: string;
+  customerId: string;
+  phoneE164: string;
+}
+
+/**
+ * Sends an MSG91 access token to customer-auth-msg91, which verifies it
+ * against MSG91 server-side and mints a Supabase session. This is a one-shot
+ * call: the Edge Function's replay guard burns the MSG91 access token on the
+ * first request it accepts, so this must never be called twice with the
+ * same accessToken (see the OTP verification investigation - Case A/B in
+ * the replay-semantics trace).
+ */
+export async function requestMsg91Exchange(
+  accessToken: string,
+): Promise<Msg91ExchangeResult> {
   const client = getSupabaseClient();
-  const { data, error } = await client.functions.invoke<EdgeFunctionSuccessBody>("customer-auth-msg91", {
-    body: { accessToken },
-  });
+  const { data, error } =
+    await client.functions.invoke<EdgeFunctionSuccessBody>(
+      "customer-auth-msg91",
+      {
+        body: { accessToken },
+      },
+    );
 
   if (error) {
     const context = (error as { context?: Response }).context;
@@ -82,14 +106,40 @@ export async function exchangeMsg91AccessToken(accessToken: string): Promise<Ver
   }
 
   if (!data?.access_token || !data.refresh_token) {
-    throw new CustomerAuthError("server_error", "Something went wrong. Please try again.");
+    throw new CustomerAuthError(
+      "server_error",
+      "Something went wrong. Please try again.",
+    );
   }
 
-  const { error: sessionError } = await client.auth.setSession({
-    access_token: data.access_token,
-    refresh_token: data.refresh_token,
-  });
-  if (sessionError) throw new CustomerAuthError("server_error", "Could not complete sign-in. Please try again.");
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    customerId: data.customer.id,
+    phoneE164: data.customer.phone_e164,
+  };
+}
 
-  return { customerId: data.customer.id, phoneE164: data.customer.phone_e164 };
+/**
+ * Adopts already-issued Supabase tokens into this browser's client. Unlike
+ * requestMsg91Exchange, this touches neither MSG91 nor the Edge Function, so
+ * it is safe to call again with the same `exchanged` result if a previous
+ * attempt failed (e.g. a transient local/network error) - it never risks a
+ * 703/replayed_token the way re-running the exchange would.
+ */
+export async function installSupabaseSession(
+  exchanged: Msg91ExchangeResult,
+): Promise<VerifiedCustomer> {
+  const client = getSupabaseClient();
+  const { error: sessionError } = await client.auth.setSession({
+    access_token: exchanged.accessToken,
+    refresh_token: exchanged.refreshToken,
+  });
+  if (sessionError)
+    throw new CustomerAuthError(
+      "server_error",
+      "Could not complete sign-in. Please try again.",
+    );
+
+  return { customerId: exchanged.customerId, phoneE164: exchanged.phoneE164 };
 }

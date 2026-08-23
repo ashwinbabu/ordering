@@ -32,7 +32,10 @@ interface RazorpayFailureEvent {
 
 interface RazorpayInstance {
   open(): void;
-  on(event: "payment.failed", handler: (response: RazorpayFailureEvent) => void): void;
+  on(
+    event: "payment.failed",
+    handler: (response: RazorpayFailureEvent) => void,
+  ): void;
 }
 
 declare global {
@@ -68,7 +71,12 @@ function loadRazorpayScript(): Promise<void> {
 }
 
 export type RazorpayCheckoutOutcome =
-  | { outcome: "success"; razorpayPaymentId: string; razorpayOrderId: string; razorpaySignature: string }
+  | {
+      outcome: "success";
+      razorpayPaymentId: string;
+      razorpayOrderId: string;
+      razorpaySignature: string;
+    }
   | { outcome: "dismissed" }
   | { outcome: "failed"; description?: string };
 
@@ -91,9 +99,12 @@ export interface OpenRazorpayCheckoutArgs {
  * to load, since that is the one outcome the caller cannot recover from by
  * inspecting the resolved value.
  */
-export async function openRazorpayCheckout(args: OpenRazorpayCheckoutArgs): Promise<RazorpayCheckoutOutcome> {
+export async function openRazorpayCheckout(
+  args: OpenRazorpayCheckoutArgs,
+): Promise<RazorpayCheckoutOutcome> {
   await loadRazorpayScript();
-  if (!window.Razorpay) throw new Error("Payment provider script failed to load.");
+  if (!window.Razorpay)
+    throw new Error("Payment provider script failed to load.");
 
   return new Promise<RazorpayCheckoutOutcome>((resolve) => {
     let settled = false;
@@ -124,7 +135,10 @@ export async function openRazorpayCheckout(args: OpenRazorpayCheckoutArgs): Prom
     });
 
     instance.on("payment.failed", (response) => {
-      settle({ outcome: "failed", description: response.error?.description ?? response.error?.reason });
+      settle({
+        outcome: "failed",
+        description: response.error?.description ?? response.error?.reason,
+      });
     });
 
     instance.open();

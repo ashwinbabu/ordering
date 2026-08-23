@@ -1,6 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { getDeliveryQuote } from "./api/storefront-cart-api";
-import { storefrontContext, type StorefrontContext } from "../../lib/storefront/storefront-context";
+import {
+  storefrontContext,
+  type StorefrontContext,
+} from "../../lib/storefront/storefront-context";
 
 // The authoritative delivery fee cannot be known before a destination is
 // resolved (task: do not pretend to know the delivery fee before the
@@ -13,13 +16,21 @@ export function useDeliveryQuoteQuery(
   context: StorefrontContext = storefrontContext,
 ) {
   return useQuery({
-    queryKey: ["storefront", "delivery-quote", context.locationId, destination?.latitude, destination?.longitude, foodSubtotalAfterDiscount],
-    queryFn: () => getDeliveryQuote({
-      locationId: context.locationId,
-      destinationLatitude: destination!.latitude,
-      destinationLongitude: destination!.longitude,
+    queryKey: [
+      "storefront",
+      "delivery-quote",
+      context.locationId,
+      destination?.latitude,
+      destination?.longitude,
       foodSubtotalAfterDiscount,
-    }),
+    ],
+    queryFn: () =>
+      getDeliveryQuote({
+        locationId: context.locationId,
+        destinationLatitude: destination!.latitude,
+        destinationLongitude: destination!.longitude,
+        foodSubtotalAfterDiscount,
+      }),
     enabled: Boolean(destination),
     staleTime: 30_000,
     retry: false,

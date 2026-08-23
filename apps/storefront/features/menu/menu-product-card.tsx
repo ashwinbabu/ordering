@@ -1,5 +1,9 @@
 import { Minus, Plus } from "lucide-react";
-import { formatRupees, type MenuPresentation, type MenuProduct } from "../../domain/storefront";
+import {
+  formatRupees,
+  type MenuPresentation,
+  type MenuProduct,
+} from "../../domain/storefront";
 import { dietaryInfoFor, productTagFor } from "./dietary-badge";
 import { MenuImage } from "./menu-image";
 
@@ -14,7 +18,16 @@ interface MenuProductCardProps {
   quantity: number;
 }
 
-export function MenuProductCard({ isAcceptingOrders, onAdd, onAdjustQuantity, onQuantityChange, onView, presentation, product, quantity }: MenuProductCardProps) {
+export function MenuProductCard({
+  isAcceptingOrders,
+  onAdd,
+  onAdjustQuantity,
+  onQuantityChange,
+  onView,
+  presentation,
+  product,
+  quantity,
+}: MenuProductCardProps) {
   const isAvailable = product.availability === "available";
   const isConfigurable = (product.optionGroups?.length ?? 0) > 0;
   const dietaryInfo = dietaryInfoFor(product.badges);
@@ -30,7 +43,13 @@ export function MenuProductCard({ isAcceptingOrders, onAdd, onAdjustQuantity, on
         type="button"
         onClick={() => onView(product)}
       >
-        {product.imageUrl ? <MenuImage src={product.imageUrl} alt={product.name} className="product-card__image" /> : null}
+        {product.imageUrl ? (
+          <MenuImage
+            src={product.imageUrl}
+            alt={product.name}
+            className="product-card__image"
+          />
+        ) : null}
         <span className="product-card__body">
           <span className="product-card__title-row">
             {dietaryInfo ? (
@@ -43,43 +62,85 @@ export function MenuProductCard({ isAcceptingOrders, onAdd, onAdjustQuantity, on
             ) : null}
             <strong>{product.name}</strong>
           </span>
-          {productTag ? <span className="eyebrow-tag">{productTag}</span> : null}
-          <span className="product-card__description">{product.description}</span>
-          <strong className="product-price">{formatRupees(product.price)}</strong>
+          {productTag ? (
+            <span className="eyebrow-tag">{productTag}</span>
+          ) : null}
+          <span className="product-card__description">
+            {product.description}
+          </span>
+          <strong className="product-price">
+            {formatRupees(product.price)}
+          </strong>
         </span>
       </button>
       {isAvailable && isConfigurable && quantity > 0 ? (
-        <div className="quantity-control" aria-label={`Quantity of ${product.name}`}>
-          <button type="button" aria-label={`Remove one ${product.name}`} onClick={() => onAdjustQuantity(product.id, -1)}>
+        <div
+          className="quantity-control"
+          aria-label={`Quantity of ${product.name}`}
+        >
+          <button
+            type="button"
+            aria-label={`Remove one ${product.name}`}
+            onClick={() => onAdjustQuantity(product.id, -1)}
+          >
             <Minus aria-hidden="true" size={15} strokeWidth={2.5} />
           </button>
           <span>{quantity}</span>
-          <button type="button" aria-label={`Add one ${product.name}`} disabled={!isAcceptingOrders} onClick={() => onAdjustQuantity(product.id, 1)}>
+          <button
+            type="button"
+            aria-label={`Add one ${product.name}`}
+            disabled={!isAcceptingOrders}
+            onClick={() => onAdjustQuantity(product.id, 1)}
+          >
             <Plus aria-hidden="true" size={15} strokeWidth={2.5} />
           </button>
         </div>
       ) : isAvailable && isConfigurable ? (
-        <button className="add-button" type="button" disabled={!isAcceptingOrders} onClick={() => onAdd(product)}>
+        <button
+          className="add-button"
+          type="button"
+          disabled={!isAcceptingOrders}
+          onClick={() => onAdd(product)}
+        >
           <Plus aria-hidden="true" size={15} strokeWidth={2.5} />
           Add
         </button>
-      ) : isAvailable ? quantity > 0 ? (
-        <div className="quantity-control" aria-label={`Quantity of ${product.name}`}>
-          {/* Removing stays available while ordering is paused so a customer
+      ) : isAvailable ? (
+        quantity > 0 ? (
+          <div
+            className="quantity-control"
+            aria-label={`Quantity of ${product.name}`}
+          >
+            {/* Removing stays available while ordering is paused so a customer
               can still undo an accidental tap; only adding is blocked. */}
-          <button type="button" aria-label={`Remove one ${product.name}`} onClick={() => onQuantityChange(product.id, quantity - 1)}>
-            <Minus aria-hidden="true" size={15} strokeWidth={2.5} />
-          </button>
-          <span>{quantity}</span>
-          <button type="button" aria-label={`Add one ${product.name}`} disabled={!isAcceptingOrders} onClick={() => onQuantityChange(product.id, quantity + 1)}>
+            <button
+              type="button"
+              aria-label={`Remove one ${product.name}`}
+              onClick={() => onQuantityChange(product.id, quantity - 1)}
+            >
+              <Minus aria-hidden="true" size={15} strokeWidth={2.5} />
+            </button>
+            <span>{quantity}</span>
+            <button
+              type="button"
+              aria-label={`Add one ${product.name}`}
+              disabled={!isAcceptingOrders}
+              onClick={() => onQuantityChange(product.id, quantity + 1)}
+            >
+              <Plus aria-hidden="true" size={15} strokeWidth={2.5} />
+            </button>
+          </div>
+        ) : (
+          <button
+            className="add-button"
+            type="button"
+            disabled={!isAcceptingOrders}
+            onClick={() => onAdd(product)}
+          >
             <Plus aria-hidden="true" size={15} strokeWidth={2.5} />
+            Add
           </button>
-        </div>
-      ) : (
-        <button className="add-button" type="button" disabled={!isAcceptingOrders} onClick={() => onAdd(product)}>
-          <Plus aria-hidden="true" size={15} strokeWidth={2.5} />
-          Add
-        </button>
+        )
       ) : (
         <span className="unavailable-pill">Unavailable</span>
       )}

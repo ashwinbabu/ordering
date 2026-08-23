@@ -1,7 +1,20 @@
 import { getSupabaseClient } from "../../../lib/supabase/client";
 import { callUntypedRpc } from "../../../lib/supabase/untyped-rpc";
-import { readArray, readNullableNumber, readNullableString, readNumber, readRecord, readString } from "../../../lib/supabase/json-parsing";
-import type { DeliveryAddress, OrderLineItem, OrderPaymentStatus, OrderStatus, StorefrontOrder } from "../../../domain/storefront";
+import {
+  readArray,
+  readNullableNumber,
+  readNullableString,
+  readNumber,
+  readRecord,
+  readString,
+} from "../../../lib/supabase/json-parsing";
+import type {
+  DeliveryAddress,
+  OrderLineItem,
+  OrderPaymentStatus,
+  OrderStatus,
+  StorefrontOrder,
+} from "../../../domain/storefront";
 
 // ordering.list_customer_orders returns the raw database vocabulary. The
 // mapping to the storefront's own enums lives here so the database stays the
@@ -37,9 +50,11 @@ const paymentStatusByDatabaseValue: Record<string, OrderPaymentStatus> = {
 };
 
 function parseDeliveryAddress(value: unknown): DeliveryAddress | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return undefined;
   const snapshot = value as Record<string, unknown>;
-  const text = (key: string) => typeof snapshot[key] === "string" ? snapshot[key] as string : "";
+  const text = (key: string) =>
+    typeof snapshot[key] === "string" ? (snapshot[key] as string) : "";
 
   return {
     id: text("id") || "order-address",
@@ -61,37 +76,57 @@ function parseDeliveryAddress(value: unknown): DeliveryAddress | undefined {
 
 function parseItem(value: unknown): OrderLineItem {
   const item = readRecord(value as never, "An order item");
-  const options = readArray(item.options as never, "An order item's options").map((option) => {
+  const options = readArray(
+    item.options as never,
+    "An order item's options",
+  ).map((option) => {
     const record = readRecord(option as never, "An order item option");
     return readString(record.optionName, "An order item option name");
   });
 
   return {
     id: readString(item.id, "An order item ID"),
-    productId: readNullableString(item.productId, "An order item product ID") ?? undefined,
+    productId:
+      readNullableString(item.productId, "An order item product ID") ??
+      undefined,
     name: readString(item.productName, "An order item name"),
     quantity: readNumber(item.quantity, "An order item quantity"),
     unitPrice: readNumber(item.finalUnitPrice, "An order item unit price"),
     selectedOptions: options.length ? options : undefined,
-    note: readNullableString(item.customerNote, "An order item note") ?? undefined,
+    note:
+      readNullableString(item.customerNote, "An order item note") ?? undefined,
   };
 }
 
 function parseOrder(value: unknown, businessKey: string): StorefrontOrder {
   const order = readRecord(value as never, "An order");
   const databaseStatus = readString(order.status, "An order status");
-  const databasePaymentStatus = readString(order.paymentStatus, "An order payment status");
-  const fulfillment = readString(order.fulfillmentType, "An order fulfilment type");
-  const estimatedMinutes = readNullableNumber(order.estimatedDeliveryMinutes, "An order delivery estimate");
+  const databasePaymentStatus = readString(
+    order.paymentStatus,
+    "An order payment status",
+  );
+  const fulfillment = readString(
+    order.fulfillmentType,
+    "An order fulfilment type",
+  );
+  const estimatedMinutes = readNullableNumber(
+    order.estimatedDeliveryMinutes,
+    "An order delivery estimate",
+  );
 
   return {
-    // The UI prints this as "Order #{id}" and routes /orders/:id with it, so
-    // it carries the human-readable order number rather than the row UUID.
+    // The UI prints this as "Order #{id}", so it carries the human-readable
+    // order number rather than the row UUID -- see `orderId` below for the
+    // UUID get_order and /orders/:orderId links actually need.
     id: readString(order.orderNumber, "An order number"),
+    orderId: readString(order.id, "An order ID"),
     restaurantId: businessKey,
-    placedAt: readNullableString(order.placedAt, "An order placed timestamp") ?? new Date().toISOString(),
+    placedAt:
+      readNullableString(order.placedAt, "An order placed timestamp") ??
+      new Date().toISOString(),
     status: orderStatusByDatabaseValue[databaseStatus] ?? "placed",
-    paymentStatus: paymentStatusByDatabaseValue[databasePaymentStatus] ?? "pending",
+    paymentStatus:
+      paymentStatusByDatabaseValue[databasePaymentStatus] ?? "pending",
     fulfilment: fulfillment === "pickup" ? "pickup" : "delivery",
     items: readArray(order.items as never, "An order's items").map(parseItem),
     subtotal: readNumber(order.foodSubtotal, "An order subtotal"),
@@ -99,12 +134,20 @@ function parseOrder(value: unknown, businessKey: string): StorefrontOrder {
     deliveryFee: readNumber(order.deliveryFee, "An order delivery fee"),
     taxes: readNumber(order.taxTotal, "An order tax total"),
     total: readNumber(order.grandTotal, "An order total"),
-    couponCode: readNullableString(order.couponCode, "An order coupon code") ?? undefined,
+    couponCode:
+      readNullableString(order.couponCode, "An order coupon code") ?? undefined,
     deliveryAddress: parseDeliveryAddress(order.deliveryAddress),
-    orderNote: readNullableString(order.customerNote, "An order note") ?? undefined,
-    estimatedFulfilment: estimatedMinutes ? `About ${estimatedMinutes} min` : undefined,
-    completedAt: readNullableString(order.deliveredAt, "An order delivered timestamp") ?? undefined,
-    cancellationReason: readNullableString(order.cancelReason, "An order cancellation reason") ?? undefined,
+    orderNote:
+      readNullableString(order.customerNote, "An order note") ?? undefined,
+    estimatedFulfilment: estimatedMinutes
+      ? `About ${estimatedMinutes} min`
+      : undefined,
+    completedAt:
+      readNullableString(order.deliveredAt, "An order delivered timestamp") ??
+      undefined,
+    cancellationReason:
+      readNullableString(order.cancelReason, "An order cancellation reason") ??
+      undefined,
     timeline: buildTimeline(order),
   };
 }
@@ -132,19 +175,34 @@ function buildTimeline(order: Record<string, unknown>) {
  * real auth session -- the RPC is granted to `authenticated` only, so this
  * must not be called for an anonymous browser.
  */
-export async function listCustomerOrders(businessId: string, locationId: string, businessKey: string): Promise<StorefrontOrder[]> {
-  const result = await callUntypedRpc(getSupabaseClient().schema("ordering"), "list_customer_orders", {
-    p_business_id: businessId,
-    p_location_id: locationId,
-  });
+export async function listCustomerOrders(
+  businessId: string,
+  locationId: string,
+  businessKey: string,
+): Promise<StorefrontOrder[]> {
+  const result = await callUntypedRpc(
+    getSupabaseClient().schema("ordering"),
+    "list_customer_orders",
+    {
+      p_business_id: businessId,
+      p_location_id: locationId,
+    },
+  );
   if (result.error) throw result.error;
 
-  const payload = readRecord(result.data as never, "The order history response");
-  if (readNumber(payload.schemaVersion, "The order history schema version") !== 1) {
+  const payload = readRecord(
+    result.data as never,
+    "The order history response",
+  );
+  if (
+    readNumber(payload.schemaVersion, "The order history schema version") !== 1
+  ) {
     throw new Error("The order history schema version is unsupported.");
   }
 
-  return readArray(payload.orders as never, "The order history list").map((order) => parseOrder(order, businessKey));
+  return readArray(payload.orders as never, "The order history list").map(
+    (order) => parseOrder(order, businessKey),
+  );
 }
 
 export { orderStatusByDatabaseValue, paymentStatusByDatabaseValue };

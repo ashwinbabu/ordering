@@ -17,7 +17,9 @@ export function useStorefrontMenuQuery(businessId: string, locationId: string) {
 
         return menu;
       } catch (error) {
-        throw error instanceof Error ? error : new Error("Could not load the menu.");
+        throw error instanceof Error
+          ? error
+          : new Error("Could not load the menu.");
       }
     },
     staleTime: 30_000,
