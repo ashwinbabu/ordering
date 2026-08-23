@@ -21,6 +21,10 @@ source migration.
 ## Required review before adding SQL
 
 - Compare the remote schema with a fresh database built from the recovery branch.
+- A read-only declarative export was captured under `supabase/schemas/` using Supabase CLI
+  2.115.0 with `remoteHistoryUpdated: false` and secrets redacted.
+- The CLI migration-shadow diff could not run in this environment because Docker Desktop is
+  unavailable. No remote SQL was executed by the failed diff command.
 - Identify whether each missing migration is already represented by a differently timestamped
   or renamed local migration.
 - Recover only additive, reviewed SQL for genuine schema gaps.
