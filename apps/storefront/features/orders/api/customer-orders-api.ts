@@ -15,6 +15,7 @@ import type {
   OrderStatus,
   StorefrontOrder,
 } from "../../../domain/storefront";
+import { orderPaymentMethodFromDatabaseValue } from "../../../domain/storefront";
 
 // ordering.list_customer_orders returns the raw database vocabulary. The
 // mapping to the storefront's own enums lives here so the database stays the
@@ -127,6 +128,7 @@ function parseOrder(value: unknown, businessKey: string): StorefrontOrder {
     status: orderStatusByDatabaseValue[databaseStatus] ?? "placed",
     paymentStatus:
       paymentStatusByDatabaseValue[databasePaymentStatus] ?? "pending",
+    paymentMethod: orderPaymentMethodFromDatabaseValue(order.paymentMethod),
     fulfilment: fulfillment === "pickup" ? "pickup" : "delivery",
     items: readArray(order.items as never, "An order's items").map(parseItem),
     subtotal: readNumber(order.foodSubtotal, "An order subtotal"),

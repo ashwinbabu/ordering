@@ -25,7 +25,7 @@ export function OrderDetailsScreen({
     "out-for-delivery",
   ].includes(order.status);
   const finalOrder = ["delivered", "completed"].includes(order.status);
-  const isCashOnDelivery = order.paymentMethod === "Cash on delivery";
+  const isCashOnDelivery = order.paymentMethod === "cash";
   return (
     <main className="ordering-app customer-page order-details-page">
       <CustomerPageHeader
@@ -128,7 +128,7 @@ export function OrderDetailsScreen({
             <p>
               <Check aria-hidden="true" size={15} />
               Paid online
-              {order.paymentMethod ? ` · ${order.paymentMethod}` : ""}
+              {order.paymentMethod === "online" ? " · Online payment" : ""}
             </p>
           ) : order.paymentStatus === "refunded" ? (
             <p>Payment refunded</p>

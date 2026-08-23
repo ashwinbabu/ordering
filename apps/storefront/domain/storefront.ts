@@ -185,6 +185,14 @@ export type PaymentStatus =
   | "verification_error";
 export type OrderPaymentStatus = "paid" | "pending" | "refunded";
 
+export type OrderPaymentMethod = "cash" | "online";
+
+export function orderPaymentMethodFromDatabaseValue(
+  value: unknown,
+): OrderPaymentMethod | undefined {
+  return value === "cash" || value === "online" ? value : undefined;
+}
+
 /**
  * Statuses that represent an order still in progress, as opposed to a
  * terminal one. Drives both the "Current orders" / "Past orders" split on
@@ -227,7 +235,7 @@ export interface StorefrontOrder {
   placedAt: string;
   status: OrderStatus;
   paymentStatus: OrderPaymentStatus;
-  paymentMethod?: string;
+  paymentMethod?: OrderPaymentMethod;
   fulfilment: FulfilmentType;
   items: OrderLineItem[];
   subtotal: number;

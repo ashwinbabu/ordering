@@ -51,7 +51,7 @@ export function OrderTrackingScreen({
   const isDelivery = order.fulfilment === "delivery";
   const address = order.trackingOrder.deliveryAddress;
   const isCashOnDelivery =
-    order.trackingOrder.paymentMethod === "Cash on delivery";
+    order.trackingOrder.paymentMethod === "cash";
 
   // Driven by the server's own status, not a local click -- the cancel button
   // below only requests a transition; this only shows once ordering.orders

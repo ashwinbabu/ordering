@@ -106,7 +106,7 @@ export function PaymentFlowScreen(props: PaymentFlowScreenProps) {
     );
   if (phase === "confirmed") {
     const isCashOnDelivery =
-      order?.trackingOrder.paymentMethod === "Cash on delivery";
+      order?.trackingOrder.paymentMethod === "cash";
     return (
       <PaymentPage venue={venue}>
         <Securing

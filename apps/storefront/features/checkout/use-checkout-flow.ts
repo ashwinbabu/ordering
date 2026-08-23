@@ -622,7 +622,7 @@ export function useCheckoutFlow(
           ...result.order,
           trackingOrder: {
             ...result.order.trackingOrder,
-            paymentMethod: "Cash on delivery",
+            paymentMethod: "cash",
           },
         };
         setOrder(cashOrder);
