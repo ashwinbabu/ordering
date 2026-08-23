@@ -77,9 +77,17 @@ function profileFromRow(row: CustomerRow): CustomerProfile {
     countryIso2: phone.countryIso2,
     countryCode: phone.countryCode,
     phone: phone.phone,
-    email: row.email ?? undefined,
+    email: customerProfileEmail(row.email),
     isPhoneVerified: Boolean(row.phone_verified_at),
   };
+}
+
+/** Matches the technical email created by customer-auth-msg91, never an address supplied by a customer. */
+function customerProfileEmail(email: string | null): string | undefined {
+  const normalized = email?.trim();
+  if (!normalized || /^msg91_[0-9]+@auth\.invalid$/i.test(normalized))
+    return undefined;
+  return normalized;
 }
 
 export function CustomerSessionProvider({ children }: { children: ReactNode }) {
