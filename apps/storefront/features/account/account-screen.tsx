@@ -19,7 +19,9 @@ interface AccountScreenProps {
   onOpenAddresses: () => void;
   onOpenOrders: () => void;
   onRequestPhoneChange: () => void;
-  onSaveCustomer: (customer: CustomerProfile) => void;
+  onSaveCustomer: (
+    profile: Pick<CustomerProfile, "name" | "email">,
+  ) => Promise<void>;
   onSignOut: () => void;
   venue: Venue;
 }
@@ -48,7 +50,7 @@ export function AccountScreen({
     setError(undefined);
     setEditState("editing");
   }
-  function save(event: React.FormEvent<HTMLFormElement>) {
+  async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) {
       setError("Enter your name");
@@ -60,15 +62,17 @@ export function AccountScreen({
     }
     setError(undefined);
     setEditState("saving");
-    window.setTimeout(() => {
-      onSaveCustomer({
-        ...customer,
+    try {
+      await onSaveCustomer({
         name: name.trim(),
         email: email.trim() || undefined,
       });
       setEditState("success");
       window.setTimeout(() => setEditState(undefined), 650);
-    }, 300);
+    } catch {
+      setEditState("editing");
+      setError("We couldn't save your details. Please try again.");
+    }
   }
 
   return (
