@@ -1,0 +1,13 @@
+# Deployed Edge Functions reported by Supabase ordering dev on 2026-08-23
+# Format: slug | version | verify_jwt | checksum
+
+seed-product-image | 5 | true | 66d9e1441f6c7fe94048af406704ea808c9435890c68fa37e5afdf2d1eee09af
+seed-one-product-image | 5 | true | dcfdc5dea067b7e427db2f14e9a13c40c4f61bcbe439be6cbec79a5dc6f501d6
+customer-auth-msg91 | 13 | false | fb4aa74985ed2bfc7682ca3e634b5b169afabd280f07a7813f1315e04fd045a4
+send-sms-hook | 5 | false | 979f51b0e9694aeee16cb65a457d8e5d5edaef2e4736accd05682d41a667a7ce
+start-online-payment | 3 | true | 28b835a30d52a8a02e79044963c465d4f9fbaee3ec513d2fe527898bc16d9bc4
+verify-online-payment | 2 | true | 617fc4d59d510a5a0b92629dc247c58c68e6cee1153ee3b6a8ee708dc112aee2
+razorpay-webhook | 2 | false | 7b990fd1c9c9277b3acbc8e2551da709f9380d62726757496cfc72b800807aa8
+notification-react-email-spike | 4 | false | 8f1cf2fbce7790492a1f6b6053f538de4f1a9845fff92833fd582eb438871113
+notification-dispatcher | 5 | false | 92054c2d7d445f5577309f65c9566b1c12ed9cc34252057e5bdb75c46790f0fa
+telegram-webhook | 2 | false | f4a2ec945c59b215182c9bb421e583450b9f1f40ed3062d97f76d31d1fe84580
