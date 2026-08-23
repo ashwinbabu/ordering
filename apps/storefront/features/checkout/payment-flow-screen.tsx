@@ -20,6 +20,7 @@ interface PaymentFlowScreenProps {
   onConfirmed: () => void;
   onRetry: () => void;
   onVerify: () => void;
+  canAcceptUpdatedQuote: boolean;
   order: PaymentPendingOrder | null;
   phase: CheckoutPhase;
   /**
@@ -78,8 +79,11 @@ export function PaymentFlowScreen(props: PaymentFlowScreenProps) {
               className="primary-button"
               type="button"
               onClick={props.onAcceptQuote}
+              disabled={!props.canAcceptUpdatedQuote}
             >
-              Continue with {formatRupees(props.updatedAmount ?? 0)}
+              {props.canAcceptUpdatedQuote
+                ? `Continue with ${formatRupees(props.updatedAmount ?? 0)}`
+                : "Updating your order…"}
             </button>
             <button
               className="secondary-button"
@@ -105,8 +109,7 @@ export function PaymentFlowScreen(props: PaymentFlowScreenProps) {
       </PaymentPage>
     );
   if (phase === "confirmed") {
-    const isCashOnDelivery =
-      order?.trackingOrder.paymentMethod === "cash";
+    const isCashOnDelivery = order?.trackingOrder.paymentMethod === "cash";
     return (
       <PaymentPage venue={venue}>
         <Securing
