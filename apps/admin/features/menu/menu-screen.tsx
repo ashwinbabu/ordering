@@ -25,6 +25,7 @@ import { formatMoney as money } from "@/features/orders/order-model";
 import {
   DAYS,
   createMenuId,
+  scheduleWindowsFor,
   effectiveProductState,
   isScheduleActive,
   priceFromInput,
@@ -599,9 +600,12 @@ export function MenuEditor({
 export function ProductEditorOverlay({
   draft,
   categories,
+  venue,
   dirty,
   errors,
   onChange,
+  onImageSelect,
+  onImageRemove,
   onClose,
   onSave,
   onDelete,
@@ -609,9 +613,12 @@ export function ProductEditorOverlay({
 }: {
   draft: Product;
   categories: Category[];
+  venue: { businessName: string; locationName: string };
   dirty: boolean;
   errors: Record<string, string>;
   onChange: (draft: Product) => void;
+  onImageSelect: (file: File) => void;
+  onImageRemove: () => void;
   onClose: () => void;
   onSave: () => void;
   onDelete: () => void;
@@ -683,6 +690,54 @@ export function ProductEditorOverlay({
     );
   }
 
+  const scheduleWindows = scheduleWindowsFor(draft);
+
+  function setDayWindow(
+    day: string,
+    patch: Partial<{ enabled: boolean; start: string; end: string }>,
+  ) {
+    const existing = scheduleWindows.find((window) => window.day === day);
+    const enabled = patch.enabled ?? Boolean(existing);
+    const nextWindows = enabled
+      ? [
+          ...scheduleWindows.filter((window) => window.day !== day),
+          {
+            day,
+            start: patch.start ?? existing?.start ?? draft.scheduleStart ?? "16:00",
+            end: patch.end ?? existing?.end ?? draft.scheduleEnd ?? "18:00",
+          },
+        ].sort((left, right) => DAYS.indexOf(left.day) - DAYS.indexOf(right.day))
+      : scheduleWindows.filter((window) => window.day !== day);
+    const first = nextWindows[0];
+    onChange({
+      ...draft,
+      scheduleWindows: nextWindows,
+      scheduleDays: nextWindows.map((window) => window.day),
+      scheduleStart: first?.start ?? "",
+      scheduleEnd: first?.end ?? "",
+    });
+  }
+
+  function setScheduleMode(mode: Product["scheduleMode"]) {
+    const first = scheduleWindows[0];
+    const start = first?.start ?? (draft.scheduleStart || "16:00");
+    const end = first?.end ?? (draft.scheduleEnd || "18:00");
+    const windows =
+      mode === "restaurant"
+        ? []
+        : mode === "same"
+          ? DAYS.map((day) => ({ day, start, end }))
+          : scheduleWindows;
+    onChange({
+      ...draft,
+      scheduleMode: mode,
+      scheduleWindows: windows,
+      scheduleDays: windows.map((window) => window.day),
+      scheduleStart: windows[0]?.start ?? start,
+      scheduleEnd: windows[0]?.end ?? end,
+    });
+  }
+
   return (
     <div className="product-editor-layer" aria-label="Product editor">
       <div className="product-editor-scrim" aria-hidden="true" />
@@ -699,9 +754,13 @@ export function ProductEditorOverlay({
           <div className="phone-speaker" />
           <div className="phone-screen">
             <header className="customer-preview-header">
-              <span className="brand-mark tiny-mark">A2</span>
+              <span className="brand-mark tiny-mark">
+                {venue.businessName.slice(0, 2).toUpperCase()}
+              </span>
               <span>
-                <strong>A2 · Mandrem</strong>
+                <strong>
+                  {venue.businessName} · {venue.locationName}
+                </strong>
                 <small>Delivery · 30–40 min</small>
               </span>
             </header>
@@ -873,23 +932,32 @@ export function ProductEditorOverlay({
                 )}
               </div>
               <div>
-                <button
-                  type="button"
-                  className="secondary-button upload-button"
-                  disabled
-                  title="Image uploads require catalog storage configuration."
-                >
+                <label className="secondary-button upload-button">
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => {
+                      const [file] = Array.from(event.target.files ?? []);
+                      if (file) onImageSelect(file);
+                      event.target.value = "";
+                    }}
+                  />
                   {draft.image ? "Replace image" : "Upload image"}
-                </button>
+                </label>
                 {draft.image && (
                   <button
+                    type="button"
                     className="destructive-link remove-image"
-                    onClick={() => change("image", undefined)}
+                    onClick={onImageRemove}
                   >
                     Remove
                   </button>
                 )}
-                <small>JPG, PNG or WebP · up to 10 MB</small>
+                {errors.image ? (
+                  <small className="field-error">{errors.image}</small>
+                ) : (
+                  <small>JPG, PNG or WebP · up to 5 MB</small>
+                )}
               </div>
             </div>
           </section>
@@ -931,7 +999,7 @@ export function ProductEditorOverlay({
                 <input
                   type="radio"
                   checked={draft.scheduleMode === "restaurant"}
-                  onChange={() => change("scheduleMode", "restaurant")}
+                  onChange={() => setScheduleMode("restaurant")}
                 />
                 All times the restaurant is open
               </label>
@@ -939,7 +1007,7 @@ export function ProductEditorOverlay({
                 <input
                   type="radio"
                   checked={draft.scheduleMode === "same"}
-                  onChange={() => change("scheduleMode", "same")}
+                  onChange={() => setScheduleMode("same")}
                 />
                 Same time for all days
               </label>
@@ -947,59 +1015,95 @@ export function ProductEditorOverlay({
                 <input
                   type="radio"
                   checked={draft.scheduleMode === "different"}
-                  onChange={() => change("scheduleMode", "different")}
+                  onChange={() => setScheduleMode("different")}
                 />
                 Different times on different days
               </label>
             </div>
             {draft.scheduleMode !== "restaurant" && (
               <div className="schedule-detail-box">
-                {draft.scheduleMode === "different" && (
-                  <div className="weekday-selector">
-                    {DAYS.map((day) => (
-                      <button
-                        key={day}
-                        className={
-                          draft.scheduleDays.includes(day) ? "selected" : ""
-                        }
-                        onClick={() =>
-                          change(
-                            "scheduleDays",
-                            draft.scheduleDays.includes(day)
-                              ? draft.scheduleDays.filter(
-                                  (value) => value !== day,
-                                )
-                              : [...draft.scheduleDays, day],
-                          )
-                        }
-                      >
-                        {day}
-                      </button>
-                    ))}
+                {draft.scheduleMode === "different" ? (
+                  <div className="weekday-window-list">
+                    {DAYS.map((day) => {
+                      const window = scheduleWindows.find(
+                        (entry) => entry.day === day,
+                      );
+                      return (
+                        <div className="weekday-window-row" key={day}>
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={Boolean(window)}
+                              onChange={(event) =>
+                                setDayWindow(day, { enabled: event.target.checked })
+                              }
+                            />
+                            {day}
+                          </label>
+                          <input
+                            aria-label={`${day} start time`}
+                            type="time"
+                            disabled={!window}
+                            value={window?.start ?? ""}
+                            onChange={(event) =>
+                              setDayWindow(day, { start: event.target.value })
+                            }
+                          />
+                          <input
+                            aria-label={`${day} end time`}
+                            type="time"
+                            disabled={!window}
+                            value={window?.end ?? ""}
+                            onChange={(event) =>
+                              setDayWindow(day, { end: event.target.value })
+                            }
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="time-grid">
+                    <label className="field-label">
+                      Start
+                      <input
+                        type="time"
+                        value={draft.scheduleStart}
+                        onChange={(event) => {
+                          const start = event.target.value;
+                          onChange({
+                            ...draft,
+                            scheduleStart: start,
+                            scheduleWindows: DAYS.map((day) => ({
+                              day,
+                              start,
+                              end: draft.scheduleEnd,
+                            })),
+                          });
+                        }}
+                      />
+                    </label>
+                    <label className="field-label">
+                      End
+                      <input
+                        type="time"
+                        value={draft.scheduleEnd}
+                        onChange={(event) => {
+                          const end = event.target.value;
+                          onChange({
+                            ...draft,
+                            scheduleEnd: end,
+                            scheduleWindows: DAYS.map((day) => ({
+                              day,
+                              start: draft.scheduleStart,
+                              end,
+                            })),
+                          });
+                        }}
+                      />
+                    </label>
                   </div>
                 )}
-                <div className="time-grid">
-                  <label className="field-label">
-                    Start
-                    <input
-                      type="time"
-                      value={draft.scheduleStart}
-                      onChange={(event) =>
-                        change("scheduleStart", event.target.value)
-                      }
-                    />
-                  </label>
-                  <label className="field-label">
-                    End
-                    <input
-                      type="time"
-                      value={draft.scheduleEnd}
-                      onChange={(event) =>
-                        change("scheduleEnd", event.target.value)
-                      }
-                    />
-                  </label>
-                </div>
                 {errors.schedule && (
                   <p className="field-error">{errors.schedule}</p>
                 )}

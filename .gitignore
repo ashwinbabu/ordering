@@ -47,3 +47,6 @@ next-env.d.ts
 /apps/*/.sites-runtime/
 /outputs/
 /work/
+
+# local implementation plans
+/selected-qa-bugs-fix-plan.md

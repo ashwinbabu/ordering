@@ -218,6 +218,11 @@ export function StorefrontLayout() {
         : null,
     [storefrontMenuResource.data],
   );
+  useEffect(() => {
+    document.title = venue
+      ? `${venue.businessName} — ${venue.locationName}`
+      : "Order online";
+  }, [venue]);
   const cart = cartResource.data;
   const savedAddresses = customerAddressesResource.data ?? noAddresses;
   const lines = useMemo(() => reconcileCartLines(cart, menu), [cart, menu]);

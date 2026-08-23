@@ -2449,6 +2449,30 @@ textarea[aria-invalid="true"] {
   gap: 14px;
 }
 
+.weekday-window-list {
+  display: grid;
+  gap: 8px;
+}
+
+.weekday-window-row {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.7fr) minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.weekday-window-row label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.weekday-window-row input[type="time"] {
+  min-width: 0;
+}
+
 .currency-field > span {
   display: flex;
   align-items: center;

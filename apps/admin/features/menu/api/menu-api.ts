@@ -3,6 +3,7 @@ import type { Database, Json } from "@/lib/supabase/database.types";
 import {
   DAYS,
   scheduleSummaryFor,
+  scheduleWindowsFor,
   type Category,
   type Product,
   type ScheduleMode,
@@ -92,7 +93,11 @@ interface MenuAggregate {
 
 type ScheduledMenuItem = Pick<
   Category,
-  "scheduleMode" | "scheduleStart" | "scheduleEnd" | "scheduleDays"
+  | "scheduleMode"
+  | "scheduleStart"
+  | "scheduleEnd"
+  | "scheduleDays"
+  | "scheduleWindows"
 >;
 
 function throwIfError(error: { message: string } | null) {
@@ -108,6 +113,7 @@ function scheduleFromWindows(
   | "scheduleStart"
   | "scheduleEnd"
   | "scheduleDays"
+  | "scheduleWindows"
 > {
   if (!windows.length) {
     return {
@@ -116,20 +122,30 @@ function scheduleFromWindows(
       scheduleStart: "",
       scheduleEnd: "",
       scheduleDays: DAYS,
+      scheduleWindows: [],
     };
   }
 
-  const [firstWindow] = windows;
-  const scheduleDays = DAYS.filter((_, index) =>
-    windows.some((window) => window.day_of_week === index + 1),
+  const scheduleWindows = DAYS.flatMap((day, index) => {
+    const window = windows.find((entry) => entry.day_of_week === index + 1);
+    return window
+      ? [{ day, start: window.starts_at.slice(0, 5), end: window.ends_at.slice(0, 5) }]
+      : [];
+  });
+  const [firstWindow] = scheduleWindows;
+  const scheduleDays = scheduleWindows.map((window) => window.day);
+  const allSame = scheduleWindows.every(
+    (window) =>
+      window.start === firstWindow.start && window.end === firstWindow.end,
   );
   const scheduleMode: ScheduleMode =
-    scheduleDays.length === DAYS.length ? "same" : "different";
+    scheduleDays.length === DAYS.length && allSame ? "same" : "different";
   const schedule = {
     scheduleMode,
-    scheduleStart: firstWindow.starts_at.slice(0, 5),
-    scheduleEnd: firstWindow.ends_at.slice(0, 5),
+    scheduleStart: firstWindow.start,
+    scheduleEnd: firstWindow.end,
     scheduleDays,
+    scheduleWindows,
   };
 
   return {
@@ -148,18 +164,12 @@ function appendWindow<T extends ScheduledMenuItem>(
   starts_at: string;
   ends_at: string;
 }> {
-  if (
-    item.scheduleMode === "restaurant" ||
-    !item.scheduleStart ||
-    !item.scheduleEnd
-  )
-    return [];
-  const scheduleDays = item.scheduleMode === "same" ? DAYS : item.scheduleDays;
-  return scheduleDays.map((day) => ({
+  const scheduleWindows = scheduleWindowsFor(item);
+  return scheduleWindows.map((window) => ({
     ...target,
-    day_of_week: DAYS.indexOf(day) + 1,
-    starts_at: item.scheduleStart,
-    ends_at: item.scheduleEnd,
+    day_of_week: DAYS.indexOf(window.day) + 1,
+    starts_at: window.start,
+    ends_at: window.end,
   }));
 }
 
@@ -474,7 +484,11 @@ export async function saveMenuChanges({
   categories,
 }: SaveMenuInput) {
   const products = categories.flatMap((category) => category.products);
+  const categoryIds = new Set(categories.map((category) => category.id));
   const productIds = new Set(products.map((product) => product.id));
+  const removedCategoryIds = baseline.categories
+    .map((category) => category.id)
+    .filter((categoryId) => !categoryIds.has(categoryId));
   const removedProductIds = baseline.products
     .map((product) => product.id)
     .filter((productId) => !productIds.has(productId));
@@ -546,6 +560,7 @@ export async function saveMenuChanges({
     product_availability_windows: products.flatMap((product) =>
       appendWindow({ product_id: product.id }, product),
     ),
+    removed_category_ids: removedCategoryIds,
     removed_product_ids: removedProductIds,
   };
   const rpcBaseline: Json = {

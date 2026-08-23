@@ -2,6 +2,7 @@ import { supabase } from "@/lib/supabase/client";
 import type { Json } from "@/lib/supabase/database.types";
 import type {
   Order,
+  OrderFulfilment,
   OrderStatus,
   TimelineItem,
 } from "@/features/orders/order-model";
@@ -61,6 +62,11 @@ function backendStatusToDisplay(status: string): OrderStatus {
   throw new Error("The order response has an unsupported status.");
 }
 
+function fulfilmentFromBackend(value: string): OrderFulfilment {
+  if (value === "delivery" || value === "pickup") return value;
+  throw new Error("The order response has an unsupported fulfilment type.");
+}
+
 function formatTime(value: string | null) {
   if (!value) return "—";
   const date = new Date(value);
@@ -114,12 +120,16 @@ function addressText(value: Json | undefined) {
   return parts.join(", ") || "Address unavailable";
 }
 
-function timelineFor(row: JsonObject, status: OrderStatus): TimelineItem[] {
+function timelineFor(
+  row: JsonObject,
+  status: OrderStatus,
+  fulfilment: OrderFulfilment,
+): TimelineItem[] {
   const labels = new Map<string, string>([
     ["order_created", "Order received"],
     ["order_placed", "Order received"],
     ["order_accepted", "Accepted"],
-    ["order_ready_for_pickup", "Preparing"],
+    ["order_ready_for_pickup", "Ready for pickup"],
     ["order_out_for_delivery", "Out for delivery"],
     ["order_delivered", "Delivered"],
     ["order_cancelled", "Cancelled"],
@@ -135,7 +145,12 @@ function timelineFor(row: JsonObject, status: OrderStatus): TimelineItem[] {
   const stages =
     status === "Cancelled"
       ? ["Order received", "Accepted", "Cancelled"]
+      : fulfilment === "pickup"
+        ? ["Order received", "Accepted", "Ready for pickup", "Picked up"]
       : ["Order received", "Accepted", "Out for delivery", "Delivered"];
+  if (fulfilment === "pickup" && completed.has("Delivered")) {
+    completed.set("Picked up", completed.get("Delivered")!);
+  }
   return stages.map((label) => ({
     label,
     time: completed.get(label) ?? "—",
@@ -147,6 +162,7 @@ function parseOrder(value: Json): Order {
   const row = asObject(value, "The order response has an invalid order.");
   const backendStatus = stringValue(row, "status");
   const status = backendStatusToDisplay(backendStatus);
+  const fulfilment = fulfilmentFromBackend(stringValue(row, "fulfillment_type"));
   const fullAddress = addressText(row.delivery_address);
   const items = asArray(row.items, "The order response is missing items.").map(
     (item) => {
@@ -180,7 +196,9 @@ function parseOrder(value: Json): Order {
     backendStatus,
     id: stringValue(row, "order_number"),
     status,
+    fulfilment,
     placedAt,
+    acceptedAt: nullableStringValue(row, "accepted_at"),
     deliveredAt: nullableStringValue(row, "delivered_at"),
     cancelledAt: nullableStringValue(row, "cancelled_at"),
     customer: stringValue(row, "customer_name"),
@@ -200,7 +218,7 @@ function parseOrder(value: Json): Order {
     paid: stringValue(row, "payment_status") === "paid",
     items,
     instructions: note ?? undefined,
-    timeline: timelineFor(row, status),
+    timeline: timelineFor(row, status, fulfilment),
     cancellationReason: nullableStringValue(row, "cancel_reason") ?? undefined,
   };
 }

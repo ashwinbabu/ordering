@@ -1,5 +1,10 @@
 export type FoodType = "Veg" | "Non-veg" | "Egg";
 export type ScheduleMode = "restaurant" | "same" | "different";
+export interface ScheduleWindow {
+  day: string;
+  start: string;
+  end: string;
+}
 
 export interface VariantOption {
   id: string;
@@ -36,6 +41,7 @@ export interface Product {
   scheduleStart: string;
   scheduleEnd: string;
   scheduleDays: string[];
+  scheduleWindows?: ScheduleWindow[];
   image?: string;
   featured?: boolean;
   variantGroups: VariantGroup[];
@@ -51,6 +57,7 @@ export interface Category {
   scheduleStart: string;
   scheduleEnd: string;
   scheduleDays: string[];
+  scheduleWindows?: ScheduleWindow[];
   products: Product[];
 }
 
@@ -65,8 +72,29 @@ export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 type ScheduledAvailability = Pick<
   Category,
-  "scheduleMode" | "scheduleStart" | "scheduleEnd" | "scheduleDays"
+  | "scheduleMode"
+  | "scheduleStart"
+  | "scheduleEnd"
+  | "scheduleDays"
+  | "scheduleWindows"
 >;
+
+export function scheduleWindowsFor(
+  item: Pick<
+    ScheduledAvailability,
+    "scheduleMode" | "scheduleStart" | "scheduleEnd" | "scheduleDays" | "scheduleWindows"
+  >,
+): ScheduleWindow[] {
+  if (item.scheduleMode === "restaurant") return [];
+  if (item.scheduleWindows?.length) return item.scheduleWindows;
+  const days = item.scheduleMode === "same" ? DAYS : item.scheduleDays;
+  if (!item.scheduleStart || !item.scheduleEnd) return [];
+  return days.map((day) => ({
+    day,
+    start: item.scheduleStart,
+    end: item.scheduleEnd,
+  }));
+}
 
 /**
  * Mirrors the storefront's availability-window check in the outlet's timezone.
@@ -78,13 +106,7 @@ export function isScheduleActive(
   timezone: string,
   now = new Date(),
 ) {
-  if (
-    item.scheduleMode === "restaurant" ||
-    !item.scheduleStart ||
-    !item.scheduleEnd
-  ) {
-    return true;
-  }
+  if (item.scheduleMode === "restaurant") return true;
 
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
@@ -101,11 +123,8 @@ export function isScheduleActive(
   const day = values.weekday;
   const time = `${values.hour}:${values.minute}`;
 
-  return (
-    item.scheduleDays.includes(day) &&
-    time >= item.scheduleStart &&
-    time < item.scheduleEnd
-  );
+  const window = scheduleWindowsFor(item).find((entry) => entry.day === day);
+  return Boolean(window && time >= window.start && time < window.end);
 }
 
 const burgerVariants: VariantGroup[] = [
@@ -367,12 +386,18 @@ export function effectiveProductState(category: Category, product: Product) {
 export function scheduleSummaryFor(
   product: Pick<
     Product,
-    "scheduleMode" | "scheduleStart" | "scheduleEnd" | "scheduleDays"
+    | "scheduleMode"
+    | "scheduleStart"
+    | "scheduleEnd"
+    | "scheduleDays"
+    | "scheduleWindows"
   >,
 ) {
   if (product.scheduleMode === "restaurant") return "All restaurant hours";
-  const start = product.scheduleStart || "16:00";
-  const end = product.scheduleEnd || "18:00";
+  const windows = scheduleWindowsFor(product);
+  const firstWindow = windows[0];
+  const start = firstWindow?.start || product.scheduleStart || "16:00";
+  const end = firstWindow?.end || product.scheduleEnd || "18:00";
   const format = (value: string) => {
     const [h, m] = value.split(":").map(Number);
     const suffix = h >= 12 ? "PM" : "AM";
@@ -382,8 +407,13 @@ export function scheduleSummaryFor(
   if (product.scheduleMode === "same") {
     return `Daily, ${format(start)}–${format(end)}`;
   }
-  const days = product.scheduleDays.length
-    ? product.scheduleDays.join(", ")
+  const days = windows.length
+    ? windows.map((window) => window.day).join(", ")
     : "No days";
-  return `${days}, ${format(start)}–${format(end)}`;
+  const allSame = windows.every(
+    (window) => window.start === start && window.end === end,
+  );
+  return allSame
+    ? `${days}, ${format(start)}–${format(end)}`
+    : `${days}, different times`;
 }
