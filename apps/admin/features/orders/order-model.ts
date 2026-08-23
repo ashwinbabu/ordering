@@ -1,5 +1,11 @@
 export type OrderStatus =
   "New" | "Preparing" | "Out for delivery" | "Delivered" | "Cancelled";
+export type OrderFulfilment = "delivery" | "pickup";
+
+export interface OrderVenue {
+  businessName: string;
+  locationName: string;
+}
 
 export interface OrderItem {
   name: string;
@@ -19,6 +25,7 @@ export interface Order {
   backendStatus?: string;
   id: string;
   status: OrderStatus;
+  fulfilment: OrderFulfilment;
   /** ISO-8601 instant the order was placed -- the raw value backing `received`/`age`, kept for callers (e.g. the new-order alarm) that need to do arithmetic rather than display a formatted string. Null when the backend didn't supply one; callers must treat that as "never eligible" rather than defaulting to now. */
   placedAt: string | null;
   /**
@@ -29,6 +36,7 @@ export interface Order {
    */
   deliveredAt?: string | null;
   cancelledAt?: string | null;
+  acceptedAt?: string | null;
   customer: string;
   phone: string;
   shortAddress: string;
@@ -140,16 +148,40 @@ export function isOnLocalDay(
   );
 }
 
-export function nextOrderAction(status: OrderStatus) {
-  if (status === "New") return "Accept order";
-  if (status === "Preparing") return "Mark out for delivery";
-  if (status === "Out for delivery") return "Mark delivered";
+export function nextOrderTransition(order: Pick<Order, "backendStatus" | "fulfilment">) {
+  if (order.backendStatus === "placed" || order.backendStatus === "needs_attention") {
+    return { backendStatus: "accepted", label: "Preparing" };
+  }
+  if (order.fulfilment === "pickup" && order.backendStatus === "accepted") {
+    return { backendStatus: "ready_for_pickup", label: "Ready for pickup" };
+  }
+  if (order.fulfilment === "pickup" && order.backendStatus === "ready_for_pickup") {
+    return { backendStatus: "delivered", label: "Picked up" };
+  }
+  if (order.fulfilment === "delivery" && order.backendStatus === "accepted") {
+    return { backendStatus: "out_for_delivery", label: "Out for delivery" };
+  }
+  if (order.fulfilment === "delivery" && order.backendStatus === "out_for_delivery") {
+    return { backendStatus: "delivered", label: "Delivered" };
+  }
   return null;
 }
 
-export function nextOrderStatus(status: OrderStatus): OrderStatus | null {
-  if (status === "New") return "Preparing";
-  if (status === "Preparing") return "Out for delivery";
-  if (status === "Out for delivery") return "Delivered";
+export function nextOrderAction(order: Pick<Order, "backendStatus" | "fulfilment">) {
+  if (order.backendStatus === "placed" || order.backendStatus === "needs_attention") {
+    return "Accept order";
+  }
+  if (order.fulfilment === "pickup" && order.backendStatus === "accepted") {
+    return "Mark ready for pickup";
+  }
+  if (order.fulfilment === "pickup" && order.backendStatus === "ready_for_pickup") {
+    return "Mark picked up";
+  }
+  if (order.fulfilment === "delivery" && order.backendStatus === "accepted") {
+    return "Mark out for delivery";
+  }
+  if (order.fulfilment === "delivery" && order.backendStatus === "out_for_delivery") {
+    return "Mark delivered";
+  }
   return null;
 }

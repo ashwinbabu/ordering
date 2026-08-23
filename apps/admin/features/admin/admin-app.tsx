@@ -15,7 +15,7 @@ import { useOrderingStatus } from "@/features/ordering-status/ordering-status-co
 import {
   defaultOrdersDateRange,
   formatMoney as money,
-  nextOrderStatus as nextStatus,
+  nextOrderTransition,
   type Order,
   type OrderStatus,
   type OrdersDateRange,
@@ -34,12 +34,14 @@ import {
   cloneCategories,
   createMenuId,
   DAYS,
+  scheduleWindowsFor,
   duplicateMenuProduct,
   scheduleSummaryFor,
   type Category,
   type CategoryDialog,
   type Product,
   type ScheduleMode,
+  type ScheduleWindow,
 } from "@/features/menu/menu-model";
 import {
   MenuAvailability,
@@ -53,6 +55,12 @@ import {
   useSetProductAvailabilityMutation,
 } from "@/features/menu/menu-query";
 import type { MenuBaseline, MenuData } from "@/features/menu/api/menu-api";
+import {
+  deleteCatalogProductImage,
+  deleteCatalogProductImagePaths,
+  uploadCatalogProductImage,
+  validateCatalogProductImage,
+} from "@/features/menu/api/catalog-product-images";
 import { BusinessSettings } from "@/features/business-settings/business-settings-screen";
 
 interface LocalMenuState {
@@ -60,14 +68,6 @@ interface LocalMenuState {
   categories: Category[];
   savedCategories: Category[];
   baseline: MenuBaseline;
-}
-
-function nextOrderBackendStatus(status: string | undefined) {
-  if (status === "placed" || status === "needs_attention") return "accepted";
-  if (status === "accepted" || status === "ready_for_pickup")
-    return "out_for_delivery";
-  if (status === "out_for_delivery") return "delivered";
-  return null;
 }
 
 export function AdminApp() {
@@ -136,6 +136,9 @@ export function AdminApp() {
   const [categoryScheduleEnd, setCategoryScheduleEnd] = useState("18:00");
   const [categoryScheduleDays, setCategoryScheduleDays] =
     useState<string[]>(DAYS);
+  const [categoryScheduleWindows, setCategoryScheduleWindows] = useState<
+    ScheduleWindow[]
+  >([]);
 
   const [productDraft, setProductDraft] = useState<Product | null>(null);
   const [productOrigin, setProductOrigin] = useState<{
@@ -146,6 +149,9 @@ export function AdminApp() {
   const [productErrors, setProductErrors] = useState<Record<string, string>>(
     {},
   );
+  const [pendingProductImages, setPendingProductImages] = useState<
+    Record<string, File>
+  >({});
   const [discardProductConfirm, setDiscardProductConfirm] = useState(false);
   const [deleteProductConfirm, setDeleteProductConfirm] = useState(false);
   const [productDeleteTarget, setProductDeleteTarget] =
@@ -339,11 +345,9 @@ export function AdminApp() {
   }
 
   async function progressOrder(order: Order) {
-    const status = nextStatus(order.status);
-    const nextBackendStatus = nextOrderBackendStatus(order.backendStatus);
+    const transition = nextOrderTransition(order);
     if (
-      !status ||
-      !nextBackendStatus ||
+      !transition ||
       !order.recordId ||
       !order.backendStatus ||
       !activeBusiness ||
@@ -357,9 +361,9 @@ export function AdminApp() {
         locationId: activeLocation.id,
         orderId: order.recordId,
         expectedStatus: order.backendStatus,
-        newStatus: nextBackendStatus,
+        newStatus: transition.backendStatus,
       });
-      showToast(`Order #${order.id} moved to ${status}.`);
+      showToast(`Order #${order.id} moved to ${transition.label}.`);
     } catch (error) {
       showToast(
         error instanceof Error ? error.message : "Could not update the order.",
@@ -380,7 +384,11 @@ export function AdminApp() {
         return `${item.qty} x ${item.name}${variants}${note}`;
       })
       .join("\n");
-    return `A2 Order #${order.id}\nCustomer: ${order.customer} · ${order.phone}\n\n${items}\n\nOrder note: ${order.instructions || "None"}\nAddress: ${order.fullAddress}\nDelivery: ${order.deliveryInstructions}\nTotal: ${money(order.total)} · ${order.paid ? "Paid" : "Cash on delivery"}`;
+    const fulfilment =
+      order.fulfilment === "pickup"
+        ? `Pickup: ${activeBusiness?.name ?? "Business"} · ${activeLocation?.name ?? "Location"}`
+        : `Address: ${order.fullAddress}\nDelivery: ${order.deliveryInstructions}`;
+    return `${activeBusiness?.name ?? "Business"} Order #${order.id}\nCustomer: ${order.customer} · ${order.phone}\n\n${items}\n\nOrder note: ${order.instructions || "None"}\n${fulfilment}\nTotal: ${money(order.total)} · ${order.paid ? "Paid" : "Cash on delivery"}`;
   }
 
   async function copyOrder(order: Order) {
@@ -600,11 +608,74 @@ export function AdminApp() {
 
   async function saveMenu() {
     setSavingMenu(true);
+    const uploadedPaths: string[] = [];
     try {
-      await persistMenu(categories);
+      if (!activeBusiness || !activeLocation) {
+        throw new Error("Select an outlet before saving the menu.");
+      }
+      let categoriesToSave = categories;
+      for (const category of categories) {
+        for (const product of category.products) {
+          const image = pendingProductImages[product.id];
+          if (!image) continue;
+          const uploaded = await uploadCatalogProductImage(
+            {
+              businessId: activeBusiness.id,
+              locationId: activeLocation.id,
+            },
+            product.id,
+            image,
+          );
+          uploadedPaths.push(uploaded.path);
+          categoriesToSave = categoriesToSave.map((item) =>
+            item.id === category.id
+              ? {
+                  ...item,
+                  products: item.products.map((entry) =>
+                    entry.id === product.id
+                      ? { ...entry, image: uploaded.url }
+                      : entry,
+                  ),
+                }
+              : item,
+          );
+        }
+      }
+      await persistMenu(categoriesToSave);
+      const savedImages = new Map(
+        savedCategories.flatMap((category) =>
+          category.products.map((product) => [product.id, product.image]),
+        ),
+      );
+      const currentImages = new Map(
+        categoriesToSave.flatMap((category) =>
+          category.products.map((product) => [product.id, product.image]),
+        ),
+      );
+      const removedImages = Array.from(savedImages.entries())
+        .filter(([productId, image]) =>
+          Boolean(image && image !== currentImages.get(productId)),
+        )
+        .map(([, image]) => image!);
+      await Promise.allSettled(
+        removedImages.map((image) =>
+          deleteCatalogProductImage(
+            {
+              businessId: activeBusiness.id,
+              locationId: activeLocation.id,
+            },
+            image,
+          ),
+        ),
+      );
+      categories.flatMap((category) => category.products).forEach((product) => {
+        if (product.image?.startsWith("blob:")) URL.revokeObjectURL(product.image);
+      });
+      setPendingProductImages({});
       setUnsavedMenu(false);
       showToast("Menu changes saved.");
     } catch (error) {
+      await Promise.allSettled([deleteCatalogProductImagePaths(uploadedPaths)]);
       showToast(
         error instanceof Error ? error.message : "Could not save menu changes.",
         "error",
@@ -658,6 +729,7 @@ export function AdminApp() {
     if (!dialog) return;
     if (dialog.type === "add") {
       setCategoryName("");
+      setCategoryScheduleWindows([]);
       return;
     }
     const category = categories.find((item) => item.id === dialog.categoryId);
@@ -667,6 +739,46 @@ export function AdminApp() {
     setCategoryScheduleStart(category.scheduleStart || "16:00");
     setCategoryScheduleEnd(category.scheduleEnd || "18:00");
     setCategoryScheduleDays(category.scheduleDays);
+    setCategoryScheduleWindows(scheduleWindowsFor(category));
+  }
+
+  function setCategorySchedule(mode: ScheduleMode) {
+    const first = categoryScheduleWindows[0];
+    const start = first?.start ?? (categoryScheduleStart || "16:00");
+    const end = first?.end ?? (categoryScheduleEnd || "18:00");
+    const windows =
+      mode === "restaurant"
+        ? []
+        : mode === "same"
+          ? DAYS.map((day) => ({ day, start, end }))
+          : categoryScheduleWindows;
+    setCategoryScheduleMode(mode);
+    setCategoryScheduleWindows(windows);
+    setCategoryScheduleDays(windows.map((window) => window.day));
+    setCategoryScheduleStart(windows[0]?.start ?? start);
+    setCategoryScheduleEnd(windows[0]?.end ?? end);
+  }
+
+  function setCategoryDayWindow(
+    day: string,
+    patch: Partial<{ enabled: boolean; start: string; end: string }>,
+  ) {
+    const existing = categoryScheduleWindows.find((window) => window.day === day);
+    const enabled = patch.enabled ?? Boolean(existing);
+    const windows = enabled
+      ? [
+          ...categoryScheduleWindows.filter((window) => window.day !== day),
+          {
+            day,
+            start: patch.start ?? existing?.start ?? categoryScheduleStart,
+            end: patch.end ?? existing?.end ?? categoryScheduleEnd,
+          },
+        ].sort((left, right) => DAYS.indexOf(left.day) - DAYS.indexOf(right.day))
+      : categoryScheduleWindows.filter((window) => window.day !== day);
+    setCategoryScheduleWindows(windows);
+    setCategoryScheduleDays(windows.map((window) => window.day));
+    setCategoryScheduleStart(windows[0]?.start ?? "");
+    setCategoryScheduleEnd(windows[0]?.end ?? "");
   }
 
   function saveCategoryDialog() {
@@ -701,6 +813,7 @@ export function AdminApp() {
             scheduleStart: "",
             scheduleEnd: "",
             scheduleDays: DAYS,
+            scheduleWindows: [],
             products: [],
           },
         ]);
@@ -719,27 +832,30 @@ export function AdminApp() {
       return;
     }
     if (categoryDialog.type === "schedule") {
+      const windows =
+        categoryScheduleMode === "restaurant" ? [] : categoryScheduleWindows;
       if (
         categoryScheduleMode !== "restaurant" &&
-        (!categoryScheduleStart ||
-          !categoryScheduleEnd ||
-          categoryScheduleStart >= categoryScheduleEnd)
+        (!windows.length ||
+          windows.some(
+            (window) =>
+              !window.start || !window.end || window.start >= window.end,
+          ))
       ) {
-        setCategoryError("End time must be later than start time.");
+        setCategoryError(
+          windows.length
+            ? "Each enabled day needs an end time later than its start time."
+            : "Select at least one day.",
+        );
         return;
       }
-      if (
-        categoryScheduleMode === "different" &&
-        !categoryScheduleDays.length
-      ) {
-        setCategoryError("Select at least one day.");
-        return;
-      }
+      const first = windows[0];
       const summary = scheduleSummaryFor({
         scheduleMode: categoryScheduleMode,
-        scheduleStart: categoryScheduleStart,
-        scheduleEnd: categoryScheduleEnd,
-        scheduleDays: categoryScheduleDays,
+        scheduleStart: first?.start ?? "",
+        scheduleEnd: first?.end ?? "",
+        scheduleDays: windows.map((window) => window.day),
+        scheduleWindows: windows,
       });
       setCategories((current) =>
         current.map((category) =>
@@ -747,9 +863,10 @@ export function AdminApp() {
             ? {
                 ...category,
                 scheduleMode: categoryScheduleMode,
-                scheduleStart: categoryScheduleStart,
-                scheduleEnd: categoryScheduleEnd,
-                scheduleDays: categoryScheduleDays,
+                scheduleStart: first?.start ?? "",
+                scheduleEnd: first?.end ?? "",
+                scheduleDays: windows.map((window) => window.day),
+                scheduleWindows: windows,
                 scheduleSummary: summary,
               }
             : category,
@@ -817,6 +934,7 @@ export function AdminApp() {
   function deleteProductFromMenu() {
     if (!productDeleteTarget) return;
     const name = productDeleteTarget.name;
+    discardPendingProductImage(productDeleteTarget.id, productDeleteTarget.image);
     setCategories((current) =>
       current.map((category) =>
         category.id === productDeleteTarget.categoryId
@@ -852,6 +970,7 @@ export function AdminApp() {
       scheduleStart: "",
       scheduleEnd: "",
       scheduleDays: DAYS,
+      scheduleWindows: [],
       variantGroups: [],
     };
   }
@@ -887,19 +1006,76 @@ export function AdminApp() {
     else closeProductEditor();
   }
 
+  function discardPendingProductImage(productId: string, image?: string) {
+    if (image?.startsWith("blob:") && pendingProductImages[productId]) {
+      URL.revokeObjectURL(image);
+    }
+    setPendingProductImages((current) => {
+      const { [productId]: _discarded, ...rest } = current;
+      return rest;
+    });
+  }
+
+  function discardProductEdits() {
+    if (productDraft?.image?.startsWith("blob:")) {
+      const committedImage = categories
+        .flatMap((category) => category.products)
+        .find((product) => product.id === productDraft.id)?.image;
+      if (committedImage !== productDraft.image) {
+        discardPendingProductImage(productDraft.id, productDraft.image);
+      }
+    }
+    closeProductEditor();
+  }
+
+  function selectProductImage(file: File) {
+    if (!productDraft) return;
+    const validationError = validateCatalogProductImage(file);
+    if (validationError) {
+      setProductErrors((current) => ({ ...current, image: validationError }));
+      return;
+    }
+    if (
+      productDraft.image?.startsWith("blob:") &&
+      pendingProductImages[productDraft.id]
+    ) {
+      URL.revokeObjectURL(productDraft.image);
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setPendingProductImages((current) => ({
+      ...current,
+      [productDraft.id]: file,
+    }));
+    setProductDraft({ ...productDraft, image: previewUrl });
+    setProductDirty(true);
+    setProductErrors((current) => {
+      const { image: _imageError, ...rest } = current;
+      return rest;
+    });
+  }
+
+  function removeProductImage() {
+    if (!productDraft) return;
+    discardPendingProductImage(productDraft.id, productDraft.image);
+    setProductDraft({ ...productDraft, image: undefined });
+    setProductDirty(true);
+    setProductErrors((current) => {
+      const { image: _imageError, ...rest } = current;
+      return rest;
+    });
+  }
+
   function validateProduct(product: Product) {
     const errors: Record<string, string> = {};
     if (!product.name.trim()) errors.name = "Product name is required.";
     if (!Number.isFinite(product.price) || product.price <= 0)
       errors.price = "Enter a price greater than ₹0.";
     if (product.scheduleMode !== "restaurant") {
-      if (
-        !product.scheduleStart ||
-        !product.scheduleEnd ||
-        product.scheduleStart >= product.scheduleEnd
-      )
-        errors.schedule = "End time must be later than start time.";
-      if (product.scheduleMode === "different" && !product.scheduleDays.length)
+      const windows = scheduleWindowsFor(product);
+      if (!windows.length) errors.schedule = "Select at least one day.";
+      if (windows.some((window) => !window.start || !window.end || window.start >= window.end))
+        errors.schedule = "Each enabled day needs an end time later than its start time.";
+      if (product.scheduleMode === "different" && !windows.length)
         errors.schedule = "Select at least one day.";
     }
     product.variantGroups.forEach((group, index) => {
@@ -964,6 +1140,7 @@ export function AdminApp() {
 
   function deleteProduct() {
     if (!productOrigin?.productId || !productDraft) return;
+    discardPendingProductImage(productDraft.id, productDraft.image);
     setCategories((current) =>
       current.map((category) => ({
         ...category,
@@ -1033,7 +1210,14 @@ export function AdminApp() {
 
   if (view === "kot" && selectedOrder) {
     return (
-      <KotView order={selectedOrder} onBack={() => setView("order-detail")} />
+      <KotView
+        order={selectedOrder}
+        venue={{
+          businessName: activeBusiness.name,
+          locationName: activeLocation.name,
+        }}
+        onBack={() => setView("order-detail")}
+      />
     );
   }
 
@@ -1059,6 +1243,10 @@ export function AdminApp() {
     content = (
       <OrdersPage
         orders={orders}
+        venue={{
+          businessName: activeBusiness.name,
+          locationName: activeLocation.name,
+        }}
         orderingOpen={orderingOpen}
         onOrderingToggle={() => {
           if (orderingOpen) setPauseConfirm(true);
@@ -1123,11 +1311,7 @@ export function AdminApp() {
         setCategoryMenuId={setCategoryMenuId}
         onCategoryAction={openCategoryDialog}
         onDuplicateCategory={duplicateCategory}
-        canDeleteCategory={(category) =>
-          !menuBaseline?.categories.some(
-            (savedCategory) => savedCategory.id === category.id,
-          )
-        }
+        canDeleteCategory={(category) => !category.products.length}
         onReorderCategory={reorderCategory}
         onReorderProduct={reorderProduct}
         onToggleProduct={(category, product) =>
@@ -1161,6 +1345,10 @@ export function AdminApp() {
     content = (
       <OrderDetails
         order={selectedOrder}
+        venue={{
+          businessName: activeBusiness.name,
+          locationName: activeLocation.name,
+        }}
         busy={busyOrderId === selectedOrder.id}
         onBack={() => setView("orders")}
         onProgress={() => progressOrder(selectedOrder)}
@@ -1208,6 +1396,10 @@ export function AdminApp() {
         <ProductEditorOverlay
           draft={productDraft}
           categories={categories}
+          venue={{
+            businessName: activeBusiness.name,
+            locationName: activeLocation.name,
+          }}
           dirty={productDirty}
           errors={productErrors}
           onChange={(draft) => {
@@ -1215,6 +1407,8 @@ export function AdminApp() {
             setProductDirty(true);
             setProductErrors({});
           }}
+          onImageSelect={selectProductImage}
+          onImageRemove={removeProductImage}
           onClose={requestCloseProduct}
           onSave={saveProduct}
           onDelete={() => setDeleteProductConfirm(true)}
@@ -1472,7 +1666,7 @@ export function AdminApp() {
                   <input
                     type="radio"
                     checked={categoryScheduleMode === "restaurant"}
-                    onChange={() => setCategoryScheduleMode("restaurant")}
+                    onChange={() => setCategorySchedule("restaurant")}
                   />
                   All times the restaurant is open
                 </label>
@@ -1480,7 +1674,7 @@ export function AdminApp() {
                   <input
                     type="radio"
                     checked={categoryScheduleMode === "same"}
-                    onChange={() => setCategoryScheduleMode("same")}
+                    onChange={() => setCategorySchedule("same")}
                   />
                   Same time for all days
                 </label>
@@ -1488,58 +1682,99 @@ export function AdminApp() {
                   <input
                     type="radio"
                     checked={categoryScheduleMode === "different"}
-                    onChange={() => setCategoryScheduleMode("different")}
+                    onChange={() => setCategorySchedule("different")}
                   />
                   Different times on different days
                 </label>
               </div>
               {categoryScheduleMode !== "restaurant" && (
                 <div className="schedule-detail-box">
-                  {categoryScheduleMode === "different" && (
-                    <div className="weekday-selector">
-                      {DAYS.map((day) => (
-                        <button
-                          key={day}
-                          className={
-                            categoryScheduleDays.includes(day) ? "selected" : ""
-                          }
-                          onClick={() =>
-                            setCategoryScheduleDays(
-                              categoryScheduleDays.includes(day)
-                                ? categoryScheduleDays.filter(
-                                    (value) => value !== day,
-                                  )
-                                : [...categoryScheduleDays, day],
-                            )
-                          }
-                        >
-                          {day}
-                        </button>
-                      ))}
+                  {categoryScheduleMode === "different" ? (
+                    <div className="weekday-window-list">
+                      {DAYS.map((day) => {
+                        const window = categoryScheduleWindows.find(
+                          (entry) => entry.day === day,
+                        );
+                        return (
+                          <div className="weekday-window-row" key={day}>
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(window)}
+                                onChange={(event) =>
+                                  setCategoryDayWindow(day, {
+                                    enabled: event.target.checked,
+                                  })
+                                }
+                              />
+                              {day}
+                            </label>
+                            <input
+                              aria-label={`${day} start time`}
+                              type="time"
+                              disabled={!window}
+                              value={window?.start ?? ""}
+                              onChange={(event) =>
+                                setCategoryDayWindow(day, {
+                                  start: event.target.value,
+                                })
+                              }
+                            />
+                            <input
+                              aria-label={`${day} end time`}
+                              type="time"
+                              disabled={!window}
+                              value={window?.end ?? ""}
+                              onChange={(event) =>
+                                setCategoryDayWindow(day, {
+                                  end: event.target.value,
+                                })
+                              }
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="time-grid">
+                      <label className="field-label">
+                        Start
+                        <input
+                          type="time"
+                          value={categoryScheduleStart}
+                          onChange={(event) => {
+                            const start = event.target.value;
+                            const windows = DAYS.map((day) => ({
+                              day,
+                              start,
+                              end: categoryScheduleEnd,
+                            }));
+                            setCategoryScheduleStart(start);
+                            setCategoryScheduleWindows(windows);
+                            setCategoryScheduleDays(DAYS);
+                          }}
+                        />
+                      </label>
+                      <label className="field-label">
+                        End
+                        <input
+                          type="time"
+                          value={categoryScheduleEnd}
+                          onChange={(event) => {
+                            const end = event.target.value;
+                            const windows = DAYS.map((day) => ({
+                              day,
+                              start: categoryScheduleStart,
+                              end,
+                            }));
+                            setCategoryScheduleEnd(end);
+                            setCategoryScheduleWindows(windows);
+                            setCategoryScheduleDays(DAYS);
+                          }}
+                        />
+                      </label>
                     </div>
                   )}
-                  <div className="time-grid">
-                    <label className="field-label">
-                      Start
-                      <input
-                        type="time"
-                        value={categoryScheduleStart}
-                        onChange={(event) =>
-                          setCategoryScheduleStart(event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="field-label">
-                      End
-                      <input
-                        type="time"
-                        value={categoryScheduleEnd}
-                        onChange={(event) =>
-                          setCategoryScheduleEnd(event.target.value)
-                        }
-                      />
-                    </label>
-                  </div>
                 </div>
               )}
               {categoryError && <p className="field-error">{categoryError}</p>}
@@ -1571,7 +1806,7 @@ export function AdminApp() {
               >
                 Continue editing
               </button>
-              <button className="danger-button" onClick={closeProductEditor}>
+              <button className="danger-button" onClick={discardProductEdits}>
                 Discard changes
               </button>
             </>

@@ -28,6 +28,7 @@ import {
   ordersDateRangeSpanDays,
   ORDERS_DATE_RANGE_MAX_DAYS,
   type Order,
+  type OrderVenue,
   type OrderStatus,
   type OrdersDateRange,
 } from "./order-model";
@@ -197,6 +198,7 @@ function StatusBadge({ status }: { status: OrderStatus }) {
 
 function OrderCard({
   order,
+  venue,
   busy,
   onProgress,
   onOpen,
@@ -205,6 +207,7 @@ function OrderCard({
   onCancel,
 }: {
   order: Order;
+  venue: OrderVenue;
   busy: boolean;
   onProgress: () => void;
   onOpen: () => void;
@@ -212,8 +215,9 @@ function OrderCard({
   onKOT: () => void;
   onCancel: () => void;
 }) {
-  const action = nextOrderAction(order.status);
+  const action = nextOrderAction(order);
   const cancellable = !["Delivered", "Cancelled"].includes(order.status);
+  const isPickup = order.fulfilment === "pickup";
 
   return (
     <article
@@ -221,7 +225,7 @@ function OrderCard({
     >
       <section className="order-zone order-context-zone">
         <div className="order-zone-head">
-          <span className="fulfilment-label">Delivery</span>
+          <span className="fulfilment-label">{order.fulfilment}</span>
           <StatusBadge status={order.status} />
         </div>
         <button
@@ -245,10 +249,17 @@ function OrderCard({
             <Phone size={15} /> Call
           </a>
           <span>{order.phone}</span>
-          <p>
-            <MapPin size={15} />
-            {order.shortAddress}
-          </p>
+          {isPickup ? (
+            <p>
+              <Store size={15} />
+              Pickup from {venue.locationName}
+            </p>
+          ) : (
+            <p>
+              <MapPin size={15} />
+              {order.shortAddress}
+            </p>
+          )}
         </div>
         <div className="quiet-actions">
           <button onClick={onCopy}>
@@ -313,27 +324,40 @@ function OrderCard({
 
       <section className="order-zone order-delivery-zone">
         <div className="zone-title-row">
-          <span>Delivery details</span>
-          <button
-            onClick={() => navigator.clipboard?.writeText(order.fullAddress)}
-            aria-label="Copy delivery address"
-          >
-            <Copy size={15} /> Copy address
-          </button>
+          <span>{isPickup ? "Pickup details" : "Delivery details"}</span>
+          {!isPickup && (
+            <button
+              onClick={() => navigator.clipboard?.writeText(order.fullAddress)}
+              aria-label="Copy delivery address"
+            >
+              <Copy size={15} /> Copy address
+            </button>
+          )}
         </div>
-        <p className="full-address">{order.fullAddress}</p>
-        <div className="delivery-instruction">
-          <strong>Delivery instruction</strong>
-          <span>{order.deliveryInstructions}</span>
-        </div>
+        {isPickup ? (
+          <p className="full-address">
+            Collect from {venue.businessName} · {venue.locationName}
+          </p>
+        ) : (
+          <>
+            <p className="full-address">{order.fullAddress}</p>
+            <div className="delivery-instruction">
+              <strong>Delivery instruction</strong>
+              <span>{order.deliveryInstructions}</span>
+            </div>
+          </>
+        )}
         <div className="order-operational-status">
           <Clock3 size={16} />
           <span>
             <strong>
               {order.status === "New" ? "Waiting for acceptance" : order.status}
             </strong>
-            {order.status === "Preparing"
-              ? "Accepted at 3:34 PM"
+            {order.acceptedAt
+              ? `Accepted at ${new Intl.DateTimeFormat("en-IN", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                }).format(new Date(order.acceptedAt))}`
               : `Received ${order.received}`}
           </span>
         </div>
@@ -354,6 +378,7 @@ function OrderCard({
 
 export function OrdersPage({
   orders,
+  venue,
   orderingOpen,
   onOrderingToggle,
   statusFilter,
@@ -368,6 +393,7 @@ export function OrdersPage({
   onCancel,
 }: {
   orders: Order[];
+  venue: OrderVenue;
   orderingOpen: boolean;
   onOrderingToggle: () => void;
   statusFilter: "All" | OrderStatus;
@@ -381,7 +407,6 @@ export function OrdersPage({
   onKOT: (order: Order) => void;
   onCancel: (order: Order) => void;
 }) {
-  const [cartsOpen, setCartsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const tabs: ("All" | OrderStatus)[] = [
     "All",
@@ -492,6 +517,7 @@ export function OrdersPage({
             <OrderCard
               key={order.id}
               order={order}
+              venue={venue}
               busy={busyOrderId === order.id}
               onProgress={() => onProgress(order)}
               onOpen={() => onOpen(order)}
@@ -509,40 +535,13 @@ export function OrdersPage({
         )}
       </div>
 
-      <section className="active-carts">
-        <button
-          className="active-carts-head"
-          onClick={() => setCartsOpen((open) => !open)}
-          aria-expanded={cartsOpen}
-        >
-          <span>
-            <ShoppingBag size={17} />
-            <strong>Active carts</strong>
-            <small>2 carts · last activity 3 min ago</small>
-          </span>
-          <ChevronDown size={18} className={cartsOpen ? "rotate" : ""} />
-        </button>
-        {cartsOpen && (
-          <div className="cart-awareness-list">
-            <div>
-              <strong>Guest · ending 2084</strong>
-              <span>2 items · {formatMoney(420)}</span>
-              <small>Last active 3 min ago</small>
-            </div>
-            <div>
-              <strong>Meera S.</strong>
-              <span>1 item · {formatMoney(280)}</span>
-              <small>Last active 8 min ago</small>
-            </div>
-          </div>
-        )}
-      </section>
     </div>
   );
 }
 
 export function OrderDetails({
   order,
+  venue,
   busy,
   onBack,
   onProgress,
@@ -551,6 +550,7 @@ export function OrderDetails({
   onCancel,
 }: {
   order: Order;
+  venue: OrderVenue;
   busy: boolean;
   onBack: () => void;
   onProgress: () => void;
@@ -558,7 +558,8 @@ export function OrderDetails({
   onKOT: () => void;
   onCancel: () => void;
 }) {
-  const action = nextOrderAction(order.status);
+  const action = nextOrderAction(order);
+  const isPickup = order.fulfilment === "pickup";
   return (
     <div className="page order-details-page">
       <button className="back-button" onClick={onBack}>
@@ -644,7 +645,7 @@ export function OrderDetails({
 
           <section className="detail-section">
             <div className="detail-section-heading">
-              <h2>Customer & delivery</h2>
+              <h2>Customer & {isPickup ? "pickup" : "delivery"}</h2>
             </div>
             <div className="customer-detail-grid">
               <div>
@@ -664,21 +665,29 @@ export function OrderDetails({
                   </button>
                 </div>
               </div>
-              <div>
-                <span>Address</span>
-                <strong>{order.fullAddress}</strong>
-                <small>{order.deliveryInstructions}</small>
-                <div className="inline-actions">
-                  <button
-                    onClick={() =>
-                      navigator.clipboard?.writeText(order.fullAddress)
-                    }
-                  >
-                    <Copy size={15} />
-                    Copy address
-                  </button>
+              {isPickup ? (
+                <div>
+                  <span>Pickup from</span>
+                  <strong>{venue.businessName}</strong>
+                  <small>{venue.locationName}</small>
                 </div>
-              </div>
+              ) : (
+                <div>
+                  <span>Address</span>
+                  <strong>{order.fullAddress}</strong>
+                  <small>{order.deliveryInstructions}</small>
+                  <div className="inline-actions">
+                    <button
+                      onClick={() =>
+                        navigator.clipboard?.writeText(order.fullAddress)
+                      }
+                    >
+                      <Copy size={15} />
+                      Copy address
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -686,7 +695,9 @@ export function OrderDetails({
             <div className="detail-section-heading">
               <h2>Bill</h2>
               <span>
-                {order.paid ? "Payment received" : "Collect on delivery"}
+                {order.paid
+                  ? "Payment received"
+                  : `Collect on ${isPickup ? "pickup" : "delivery"}`}
               </span>
             </div>
             <dl>
@@ -762,9 +773,11 @@ export function OrderDetails({
 
 export function KotView({
   order,
+  venue,
   onBack,
 }: {
   order: Order;
+  venue: OrderVenue;
   onBack: () => void;
 }) {
   return (
@@ -781,9 +794,9 @@ export function KotView({
       </div>
       <section className="kot-ticket">
         <header>
-          <span>A2 · MANDREM</span>
+          <span>{venue.businessName} · {venue.locationName}</span>
           <h1>KOT #{order.id}</h1>
-          <p>{order.received} · DELIVERY</p>
+          <p>{order.received} · {order.fulfilment.toUpperCase()}</p>
         </header>
         <div className="kot-meta">
           <span>Customer</span>

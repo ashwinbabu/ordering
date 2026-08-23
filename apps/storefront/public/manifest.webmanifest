@@ -1,6 +1,6 @@
 {
-  "name": "A2 Food & Beverages — Mandrem",
-  "short_name": "A2 Mandrem",
+  "name": "Order online",
+  "short_name": "Order",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f8f4ed",
