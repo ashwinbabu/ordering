@@ -19,7 +19,9 @@ interface AccountScreenProps {
   onOpenAddresses: () => void;
   onOpenOrders: () => void;
   onRequestPhoneChange: () => void;
-  onSaveCustomer: (customer: CustomerProfile) => void;
+  onSaveCustomer: (
+    profile: Pick<CustomerProfile, "name" | "email">,
+  ) => Promise<void>;
   onSignOut: () => void;
   venue: Venue;
 }
@@ -41,6 +43,7 @@ export function AccountScreen({
   const [name, setName] = useState(customer.name);
   const [email, setEmail] = useState(customer.email ?? "");
   const [error, setError] = useState<string>();
+  const hasName = Boolean(customer.name.trim());
 
   function openEdit() {
     setName(customer.name);
@@ -48,7 +51,7 @@ export function AccountScreen({
     setError(undefined);
     setEditState("editing");
   }
-  function save(event: React.FormEvent<HTMLFormElement>) {
+  async function save(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!name.trim()) {
       setError("Enter your name");
@@ -60,15 +63,17 @@ export function AccountScreen({
     }
     setError(undefined);
     setEditState("saving");
-    window.setTimeout(() => {
-      onSaveCustomer({
-        ...customer,
+    try {
+      await onSaveCustomer({
         name: name.trim(),
         email: email.trim() || undefined,
       });
       setEditState("success");
       window.setTimeout(() => setEditState(undefined), 650);
-    }, 300);
+    } catch {
+      setEditState("editing");
+      setError("We couldn't save your details. Please try again.");
+    }
   }
 
   return (
@@ -84,7 +89,9 @@ export function AccountScreen({
           </div>
           <div>
             <p className="section-kicker">Personal details</p>
-            <h2 id="personal-details-title">{customer.name}</h2>
+            <h2 id="personal-details-title">
+              {hasName ? customer.name : "Add your name"}
+            </h2>
             <p className="account-identity__phone">
               {customer.countryCode} {formatPhone(customer.phone)}
               {customer.isPhoneVerified ? (
@@ -99,7 +106,7 @@ export function AccountScreen({
           </div>
           <button className="text-button" type="button" onClick={openEdit}>
             <Pencil aria-hidden="true" size={15} />
-            Edit
+            {hasName ? "Edit" : "Add details"}
           </button>
         </section>
         <section className="account-navigation" aria-label="Account options">

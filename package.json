@@ -17,9 +17,13 @@
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "format": "prettier . --check",
-    "format:fix": "prettier . --write"
+    "format:fix": "prettier . --write",
+    "test:e2e": "playwright test",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:webkit": "playwright test --project=storefront-webkit"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "typescript": "5.9.3"

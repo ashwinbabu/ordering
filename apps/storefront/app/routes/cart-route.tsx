@@ -68,6 +68,7 @@ export function CartRoute() {
         onConfirmed={onConfirmed}
         onRetry={checkout.retryPayment}
         onVerify={() => void checkout.verify()}
+        canAcceptUpdatedQuote={checkout.canAcceptUpdatedQuote}
         order={checkout.order}
         phase={checkout.phase}
         startError={checkout.startError}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480" viewBox="0 0 640 480">
+  <rect width="640" height="480" fill="#f5ead7"/>
+  <circle cx="320" cy="225" r="145" fill="#ffffff" stroke="#b24b28" stroke-width="12"/>
+  <circle cx="280" cy="205" r="42" fill="#f3b33d"/>
+  <circle cx="365" cy="190" r="38" fill="#66a34f"/>
+  <path d="M225 290c55-58 135-58 190 0" fill="none" stroke="#b24b28" stroke-width="24" stroke-linecap="round"/>
+  <text x="320" y="430" text-anchor="middle" font-family="sans-serif" font-size="38" fill="#3f322d">QA PRODUCT</text>
+</svg>

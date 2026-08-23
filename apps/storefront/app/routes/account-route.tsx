@@ -1,6 +1,7 @@
 import { useNavigate, useOutletContext } from "react-router";
 import { AccountScreen } from "../../features/account/account-screen";
 import { useCustomerSession } from "../../features/auth/customer-session";
+import { useUpdateCustomerProfileMutation } from "../../features/account/customer-profile-mutation";
 import { normalizePhoneInput } from "../../domain/phone";
 import type { StorefrontLayoutContext } from "../storefront-layout";
 
@@ -11,6 +12,7 @@ export function AccountRoute() {
   const customerSession = useCustomerSession();
   const customer = customerSession.customer!;
   const navigate = useNavigate();
+  const updateCustomerProfile = useUpdateCustomerProfileMutation();
 
   return (
     <AccountScreen
@@ -27,7 +29,16 @@ export function AccountRoute() {
           onSuccess: () => {},
         })
       }
-      onSaveCustomer={customerSession.updateLocalProfile}
+      onSaveCustomer={async ({ name, email }) => {
+        const updated = await updateCustomerProfile.mutateAsync({
+          displayName: name,
+          email: email ?? null,
+        });
+        customerSession.applyPersistedProfile({
+          name: updated.displayName,
+          email: updated.email ?? undefined,
+        });
+      }}
       onSignOut={() => {
         void customerSession.signOut();
         navigate("/");

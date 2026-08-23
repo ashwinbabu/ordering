@@ -13,6 +13,7 @@ import {
   orderStatusByDatabaseValue,
   paymentStatusByDatabaseValue,
 } from "../../orders/api/customer-orders-api";
+import { orderPaymentMethodFromDatabaseValue } from "../../../domain/storefront";
 import type {
   DeliveryAddress,
   FulfilmentType,
@@ -185,9 +186,7 @@ function parseOrder(value: unknown): ServerOrder {
     // Only get_order returns this (list_customer_orders doesn't), so it's
     // populated here and left undefined for the order-history parser --
     // OrderDetailsScreen already renders it conditionally either way.
-    paymentMethod:
-      readNullableString(order.payment_method, "The order payment method") ??
-      undefined,
+    paymentMethod: orderPaymentMethodFromDatabaseValue(order.payment_method),
     fulfilment,
     items,
     subtotal: readNumber(order.food_subtotal, "The order subtotal"),

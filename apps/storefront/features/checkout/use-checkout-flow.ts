@@ -220,6 +220,10 @@ export function useCheckoutFlow(
   }, []);
   const [request, setRequest] = useState<CheckoutRequest | null>(null);
   const [updatedAmount, setUpdatedAmount] = useState<number | null>(null);
+  // Quote acceptance is only actionable once the quote request has released
+  // its in-flight guard. Keep this explicit so the UI cannot expose a button
+  // during the small window between the quote_changed render and cleanup.
+  const [canAcceptUpdatedQuote, setCanAcceptUpdatedQuote] = useState(false);
   const [startError, setStartError] = useState<string>();
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string>();
@@ -321,6 +325,7 @@ export function useCheckoutFlow(
     setTrackedOrder(null);
     setRequest(null);
     setUpdatedAmount(null);
+    setCanAcceptUpdatedQuote(false);
     setStartError(undefined);
     setCancelError(undefined);
     setCancelling(false);
@@ -544,6 +549,7 @@ export function useCheckoutFlow(
       attemptCartId.current = identity.cartId;
       lastAttemptWasCash.current = false;
       setRequest(checkoutRequest);
+      setCanAcceptUpdatedQuote(false);
       setStartError(undefined);
       setPhase("quoting");
       try {
@@ -555,6 +561,11 @@ export function useCheckoutFlow(
         });
 
         if (quote.grandTotal !== checkoutRequest.displayedTotal) {
+          // Release the duplicate-submission guard before publishing the
+          // quote_changed phase. Otherwise the first eligible click can land
+          // while activeRequest is still true and be silently discarded.
+          activeRequest.current = false;
+          setCanAcceptUpdatedQuote(true);
           setUpdatedAmount(quote.grandTotal);
           setPhase("quote_changed");
           return;
@@ -594,6 +605,7 @@ export function useCheckoutFlow(
       attemptCartId.current = identity.cartId;
       lastAttemptWasCash.current = true;
       setRequest(checkoutRequest);
+      setCanAcceptUpdatedQuote(false);
       setStartError(undefined);
       setPhase("placing_order");
       try {
@@ -622,7 +634,7 @@ export function useCheckoutFlow(
           ...result.order,
           trackingOrder: {
             ...result.order.trackingOrder,
-            paymentMethod: "Cash on delivery",
+            paymentMethod: "cash",
           },
         };
         setOrder(cashOrder);
@@ -650,8 +662,9 @@ export function useCheckoutFlow(
   );
 
   const acceptUpdatedQuote = useCallback(() => {
-    if (!request || activeRequest.current) return;
+    if (!request || !canAcceptUpdatedQuote || activeRequest.current) return;
     activeRequest.current = true;
+    setCanAcceptUpdatedQuote(false);
     setUpdatedAmount(null);
     void createOrder(request)
       .catch((error: unknown) => {
@@ -663,7 +676,7 @@ export function useCheckoutFlow(
       .finally(() => {
         activeRequest.current = false;
       });
-  }, [createOrder, request]);
+  }, [canAcceptUpdatedQuote, createOrder, request]);
 
   /**
    * "failed"/"cancelled" mean the order exists and is still payment_pending
@@ -751,6 +764,7 @@ export function useCheckoutFlow(
     acceptUpdatedQuote,
     begin,
     beginCashOnDelivery,
+    canAcceptUpdatedQuote,
     cancelError,
     cancelling,
     cancelOrder,

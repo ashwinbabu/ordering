@@ -54,12 +54,10 @@ interface CustomerSessionValue {
   /** Re-runs the same core.customers lookup loadCustomer() performs, for a "Try again" action after customerLoadError. */
   retryCustomerLoad: () => void;
   signOut: () => Promise<void>;
-  /**
-   * Merges a patch into the in-memory profile only. There is no RLS write
-   * policy for core.customers - name/email edits are local-only, matching
-   * how the rest of the storefront treats non-auth data as demo state.
-   */
-  updateLocalProfile: (patch: Partial<CustomerProfile>) => void;
+  /** Applies a profile returned by the authenticated profile update RPC. */
+  applyPersistedProfile: (
+    patch: Pick<CustomerProfile, "name" | "email">,
+  ) => void;
   /**
    * use-otp-verification.ts calls this when MSG91 isn't configured and a
    * demo code was accepted - no real MSG91/Supabase session ever gets
@@ -79,9 +77,17 @@ function profileFromRow(row: CustomerRow): CustomerProfile {
     countryIso2: phone.countryIso2,
     countryCode: phone.countryCode,
     phone: phone.phone,
-    email: row.email ?? undefined,
+    email: customerProfileEmail(row.email),
     isPhoneVerified: Boolean(row.phone_verified_at),
   };
+}
+
+/** Matches the technical email created by customer-auth-msg91, never an address supplied by a customer. */
+function customerProfileEmail(email: string | null): string | undefined {
+  const normalized = email?.trim();
+  if (!normalized || /^msg91_[0-9]+@auth\.invalid$/i.test(normalized))
+    return undefined;
+  return normalized;
 }
 
 export function CustomerSessionProvider({ children }: { children: ReactNode }) {
@@ -237,8 +243,16 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     await getSupabaseClient().auth.signOut();
   }
 
-  function updateLocalProfile(patch: Partial<CustomerProfile>) {
-    setLocalOverride((current) => ({ ...current, ...patch }));
+  function applyPersistedProfile(
+    patch: Pick<CustomerProfile, "name" | "email">,
+  ) {
+    setBaseProfile((current) =>
+      current ? { ...current, ...patch } : current,
+    );
+    setDemoProfile((current) =>
+      current ? { ...current, ...patch } : current,
+    );
+    setLocalOverride({});
   }
 
   function completeDemoSignIn(phone: PhoneNumber) {
@@ -265,7 +279,7 @@ export function CustomerSessionProvider({ children }: { children: ReactNode }) {
     customerLoadError,
     retryCustomerLoad,
     signOut,
-    updateLocalProfile,
+    applyPersistedProfile,
     completeDemoSignIn,
   };
 
