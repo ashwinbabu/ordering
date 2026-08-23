@@ -304,7 +304,11 @@ export function CartScreen({
       })),
       customer: customerDetails,
       customerNote: specialInstructions.trim() || undefined,
-      deliveryAddress: selectedAddress,
+      // Keep the selected address in local state so switching back to
+      // Delivery is convenient, but never send it as the order's address
+      // while Pickup is selected. The checkout RPC requires Pickup orders to
+      // have a null customer-business-address ID.
+      deliveryAddress: fulfilment === "delivery" ? selectedAddress : undefined,
       displayedTotal: total,
       fulfilment,
       items: lines.map((line) => ({
