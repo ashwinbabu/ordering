@@ -103,7 +103,9 @@ Production.
 | Scheduled work | Three active cron jobs | Need target-safe recreation plan |
 | Realtime | Supabase-managed message publication observed | Do not manually copy platform-managed partitions |
 | Secrets | 9 Edge Function secret names and 6 Vault secret names | Name-only Git inventory still required |
-| Data/Auth/dashboard config | Not yet transferred | Requires deliberate plan and decisions |
+| Auth configuration and transfer decision | Captured; transfer users/identities only | Sessions/tokens are explicitly excluded |
+| Application data and Storage objects | Not yet transferred | Requires deliberate export/import |
+| Third-party registrations | Not yet inventoried | Requires vendor-console review |
 
 ## Source inventory already observed
 
@@ -334,8 +336,9 @@ database/file dumps.
 | 2026-08-24 | 2 | Recovered all 10 deployed Edge Functions and matching per-function JWT configuration into Git. | `supabase/functions/`, `supabase/config.toml` |
 | 2026-08-24 | 1 | Performed read-only source audit of Storage, cron jobs, extensions, secret names, Realtime, and source data estimates. | Phase 1 remains incomplete until private manifest, Auth/external inventory, and Auth decision are completed. |
 | 2026-08-24 | 1 | Captured exact application table counts and a private Storage object manifest; added the Git-safe runtime configuration inventory. | `docs/supabase-runtime-configuration-inventory.md`; private manifest is ignored under `supabase/.parity/` |
-| 2026-08-24 | 1 | Attempted the read-only source Auth dashboard inventory. No available browser session was signed in to Supabase. | Source-project Owner/Admin sign-in is required before Auth settings can be recorded. |
-| Pending | 1 | Inventory Auth dashboard settings and third-party registrations; record the Auth-user transfer decision. | Requires authorized dashboard/vendor review and user direction |
+| 2026-08-24 | 1 | Initially unable to inspect source Auth because no browser session was signed in. | Resolved later the same day after Owner/Admin sign-in. |
+| 2026-08-24 | 1 | Captured source Auth dashboard settings and recorded the decision to transfer Auth users/identities only. | `docs/supabase-runtime-configuration-inventory.md`; sessions and refresh tokens are excluded. |
+| Pending | 1 | Inventory third-party registrations and re-run the final source inventory before export/cutover. | Requires vendor-console review and final transfer timing |
 
 ## Agent handoff checklist
 

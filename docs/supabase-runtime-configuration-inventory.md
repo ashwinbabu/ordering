@@ -94,6 +94,61 @@ old-project URLs or authentication material.
   future release; current realtime use may rely on Broadcast rather than
   publication membership.
 
+## Auth configuration
+
+**Audited read-only:** 2026-08-24 UTC
+
+| Setting | Source configuration | Target requirement |
+| --- | --- | --- |
+| Site URL | `http://localhost:3000` | Set an environment-appropriate target URL. |
+| Redirect URLs | None | Add only required target application URLs. |
+| New-user signups | Enabled | Recreate intentionally. |
+| Manual identity linking | Disabled | Preserve unless product requirements change. |
+| Anonymous sign-ins | Disabled | Preserve unless product requirements change. |
+| Email confirmation | Enabled | Preserve unless product requirements change. |
+| Enabled providers | Email and Phone | Configure both in the target. |
+| Third-party/custom OAuth/OIDC providers | None | No provider credentials to transfer. |
+| Custom SMTP | Disabled | Default Supabase email templates are in use. |
+| CAPTCHA protection | Disabled | Make an explicit target decision; do not assume this is a security recommendation. |
+
+### Phone Auth and SMS hook
+
+- Phone Auth is enabled and phone confirmations are required.
+- The SMS hook is enabled and targets the `send-sms-hook` Edge Function. This
+  hook takes precedence over the dashboard SMS provider configuration.
+- SMS OTP expiry is 60 seconds and OTP length is 6 digits.
+- The dashboard SMS message is the default `Your code is {{ .Code }}`.
+- No test phone-number/OTP pairs were configured in the dashboard at audit
+  time.
+
+### Rate limits
+
+- Sending SMS: 30
+- Token refreshes: 150
+- Token verifications: 30
+- Anonymous users: 30
+- Sign-ups/sign-ins: 30
+- Web3 sign-ups/sign-ins: 30
+- Sending email: no explicit custom value was displayed; retain the target
+  platform default unless a deliberate rate is chosen.
+- IP-address forwarding is disabled.
+
+### MFA
+
+- TOTP/App Authenticator MFA is enabled, with up to 10 factors per user.
+- SMS MFA is disabled.
+- The enhanced MFA setting that limits AAL1 sessions is enabled; users must
+  verify an MFA factor within 15 minutes of initial sign-in.
+
+## Auth user transfer decision
+
+The approved transfer scope is **existing Auth users and identities**. Active
+sessions, refresh tokens, MFA challenges, and other session state are excluded.
+Users will need to sign in again in the new project.
+
+Exact Auth counts and this transfer decision are retained only in the ignored
+private transfer manifest during the migration.
+
 ## Secret names and ownership
 
 ### Edge Function secrets currently present in the source project
@@ -130,18 +185,13 @@ the target project's values.
 
 ## Still required to complete the Phase 1 inventory
 
-1. Auth dashboard settings: site URL, redirect URLs, SMS/OTP settings and
-   templates, providers, SMTP, rate limits, and hooks.
-2. External registrations in Razorpay, Telegram, MSG91, and Resend: enabled
+1. External registrations in Razorpay, Telegram, MSG91, and Resend: enabled
    feature, owner, callback domain/path, and target secret name only.
-3. A decision about transferring Auth users/identities. Active sessions and
-   tokens must not be transferred as valid sessions.
-4. A final repeat of this inventory immediately before final data export or
+2. A final repeat of this inventory immediately before final data export or
    cutover.
 
 ## Access dependency
 
-As of the 2026-08-24 audit, no available browser session was signed in to the
-source Supabase dashboard. Auth dashboard configuration therefore remains
-unverified. A source-project Owner/Admin must sign in to the Supabase dashboard
-before an agent can complete the read-only Auth inventory.
+The Auth dashboard inventory was completed from a read-only Owner/Admin
+dashboard session on 2026-08-24 UTC. Future inventory work requires the same
+level of source-project access.
