@@ -385,11 +385,11 @@ releases in the new Git hosting account.
 
 | Check | Result | Required action |
 | --- | --- | --- |
-| Reconciled `bob` branch | Pushed to the legacy host at `5ec3fed` | Merge into legacy `dev` after review. |
-| Legacy and new-host `dev` before this merge | Same commit `3d847b9` | Push the reviewed merge result to new-host `dev`. |
+| Reconciled `bob` branch | Audited as `b687916` and merged into legacy `dev` | Completed without a history rewrite. |
+| Legacy and new-host `dev` before this merge | Same commit `3d847b9` | The validated merge result was fast-forwarded to new-host `dev`. |
 | New-host `bob` | Older commit `6cf9e16` | Do not use it as the deployment source. |
 | New-host `main` | Merge commit `d412958`, directly based on its `dev` | Normal imported/mainline state; review the eventual `dev` → `main` PR. |
-| `bob` vs legacy `dev` | Diverged after common ancestor `6cf9e16` | Perform a real merge and resolve any conflicts; do not force-push. |
+| `bob` vs legacy `dev` | Diverged after common ancestor `6cf9e16` | Resolved through a normal merge; the clean two-migration baseline was validated locally. |
 
 This preserves the full imported history. No history rewrite, force-push, or
 Supabase project modification is part of the Git hosting handoff.
@@ -405,6 +405,7 @@ Supabase project modification is part of the Git hosting handoff.
 | 5 — Dev end-to-end verification | Deferred by environment plan | Legacy `ordering-dev` remains the working Dev project; the new account has no separate Dev project. |
 | 6 — Production cutover | Not started | Requires target configuration, data transfer, vendor registration, and verification. |
 | 7 — Ongoing deployment discipline | Established in documentation | Future schema and Edge Function changes are to be deployed from reviewed Git. |
+| Git hosting handoff | Complete through new-host `dev` | Full history is preserved; the next hosting action is a reviewed `dev` → `main` pull request. |
 
 ## Activity log
 
@@ -424,7 +425,7 @@ database/file dumps.
 | 2026-08-24 | 2 | Added and locally reset the Storage foundation migration. All five bucket definitions and six policy hashes exactly match the source. | `supabase/migrations/20260824033236_storage_runtime_foundation.sql`; cron jobs remain deferred until target data, Vault, and URL configuration exist. |
 | 2026-08-24 | Git handoff | Moved one historical migration that reappeared from legacy `dev` into the archive, preserving the clean two-migration deployment set. | `supabase/legacy-migrations/pre-new-account-baseline/20260823083717_menu_category_deletion_and_product_images.sql` |
 | 2026-08-24 | 1–2 | Completed post-reconciliation audit: application structure, Storage definitions, deployed Edge Function packages, and JWT settings match the source under the stated comparison scope. | Post-reconciliation audit above; target data, values, cron activation, and vendor registration remain separate work. |
-| 2026-08-24 | Git handoff | Verified legacy/new-host branch topology. The new-host `dev` matches legacy `dev`; reconciled `bob` must be merged into legacy `dev` and the result then pushed to new-host `dev`. | Post-reconciliation audit above; no history rewrite or force-push. |
+| 2026-08-24 | Git handoff | Merged reconciled `bob` into legacy `dev`, resolved four Supabase configuration/source conflicts, validated a local reset, and fast-forwarded the result to new-host `dev`. | Normal merge only; no force-push, source data change, or hosted Supabase change. |
 | Pending | 1 | Inventory third-party registrations and re-run the final source inventory before export/cutover. | Requires vendor-console review and final transfer timing |
 
 ## Agent handoff checklist
