@@ -138,3 +138,10 @@ the target project's values.
    tokens must not be transferred as valid sessions.
 4. A final repeat of this inventory immediately before final data export or
    cutover.
+
+## Access dependency
+
+As of the 2026-08-24 audit, no available browser session was signed in to the
+source Supabase dashboard. Auth dashboard configuration therefore remains
+unverified. A source-project Owner/Admin must sign in to the Supabase dashboard
+before an agent can complete the read-only Auth inventory.
