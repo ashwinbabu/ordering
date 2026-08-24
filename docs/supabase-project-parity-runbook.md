@@ -98,8 +98,8 @@ Production.
 | Legacy Git migrations | 38 archived files | Historical reference only; not deployed to new projects |
 | Application object parity | 43 tables, 137 routines, 63 policies, 83 triggers | Verified against local baseline |
 | Edge Functions | 10 deployed source functions and JWT settings recovered to Git | Verified |
-| Source Storage | Five public buckets, 11 objects, 600,287 bytes | Transfer inventory still needs a private object manifest |
-| Storage policies | Six policies | Need target-safe migration/configuration plan |
+| Source Storage | Five public buckets, 11 objects, 600,287 bytes | Bucket/policy foundation is tracked; files transfer separately |
+| Storage policies | Six policies | Tracked and locally source-matched |
 | Scheduled work | Three active cron jobs | Need target-safe recreation plan |
 | Realtime | Supabase-managed message publication observed | Do not manually copy platform-managed partitions |
 | Secrets | 9 Edge Function secret names and 6 Vault secret names | Name-only Git inventory still required |
@@ -314,6 +314,8 @@ behaviour is controlled by `supabase/config.toml`; do not apply one global
 Use these repository artifacts as evidence:
 
 - [Baseline migration](../supabase/migrations/20260824005041_legacy_project_baseline.sql)
+- [Storage foundation migration](../supabase/migrations/20260824033236_storage_runtime_foundation.sql)
+- [Managed-target runtime verification](../supabase/scripts/verify-runtime-foundation.sql)
 - [Legacy migration archive](../supabase/legacy-migrations/pre-new-account-baseline/README.md)
 - [Declarative schema export README](../supabase/schemas/README.md)
 - [Function deployment configuration](../supabase/config.toml)
@@ -338,6 +340,7 @@ database/file dumps.
 | 2026-08-24 | 1 | Captured exact application table counts and a private Storage object manifest; added the Git-safe runtime configuration inventory. | `docs/supabase-runtime-configuration-inventory.md`; private manifest is ignored under `supabase/.parity/` |
 | 2026-08-24 | 1 | Initially unable to inspect source Auth because no browser session was signed in. | Resolved later the same day after Owner/Admin sign-in. |
 | 2026-08-24 | 1 | Captured source Auth dashboard settings and recorded the decision to transfer Auth users/identities only. | `docs/supabase-runtime-configuration-inventory.md`; sessions and refresh tokens are excluded. |
+| 2026-08-24 | 2 | Added and locally reset the Storage foundation migration. All five bucket definitions and six policy hashes exactly match the source. | `supabase/migrations/20260824033236_storage_runtime_foundation.sql`; cron jobs remain deferred until target data, Vault, and URL configuration exist. |
 | Pending | 1 | Inventory third-party registrations and re-run the final source inventory before export/cutover. | Requires vendor-console review and final transfer timing |
 
 ## Agent handoff checklist

@@ -55,9 +55,11 @@ The source has six Storage object policies:
 - `catalog managers can delete product images`
 - `catalog managers can upload product images`
 
-The policy definitions and bucket creation must be recreated in a target-safe,
-reviewed migration or deployment configuration. The object manifest is kept
-outside Git under the ignored `supabase/.parity/` workspace during transfer.
+Bucket creation and the six policy definitions are recreated by
+`supabase/migrations/20260824033236_storage_runtime_foundation.sql` and were
+verified against the source policy hashes in the local database. The object
+manifest is kept outside Git under the ignored `supabase/.parity/` workspace
+during transfer.
 
 ## Database extensions
 
@@ -71,7 +73,9 @@ The source uses these installed extensions:
 - `pg_cron` in `pg_catalog`
 
 Target projects must verify extension availability before enabling them. Do not
-assume every extension is enabled by default.
+assume every extension is enabled by default. Use
+`supabase/scripts/verify-runtime-foundation.sql` after provisioning the target;
+the local Docker database intentionally lacks `pg_net` and `pg_cron`.
 
 ## Scheduled jobs
 
