@@ -52,9 +52,6 @@ export interface OrderCancelledEmailData extends OrderEmailCommon {
   refundMessage: string;
 }
 
-// Shape returned by public.notifications_get_order_context -- kept loose
-// (not re-typed field by field) since it's an internal RPC boundary, not a
-// public contract; the builder functions below are the real typed contract.
 // deno-lint-ignore no-explicit-any
 type RawOrderContext = any;
 
@@ -69,10 +66,6 @@ function firstNameFrom(displayName: string | null | undefined): string | null {
   return trimmed.split(/\s+/)[0];
 }
 
-/** Resolves the /orders/:id CTA link for the correct tenant's storefront
- * domain. Never falls back to another tenant's domain: the dev default is
- * only used when the environment explicitly self-identifies as development,
- * and in production an unresolved domain means the CTA is simply omitted. */
 function resolveOrderUrl(
   orderId: string,
   storefrontDomain: string | null | undefined,

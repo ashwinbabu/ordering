@@ -11,10 +11,6 @@ function maskEmail(address: string): string {
   return `${local.slice(0, 2)}***@${domain}`;
 }
 
-/** Applies NOTIFICATIONS_EMAIL_MODE (off/log/redirect/live) and then sends
- * through the Resend adapter. This is the one place mode-dependent behaviour
- * lives -- the dispatcher loop calling this doesn't know or care which mode
- * is active. */
 export async function sendEmailDelivery(
   delivery: DeliveryContext,
   config: DispatcherConfig,

@@ -267,12 +267,6 @@ Deno.serve(async (req: Request) => {
     return jsonResponse({ ok: false, error: "failed to load dispatcher config" }, 500, origin, allowedOrigins);
   }
 
-  // Edge Functions with verify_jwt=false get no platform-level auth check --
-  // this dispatcher-scoped secret (stored in Vault, never in this file or in
-  // the migration that created its column) is the only gate. A caller that
-  // only has this secret can trigger dispatch; they cannot use it against
-  // any other Data API endpoint the way a leaked service-role/secret key
-  // could.
   const suppliedKey = req.headers.get("x-notification-dispatcher-key");
   if (!config.dispatcherAuthSecret || !suppliedKey || !timingSafeEqual(suppliedKey, config.dispatcherAuthSecret)) {
     return jsonResponse({ ok: false, error: "unauthorized" }, 401, origin, allowedOrigins);

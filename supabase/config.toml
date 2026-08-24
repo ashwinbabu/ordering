@@ -1,0 +1,35 @@
+
+[db.migrations]
+schema_paths = [
+  "schemas",
+]
+
+[functions.seed-product-image]
+verify_jwt = true
+
+[functions.seed-one-product-image]
+verify_jwt = true
+
+[functions.customer-auth-msg91]
+verify_jwt = false
+
+[functions.send-sms-hook]
+verify_jwt = false
+
+[functions.start-online-payment]
+verify_jwt = true
+
+[functions.verify-online-payment]
+verify_jwt = true
+
+[functions.razorpay-webhook]
+verify_jwt = false
+
+[functions.notification-react-email-spike]
+verify_jwt = false
+
+[functions.notification-dispatcher]
+verify_jwt = false
+
+[functions.telegram-webhook]
+verify_jwt = false

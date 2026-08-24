@@ -11,12 +11,6 @@ export type TelegramSendOutcome =
   | { outcome: "retry"; error: string }
   | { outcome: "permanent_failure"; error: string };
 
-// The Bot API has no Resend-style Idempotency-Key for sendMessage -- there is
-// no provider-side dedup mechanism to reuse here. DB-level delivery status is
-// the only thing preventing a resend on retry; a crash between "Telegram
-// accepted the call" and "we persisted sent" can still produce a duplicate
-// message. That's an accepted at-least-once risk for this channel, not a bug
-// (see the project notes on Telegram delivery semantics).
 export async function sendViaTelegram(params: TelegramSendParams): Promise<TelegramSendOutcome> {
   let response: Response;
   try {
@@ -52,10 +46,6 @@ export async function sendViaTelegram(params: TelegramSendParams): Promise<Teleg
   const errorCode = body?.error_code ?? response.status;
   const description = body?.description ?? `HTTP ${response.status}`;
 
-  // 429 (flood control) and 5xx (Telegram-side trouble) are transient.
-  // Everything else -- 400 chat not found, 403 bot was blocked/kicked,
-  // 401 invalid token, etc. -- is a permanent condition for this
-  // destination and should not be retried forever.
   if (errorCode === 429 || errorCode >= 500) {
     return { outcome: "retry", error: `Telegram ${errorCode}: ${description}` };
   }

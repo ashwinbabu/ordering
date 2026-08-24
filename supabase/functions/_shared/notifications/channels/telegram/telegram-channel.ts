@@ -3,12 +3,6 @@ import { sendViaTelegram } from "./telegram-provider.ts";
 import type { DispatcherConfig } from "../../config.ts";
 import type { ChannelSendResult, DeliveryContext } from "../types.ts";
 
-/** Applies NOTIFICATIONS_TELEGRAM_MODE (off/log/live). Unlike email there is
- * no "redirect" mode: a dev order's staff alert is meant to actually reach
- * the real (dev/test) staff group once paired -- there's no third-party
- * inbox to protect the way Resend's sandbox restriction protects strangers'
- * emails. "off" records a real skipped outcome (not "sent") so it stays
- * honest that nothing was delivered; "log" mirrors email's log mode. */
 export async function sendTelegramDelivery(
   delivery: DeliveryContext,
   config: DispatcherConfig,

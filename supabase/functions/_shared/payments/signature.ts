@@ -2,10 +2,7 @@
 // (Standard Checkout signature, webhook signature). Deno's Web Crypto is used
 // directly rather than pulling in a dependency for this.
 
-export async function hmacSha256Hex(
-  key: string,
-  message: string,
-): Promise<string> {
+export async function hmacSha256Hex(key: string, message: string): Promise<string> {
   const encoder = new TextEncoder();
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
@@ -14,11 +11,7 @@ export async function hmacSha256Hex(
     false,
     ["sign"],
   );
-  const digest = await crypto.subtle.sign(
-    "HMAC",
-    cryptoKey,
-    encoder.encode(message),
-  );
+  const digest = await crypto.subtle.sign("HMAC", cryptoKey, encoder.encode(message));
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");

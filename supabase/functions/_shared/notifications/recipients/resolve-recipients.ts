@@ -8,15 +8,6 @@ export interface ResolvedRecipient {
   skipReason: string | null;
 }
 
-/** Pure and synchronous by design: every fact a selector needs (the
- * customer, the resolved Telegram staff-group destination, ...) is already
- * sitting in the PlanningContext fetched once per event -- this function
- * never queries the database itself, so adding a recipient type never adds a
- * query-per-policy-rule.
- *
- * Returns 0..N recipients so one rule can fan out to many independent
- * deliveries (e.g. a future business_owners rule -> one delivery per owner).
- * customer/email/staff_group each resolve to exactly 0 or 1 today. */
 export function resolveRecipients(
   selector: RecipientSelector,
   context: PlanningContext,
@@ -85,9 +76,6 @@ export function resolveRecipients(
     }
     case "business_user":
     case "location_admins":
-      // Not implemented in v1. Fail loudly rather than silently no-op --
-      // a policy rule referencing these would otherwise plan zero
-      // deliveries with no observable error.
       throw new Error(`recipient selector "${selector.type}" is not implemented in v1`);
     default: {
       const exhaustive: never = selector;

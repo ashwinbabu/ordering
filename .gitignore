@@ -50,3 +50,4 @@ next-env.d.ts
 /apps/*/.sites-runtime/
 /outputs/
 /work/
+/supabase/.branches/

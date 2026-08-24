@@ -15,8 +15,6 @@ export interface RenderedEmail {
   text: string;
 }
 
-// Template-key dispatch. Adding a template means adding one case here plus
-// the .tsx file + policy rule -- nothing else in the dispatcher changes.
 export async function renderEmailTemplate(templateKey: string, payload: unknown): Promise<RenderedEmail> {
   switch (templateKey) {
     case "customer_order_placed": {
