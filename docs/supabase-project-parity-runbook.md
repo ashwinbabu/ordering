@@ -333,7 +333,8 @@ database/file dumps.
 | 2026-08-24 | 2 | Generated and locally reset a single clean baseline. Application objects matched the legacy source: 43 tables, 137 routines, 63 policies, 83 triggers. | Baseline migration and local reset verification |
 | 2026-08-24 | 2 | Recovered all 10 deployed Edge Functions and matching per-function JWT configuration into Git. | `supabase/functions/`, `supabase/config.toml` |
 | 2026-08-24 | 1 | Performed read-only source audit of Storage, cron jobs, extensions, secret names, Realtime, and source data estimates. | Phase 1 remains incomplete until private manifest, Auth/external inventory, and Auth decision are completed. |
-| Pending | 1 | Create sanitized runtime configuration inventory and private transfer manifest. | Next active milestone |
+| 2026-08-24 | 1 | Captured exact application table counts and a private Storage object manifest; added the Git-safe runtime configuration inventory. | `docs/supabase-runtime-configuration-inventory.md`; private manifest is ignored under `supabase/.parity/` |
+| Pending | 1 | Inventory Auth dashboard settings and third-party registrations; record the Auth-user transfer decision. | Requires authorized dashboard/vendor review and user direction |
 
 ## Agent handoff checklist
 
@@ -348,4 +349,3 @@ Before changing any Supabase environment, an agent must:
 5. Keep values of secrets and customer data out of Git, logs, and chat output.
 6. After meaningful work, update the activity log with a concise outcome and
    evidence link.
-

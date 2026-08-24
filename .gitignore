@@ -51,3 +51,6 @@ next-env.d.ts
 /outputs/
 /work/
 /supabase/.branches/
+# Private, one-time Supabase transfer evidence (data counts and object manifests).
+# Keep this local or in an approved secure artifact store; never commit it.
+/supabase/.parity/
