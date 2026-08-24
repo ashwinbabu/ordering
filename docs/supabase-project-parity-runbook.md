@@ -94,15 +94,15 @@ Production.
 | --- | --- | --- |
 | Source project | Legacy Dev project ref `qzdpohytpvjkidxgvzkd` | Read-only audit source |
 | Remote migration ledger | 60 historical records | Intentionally not reproduced as target history |
-| Active Git migrations | One clean baseline migration | Recreates the current application schema |
+| Active Git migrations | Two target-safe baseline migrations | Recreate the application schema plus Storage bucket/policy foundation |
 | Legacy Git migrations | 38 archived files | Historical reference only; not deployed to new projects |
-| Application object parity | 43 tables, 137 routines, 63 policies, 83 triggers | Verified against local baseline |
+| Application object parity | 43 tables, 137 routines, 63 policies, 66 application-schema triggers | Verified against local baseline |
 | Edge Functions | 10 deployed source functions and JWT settings recovered to Git | Verified |
 | Source Storage | Five public buckets, 11 objects, 600,287 bytes | Bucket/policy foundation is tracked; files transfer separately |
 | Storage policies | Six policies | Tracked and locally source-matched |
 | Scheduled work | Three active cron jobs | Need target-safe recreation plan |
 | Realtime | Supabase-managed message publication observed | Do not manually copy platform-managed partitions |
-| Secrets | 9 Edge Function secret names and 6 Vault secret names | Name-only Git inventory still required |
+| Secrets | 9 Edge Function secret names and 6 Vault secret names | Name-only inventory is tracked; values remain outside Git |
 | Auth configuration and transfer decision | Captured; transfer users/identities only | Sessions/tokens are explicitly excluded |
 | Application data and Storage objects | Not yet transferred | Requires deliberate export/import |
 | Third-party registrations | Not yet inventoried | Requires vendor-console review |
@@ -218,22 +218,25 @@ configured in Supabase.
 **Complete when:** a new empty project can be built from a single reviewed Git
 revision plus environment-specific secrets/configuration.
 
-### Phase 3 — Build and configure the new Dev project
+### Phase 3 — Build and configure the new Production project
 
-**Goal:** create an empty but working new Dev environment.
+**Goal:** create an empty but working Production environment from the reviewed
+Git baseline. The legacy `ordering-dev` project remains the development
+environment during this transition.
 
 1. Create/link the target project and enable verified extensions.
 2. Apply migrations and deploy all Edge Functions from Git.
-3. Set new Dev secrets and Vault values from a secure store.
+3. Set target-project secrets and Vault values from a secure store.
 4. Configure Auth, SMTP, Realtime, Storage, and dashboard-level settings.
-5. Register only Dev/test external webhooks and credentials.
+5. Register Production-appropriate external webhooks and credentials only
+   after their target URLs and secret values are configured.
 
 **Complete when:** the target passes schema/function/configuration checks before
 real data is imported.
 
 ### Phase 4 — Transfer data, Auth decision, and Storage objects
 
-**Goal:** make the new Dev environment hold the intended equivalent data.
+**Goal:** make the new target environment hold the intended equivalent data.
 
 1. Import application data into the migration-built target. Do not restore a
    full old schema dump over it.
@@ -246,7 +249,7 @@ real data is imported.
 **Complete when:** data and files match the Phase 1 manifest and access behaves
 correctly.
 
-### Phase 5 — End-to-end verification in Dev
+### Phase 5 — End-to-end verification of the target environment
 
 **Goal:** prove equivalent behaviour, not merely equivalent files.
 
@@ -325,6 +328,84 @@ drop-and-recreate of `ordering.orders_rate_snapshots_check`. Direct constraint
 definitions in the legacy source and local baseline were verified identical;
 this is a pg-delta normalization false positive, not schema drift.
 
+## Post-reconciliation audit — 2026-08-24
+
+This audit records the state after the clean Git baseline, recovered function
+source, Auth/runtime inventory, and Storage foundation migration were added.
+It is a deployability audit of the legacy source project against a freshly
+reset local database. It is not a claim that a new Production project has
+already been built or cut over.
+
+### Verified Git blueprint parity
+
+| Category | Legacy source | Fresh local database built from Git | Result |
+| --- | ---: | ---: | --- |
+| Application tables | 43 | 43 | Matched |
+| Routines / RPCs | 137 | 137 | Matched |
+| RLS policies | 63 | 63 | Matched |
+| Application-schema triggers | 66 | 66 | Matched |
+| Storage buckets | 5 | 5 | Matched |
+| Storage object policies | 6 | 6 | Matched exactly by definition hash |
+| Edge Function packages | 10 deployed | 10 tracked | Matched; no remote-only package found |
+| Function JWT settings | 10 deployed | 10 tracked | Matched in `supabase/config.toml` |
+
+The earlier figure of 83 triggers was from a broader inspection scope. The
+66-count above is the consistent comparison scope for `core`, `ordering`,
+`private`, `notifications`, and `public` application schemas; it is the
+authoritative parity count for this runbook.
+
+### Intentional and remaining runtime work
+
+The following are deliberately not represented as ordinary Git-deployable
+values or data:
+
+1. Application data, the 11 Storage object files, and Auth users/identities
+   require the controlled Phase 4 transfer. Auth sessions and refresh tokens
+   are intentionally excluded, so transferred users must sign in again.
+2. Edge Function and Vault **values** must be set per target from a secure
+   store. Their names are documented in the runtime inventory.
+3. Source uses `pg_net` and `pg_cron`; the local Docker stack intentionally
+   does not provide them. Enable and verify them in the managed target before
+   activating scheduled work.
+4. The three source cron jobs are intentionally not created by the baseline.
+   Their commands need the target project URL, target Vault authentication
+   value, and imported notification settings. Creating them earlier would
+   create failing recurring requests in an incomplete target.
+5. Razorpay, Telegram, MSG91, and Resend vendor-console registrations remain
+   target-environment configuration. Their credentials and callback setup must
+   be reviewed before Production cutover.
+6. Supabase-managed Realtime message partitions are platform-managed and must
+   not be copied manually.
+
+### Git hosting handoff audit
+
+The reconciled `bob` branch is the pending handoff candidate. The intended
+branch model is `dev` for ongoing development and `main` for Production
+releases in the new Git hosting account.
+
+| Check | Result | Required action |
+| --- | --- | --- |
+| Reconciled `bob` branch | Pushed to the legacy host at `5ec3fed` | Merge into legacy `dev` after review. |
+| Legacy and new-host `dev` before this merge | Same commit `3d847b9` | Push the reviewed merge result to new-host `dev`. |
+| New-host `bob` | Older commit `6cf9e16` | Do not use it as the deployment source. |
+| New-host `main` | Merge commit `d412958`, directly based on its `dev` | Normal imported/mainline state; review the eventual `dev` → `main` PR. |
+| `bob` vs legacy `dev` | Diverged after common ancestor `6cf9e16` | Perform a real merge and resolve any conflicts; do not force-push. |
+
+This preserves the full imported history. No history rewrite, force-push, or
+Supabase project modification is part of the Git hosting handoff.
+
+### Executed phase outcomes
+
+| Phase | Status | Outcome |
+| --- | --- | --- |
+| 1 — Source inventory | Substantially complete | Private data/Storage manifest, runtime inventory, Auth dashboard configuration, and Auth transfer decision captured. Vendor-console review and final pre-cutover recheck remain. |
+| 2 — Git blueprint | Complete for the current source structure | Clean database baseline, legacy migration archive, declarative schema export, recovered Edge Functions, JWT configuration, secret-name inventory, and Storage foundation are tracked. |
+| 3 — New Production build | Not started | Begins only after the reviewed `dev` → `main` release is merged in the new host. |
+| 4 — Data/Auth/Storage transfer | Not started | Must use the private manifest and approved Auth-user/identity transfer decision. |
+| 5 — Dev end-to-end verification | Deferred by environment plan | Legacy `ordering-dev` remains the working Dev project; the new account has no separate Dev project. |
+| 6 — Production cutover | Not started | Requires target configuration, data transfer, vendor registration, and verification. |
+| 7 — Ongoing deployment discipline | Established in documentation | Future schema and Edge Function changes are to be deployed from reviewed Git. |
+
 ## Activity log
 
 Add only meaningful milestones, outcomes, decisions, and links to evidence.
@@ -334,13 +415,15 @@ database/file dumps.
 | Date | Phase | Milestone / outcome | Evidence / follow-up |
 | --- | --- | --- | --- |
 | 2026-08-23 | 2 | Archived 38 active historical migrations; retained them as reference while preparing a clean baseline. | `supabase/legacy-migrations/pre-new-account-baseline/` |
-| 2026-08-24 | 2 | Generated and locally reset a single clean baseline. Application objects matched the legacy source: 43 tables, 137 routines, 63 policies, 83 triggers. | Baseline migration and local reset verification |
+| 2026-08-24 | 2 | Generated and locally reset a single clean baseline. Application objects matched the legacy source: 43 tables, 137 routines, 63 policies, 66 application-schema triggers. | Baseline migration and local reset verification |
 | 2026-08-24 | 2 | Recovered all 10 deployed Edge Functions and matching per-function JWT configuration into Git. | `supabase/functions/`, `supabase/config.toml` |
 | 2026-08-24 | 1 | Performed read-only source audit of Storage, cron jobs, extensions, secret names, Realtime, and source data estimates. | Phase 1 remains incomplete until private manifest, Auth/external inventory, and Auth decision are completed. |
 | 2026-08-24 | 1 | Captured exact application table counts and a private Storage object manifest; added the Git-safe runtime configuration inventory. | `docs/supabase-runtime-configuration-inventory.md`; private manifest is ignored under `supabase/.parity/` |
 | 2026-08-24 | 1 | Initially unable to inspect source Auth because no browser session was signed in. | Resolved later the same day after Owner/Admin sign-in. |
 | 2026-08-24 | 1 | Captured source Auth dashboard settings and recorded the decision to transfer Auth users/identities only. | `docs/supabase-runtime-configuration-inventory.md`; sessions and refresh tokens are excluded. |
 | 2026-08-24 | 2 | Added and locally reset the Storage foundation migration. All five bucket definitions and six policy hashes exactly match the source. | `supabase/migrations/20260824033236_storage_runtime_foundation.sql`; cron jobs remain deferred until target data, Vault, and URL configuration exist. |
+| 2026-08-24 | 1–2 | Completed post-reconciliation audit: application structure, Storage definitions, deployed Edge Function packages, and JWT settings match the source under the stated comparison scope. | Post-reconciliation audit above; target data, values, cron activation, and vendor registration remain separate work. |
+| 2026-08-24 | Git handoff | Verified legacy/new-host branch topology. The new-host `dev` matches legacy `dev`; reconciled `bob` must be merged into legacy `dev` and the result then pushed to new-host `dev`. | Post-reconciliation audit above; no history rewrite or force-push. |
 | Pending | 1 | Inventory third-party registrations and re-run the final source inventory before export/cutover. | Requires vendor-console review and final transfer timing |
 
 ## Agent handoff checklist
