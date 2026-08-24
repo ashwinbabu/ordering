@@ -1,7 +1,6 @@
 // Supabase Send SMS Auth Hook -> MSG91 delivery adapter.
 // Supabase owns OTP generation/verification; this function only delivers the OTP.
-// It remains deployed for backend consistency but is not used by the direct
-// MSG91 storefront authentication flow.
+// Requests are authenticated with Standard Webhooks signatures, so verify_jwt stays false.
 import { Webhook } from "https://esm.sh/standardwebhooks@1.0.0";
 
 const rawHookSecret = Deno.env.get("SEND_SMS_HOOK_SECRET");
@@ -28,24 +27,22 @@ function isSendSmsHookPayload(value: unknown): value is SendSmsHookPayload {
   const user = record.user as Record<string, unknown> | undefined;
   const sms = record.sms as Record<string, unknown> | undefined;
   return Boolean(
-    user && typeof user.id === "string" && typeof user.phone === "string" &&
-      E164_RE.test(user.phone) && sms && typeof sms.otp === "string" &&
-      /^[0-9]{4,10}$/.test(sms.otp),
+    user && typeof user.id === "string" &&
+    typeof user.phone === "string" && E164_RE.test(user.phone) &&
+    sms && typeof sms.otp === "string" && /^[0-9]{4,10}$/.test(sms.otp),
   );
 }
 
 function maskPhone(phone: string) {
-  return phone.length <= 5
-    ? "***"
-    : `${phone.slice(0, Math.min(4, phone.length - 3))}***${phone.slice(-2)}`;
+  return phone.length <= 5 ? "***" : `${phone.slice(0, Math.min(4, phone.length - 3))}***${phone.slice(-2)}`;
 }
 
 function errorResponse(httpCode: number, message: string) {
   console.error(`send-sms-hook: ${message}`);
-  return new Response(JSON.stringify({ error: { http_code: httpCode, message } }), {
-    status: httpCode,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ error: { http_code: httpCode, message } }),
+    { status: httpCode, headers: { "Content-Type": "application/json" } },
+  );
 }
 
 function classifyFailure(status: number): FailureCategory {
@@ -55,7 +52,17 @@ function classifyFailure(status: number): FailureCategory {
   return "provider_rejected";
 }
 
-async function sendViaMsg91(phone: string, otp: string) {
+async function sendViaMsg91(
+  phone: string,
+  otp: string,
+): Promise<
+  | { ok: true; requestId?: string }
+  | { ok: false; status: number; category: FailureCategory; providerMessage?: string }
+> {
+  // MSG91's Flow API expects country code + national number as digits.
+  // The hook input itself remains canonical E.164.
+  const mobile = phone.slice(1);
+
   const response = await fetch("https://control.msg91.com/api/v5/flow", {
     method: "POST",
     headers: {
@@ -66,7 +73,7 @@ async function sendViaMsg91(phone: string, otp: string) {
     body: JSON.stringify({
       template_id: msg91TemplateId,
       short_url: "0",
-      recipients: [{ mobiles: phone.slice(1), [msg91OtpVariableName]: otp }],
+      recipients: [{ mobiles: mobile, [msg91OtpVariableName]: otp }],
     }),
   });
 
@@ -74,41 +81,65 @@ async function sendViaMsg91(phone: string, otp: string) {
   try {
     body = await response.json();
   } catch {
-    return { ok: false as const, status: 502, category: "provider_invalid_response" as const, providerMessage: "non_json_response" };
+    return {
+      ok: false,
+      status: 502,
+      category: "provider_invalid_response",
+      providerMessage: "non_json_response",
+    };
   }
 
   const type = typeof body.type === "string" ? body.type.toLowerCase() : undefined;
-  if (!(response.ok && type !== "error" && body.hasError !== true)) {
+  const accepted = response.ok && type !== "error" && body.hasError !== true;
+
+  if (!accepted) {
     return {
-      ok: false as const,
+      ok: false,
       status: response.status >= 400 ? response.status : 502,
       category: classifyFailure(response.status >= 400 ? response.status : 502),
       providerMessage: typeof body.message === "string" ? body.message : undefined,
     };
   }
-  return { ok: true as const, requestId: typeof body.message === "string" ? body.message : undefined };
+
+  return {
+    ok: true,
+    requestId: typeof body.message === "string" ? body.message : undefined,
+  };
 }
 
 Deno.serve(async (request) => {
   if (request.method !== "POST") return errorResponse(405, "Use POST.");
+
   if (!rawHookSecret) return errorResponse(500, "SEND_SMS_HOOK_SECRET is not configured.");
-  if (!msg91AuthKey || !msg91TemplateId) return errorResponse(500, "MSG91 delivery is not configured.");
+  if (!msg91AuthKey || !msg91TemplateId) {
+    return errorResponse(500, "MSG91_AUTHKEY / MSG91_TEMPLATE_ID are not configured.");
+  }
 
   const payloadText = await request.text();
   const headers = Object.fromEntries(request.headers);
   const webhook = new Webhook(rawHookSecret.replace("v1,whsec_", ""));
+
   let payload: unknown;
   try {
     payload = webhook.verify(payloadText, headers);
   } catch {
     return errorResponse(401, "Invalid hook signature.");
   }
-  if (!isSendSmsHookPayload(payload)) return errorResponse(400, "Malformed Send SMS Hook payload or non-E.164 phone number.");
+
+  if (!isSendSmsHookPayload(payload)) {
+    return errorResponse(400, "Malformed Send SMS Hook payload or non-E.164 phone number.");
+  }
 
   const { user, sms } = payload;
   const maskedPhone = maskPhone(user.phone);
-  console.log(JSON.stringify({ event: "sms_delivery_requested", provider: "msg91", phone_masked: maskedPhone }));
+  console.log(JSON.stringify({
+    event: "sms_delivery_requested",
+    provider: "msg91",
+    phone_masked: maskedPhone,
+  }));
+
   const result = await sendViaMsg91(user.phone, sms.otp);
+
   if (!result.ok) {
     console.error(JSON.stringify({
       event: "sms_delivery_failed",
@@ -118,11 +149,27 @@ Deno.serve(async (request) => {
       provider_message: result.providerMessage ?? null,
       phone_masked: maskedPhone,
     }));
-    return new Response(JSON.stringify({ error: { http_code: result.status, message: "SMS delivery could not be completed." } }), {
-      status: result.status,
-      headers: { "Content-Type": "application/json" },
-    });
+    // Keep the hook response generic. Detailed provider information stays server-side.
+    return new Response(
+      JSON.stringify({
+        error: {
+          http_code: result.status,
+          message: "SMS delivery could not be completed.",
+        },
+      }),
+      { status: result.status, headers: { "Content-Type": "application/json" } },
+    );
   }
-  console.log(JSON.stringify({ event: "sms_delivery_accepted", provider: "msg91", phone_masked: maskedPhone, request_id: result.requestId ?? null }));
-  return new Response(JSON.stringify({}), { status: 200, headers: { "Content-Type": "application/json" } });
+
+  console.log(JSON.stringify({
+    event: "sms_delivery_accepted",
+    provider: "msg91",
+    phone_masked: maskedPhone,
+    request_id: result.requestId ?? null,
+  }));
+
+  return new Response(JSON.stringify({}), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
 });

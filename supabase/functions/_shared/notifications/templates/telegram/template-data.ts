@@ -20,11 +20,6 @@ export interface StaffNewOrderTelegramData {
 // deno-lint-ignore no-explicit-any
 type RawOrderContext = any;
 
-/** No admin per-order route exists to link to today (the admin app is a
- * live queue screen, not a routed order-detail page) -- omit the button
- * rather than invent a URL that doesn't resolve, matching the same
- * "omit the CTA if it can't be determined reliably" rule email already
- * follows for the storefront link. */
 export function buildStaffNewOrderTelegramData(context: RawOrderContext): StaffNewOrderTelegramData {
   const { order, business, location, items } = context;
   return {

@@ -6,10 +6,6 @@ export interface ResendSendParams {
   html: string;
   text: string;
   replyTo?: string;
-  /** delivery.id -- second, provider-level idempotency layer independent of
-   * the DB-level dedupe_key. Reused unchanged on every retry of the same
-   * delivery so a crash between "Resend accepted" and "DB recorded it" can't
-   * produce a duplicate send. */
   idempotencyKey: string;
 }
 
@@ -53,8 +49,6 @@ export async function sendViaResend(params: ResendSendParams): Promise<ResendSen
   const bodyText = await response.text().catch(() => "");
   const truncatedBody = bodyText.slice(0, 500);
 
-  // 429 and 5xx are transient -- everything else (bad request, invalid
-  // recipient, auth error, etc.) is a permanent 4xx we should not retry.
   if (status === 429 || status >= 500) {
     return { outcome: "retry", error: `Resend ${status}: ${truncatedBody}` };
   }

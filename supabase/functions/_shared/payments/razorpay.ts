@@ -18,18 +18,14 @@ const RAZORPAY_API_BASE = "https://api.razorpay.com/v1";
 function checkoutKeyId(credentials: ProviderCredentials): string {
   const value = credentials.publicConfig?.checkoutKey;
   if (typeof value !== "string" || value.length === 0) {
-    throw new Error(
-      "razorpay adapter: publicConfig.checkoutKey (Key ID) is missing",
-    );
+    throw new Error("razorpay adapter: publicConfig.checkoutKey (Key ID) is missing");
   }
   return value;
 }
 
 function authHeader(credentials: ProviderCredentials): string {
   if (credentials.authMode !== "api_key") {
-    throw new Error(
-      `razorpay adapter: auth_mode '${credentials.authMode}' is not supported yet`,
-    );
+    throw new Error(`razorpay adapter: auth_mode '${credentials.authMode}' is not supported yet`);
   }
   return `Basic ${btoa(`${checkoutKeyId(credentials)}:${credentials.privateKey}`)}`;
 }
@@ -48,15 +44,9 @@ async function razorpayRequest(
     },
   });
 
-  const body = (await response.json().catch(() => null)) as Record<
-    string,
-    unknown
-  > | null;
+  const body = await response.json().catch(() => null) as Record<string, unknown> | null;
   if (!response.ok) {
-    const description =
-      body && typeof body.error === "object"
-        ? JSON.stringify(body.error)
-        : `HTTP ${response.status}`;
+    const description = body && typeof body.error === "object" ? JSON.stringify(body.error) : `HTTP ${response.status}`;
     throw new Error(`razorpay API error: ${description}`);
   }
   return body ?? {};
@@ -69,8 +59,7 @@ function toFetchedPayment(body: Record<string, unknown>): FetchedPayment {
     providerOrderId: typeof body.order_id === "string" ? body.order_id : null,
     status,
     method: typeof body.method === "string" ? body.method : null,
-    amountMinorUnits:
-      typeof body.amount === "number" ? body.amount : Number(body.amount ?? 0),
+    amountMinorUnits: typeof body.amount === "number" ? body.amount : Number(body.amount ?? 0),
     currency: typeof body.currency === "string" ? body.currency : "",
     captured: status === "captured",
     raw: body,
@@ -78,10 +67,7 @@ function toFetchedPayment(body: Record<string, unknown>): FetchedPayment {
 }
 
 export const razorpayAdapter: PaymentProviderAdapter = {
-  async createOrder(
-    credentials,
-    params: CreateOrderParams,
-  ): Promise<CreateOrderResult> {
+  async createOrder(credentials, params: CreateOrderParams): Promise<CreateOrderResult> {
     const body = await razorpayRequest(credentials, "/orders", {
       method: "POST",
       body: JSON.stringify({
@@ -100,28 +86,17 @@ export const razorpayAdapter: PaymentProviderAdapter = {
 
     const providerOrderId = body.id;
     if (typeof providerOrderId !== "string" || providerOrderId.length === 0) {
-      throw new Error(
-        "razorpay adapter: order creation response did not include an id",
-      );
+      throw new Error("razorpay adapter: order creation response did not include an id");
     }
     return { providerOrderId, raw: body };
   },
 
-  async fetchPayment(
-    credentials,
-    providerPaymentId: string,
-  ): Promise<FetchedPayment> {
-    const body = await razorpayRequest(
-      credentials,
-      `/payments/${encodeURIComponent(providerPaymentId)}`,
-    );
+  async fetchPayment(credentials, providerPaymentId: string): Promise<FetchedPayment> {
+    const body = await razorpayRequest(credentials, `/payments/${encodeURIComponent(providerPaymentId)}`);
     return toFetchedPayment(body);
   },
 
-  async verifyCheckoutSignature(
-    credentials,
-    params: CheckoutSignatureParams,
-  ): Promise<boolean> {
+  async verifyCheckoutSignature(credentials, params: CheckoutSignatureParams): Promise<boolean> {
     // Documented Standard Checkout formula: hmac_sha256(order_id + "|" +
     // payment_id, key_secret) must equal razorpay_signature.
     const expected = await hmacSha256Hex(
@@ -131,9 +106,7 @@ export const razorpayAdapter: PaymentProviderAdapter = {
     return timingSafeEqual(expected, params.signature);
   },
 
-  async verifyWebhookSignature(
-    params: WebhookSignatureParams,
-  ): Promise<boolean> {
+  async verifyWebhookSignature(params: WebhookSignatureParams): Promise<boolean> {
     // Must be computed over the untouched raw body -- never a re-serialized
     // parse of it, which is not guaranteed to be byte-identical.
     const expected = await hmacSha256Hex(params.webhookSecret, params.rawBody);
@@ -146,8 +119,5 @@ export async function fetchRazorpayOrder(
   credentials: ProviderCredentials,
   providerOrderId: string,
 ): Promise<Record<string, unknown>> {
-  return razorpayRequest(
-    credentials,
-    `/orders/${encodeURIComponent(providerOrderId)}`,
-  );
+  return razorpayRequest(credentials, `/orders/${encodeURIComponent(providerOrderId)}`);
 }

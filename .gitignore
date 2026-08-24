@@ -50,6 +50,10 @@ next-env.d.ts
 /apps/*/.sites-runtime/
 /outputs/
 /work/
-
 # local implementation plans
 /selected-qa-bugs-fix-plan.md
+
+/supabase/.branches/
+# Private, one-time Supabase transfer evidence (data counts and object manifests).
+# Keep this local or in an approved secure artifact store; never commit it.
+/supabase/.parity/

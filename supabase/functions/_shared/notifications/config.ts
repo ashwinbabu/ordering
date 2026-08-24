@@ -19,10 +19,6 @@ export interface DispatcherConfig {
   notificationsTelegramMode: NotificationsTelegramMode;
 }
 
-/** Reads notifications.settings (+ decrypted Vault secrets) via the
- * service-role-only RPC. This is the single source of truth for dispatcher
- * config -- there are no Edge Function secret env vars for this system, by
- * design (see the "Dispatcher configuration" section of the final report). */
 export async function loadDispatcherConfig(adminClient: SupabaseClient): Promise<DispatcherConfig> {
   const { data, error } = await adminClient.rpc("notifications_get_dispatcher_config");
   if (error) {

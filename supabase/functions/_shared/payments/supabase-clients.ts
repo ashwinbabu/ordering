@@ -19,7 +19,6 @@ export function getServerConfig(): ServerConfig {
   };
 }
 
-/** Service-role client for the payment write RPCs, which are intentionally service-role-only. */
 export function createAdminClient(
   supabaseUrl: string,
   serviceRoleKey: string,
@@ -33,12 +32,6 @@ export function createAdminClient(
   });
 }
 
-/**
- * Anon-key client that forwards the caller's own Authorization header, so
- * `auth.uid()` inside RPCs resolves to the real signed-in customer. This is
- * how order-ownership checks (private.can_view_order, via ordering.get_order)
- * get enforced -- never by trusting an id the browser sends.
- */
 export function createUserClient(
   supabaseUrl: string,
   anonKey: string,

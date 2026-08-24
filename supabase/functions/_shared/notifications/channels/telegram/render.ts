@@ -9,15 +9,9 @@ import type {
 export interface RenderedTelegramMessage {
   text: string;
   parseMode: "HTML";
-  /** Inline "Open order" button, only present when a real admin route could
-   * be resolved. Omitted entirely otherwise -- never a wrong-tenant link. */
   buttonUrl: string | null;
 }
 
-// Telegram HTML mode only requires escaping these three characters; unlike
-// MarkdownV2 there's no long list of punctuation that breaks parsing, which
-// is why HTML was picked over MarkdownV2 for this dynamic, restaurant-authored
-// content (item names, business names, customer notes all pass through raw).
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -29,7 +23,7 @@ function renderStaffNewOrder(data: StaffNewOrderTelegramData): RenderedTelegramM
   const isDelivery = data.fulfillmentType === "delivery";
   const lines: string[] = [];
 
-  lines.push(`🛎 <b>New order</b> · ${escapeHtml(data.businessName)}`);
+  lines.push(`🕮 <b>New order</b> · ${escapeHtml(data.businessName)}`);
   lines.push(`#${escapeHtml(data.orderNumber)} · ${escapeHtml(data.grandTotalFormatted)}`);
   lines.push(`${isDelivery ? "Delivery" : "Pickup"} · ${escapeHtml(data.paymentMethod === "cash" ? "Cash" : "Paid online")}`);
   lines.push("");

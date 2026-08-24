@@ -1,10 +1,5 @@
 import type { PolicyRule } from "../types.ts";
 
-// The entire v1 notification behaviour, in one place. Adding a new
-// destination for an existing event (e.g. order.placed -> location admins)
-// means adding a rule here, resolving its recipient type in
-// recipients/resolve-recipients.ts, and adding a template -- never touching
-// order placement/cancellation code.
 export const NOTIFICATION_POLICY: readonly PolicyRule[] = [
   {
     event: "order.placed",
@@ -87,10 +82,6 @@ export const NOTIFICATION_POLICY: readonly PolicyRule[] = [
 ];
 
 export interface PolicyContext {
-  /** Only order.cancelled's business_owners rule is conditional today -- see
-   * notifications.business_preferences. Every other rule in the matrix is
-   * unconditional, so this is deliberately a single narrow flag rather than
-   * a generic per-rule config mechanism. */
   notifyOwnerOnCancellation: boolean;
 }
 
